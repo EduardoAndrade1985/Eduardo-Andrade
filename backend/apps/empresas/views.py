@@ -32,6 +32,7 @@ def me_view(request):
     if getattr(request, 'membro', None):
         data['papel'] = request.membro.papel
         data['must_change_password'] = request.membro.must_change_password
+        data['modulos_permitidos'] = request.membro.modulos_permitidos or []
     elif u.is_superuser:
         data['papel'] = 'admin'
         data['must_change_password'] = False

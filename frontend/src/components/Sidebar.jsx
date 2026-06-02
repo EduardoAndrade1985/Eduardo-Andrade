@@ -48,9 +48,9 @@ const SECOES = [
     titulo: 'Operacional',
     secIcon: 'sec_op',
     itens: [
-      { label: 'Avaliações', icon: 'avaliacoes', path: '/avaliacoes', ativo: false, badge: 3 },
-      { label: 'Ocupação',   icon: 'ocupacao',   path: '/ocupacao',   ativo: true },
-      { label: 'Eventos',    icon: 'eventos',    path: '/eventos',    ativo: true },
+      { label: 'Avaliações', icon: 'avaliacoes', path: '/avaliacoes', ativo: false, badge: 3, key: 'avaliacoes' },
+      { label: 'Ocupação',   icon: 'ocupacao',   path: '/ocupacao',   ativo: true,            key: 'ocupacao'   },
+      { label: 'Eventos',    icon: 'eventos',    path: '/eventos',    ativo: true,            key: 'eventos'    },
     ],
   },
   {
@@ -58,9 +58,9 @@ const SECOES = [
     titulo: 'Financeiro',
     secIcon: 'sec_fin',
     itens: [
-      { label: 'Custos',   icon: 'custos',   path: '/custos',   ativo: true  },
-      { label: 'Receitas', icon: 'receitas', path: '/receitas', ativo: false },
-      { label: 'Cartões',  icon: 'cartoes',  path: '/cartoes',  ativo: true  },
+      { label: 'Custos',   icon: 'custos',   path: '/custos',   ativo: true,  key: 'custos'   },
+      { label: 'Receitas', icon: 'receitas', path: '/receitas', ativo: false, key: 'receitas' },
+      { label: 'Cartões',  icon: 'cartoes',  path: '/cartoes',  ativo: true,  key: 'cartoes'  },
     ],
   },
   {
@@ -68,8 +68,8 @@ const SECOES = [
     titulo: 'Suprimentos',
     secIcon: 'sec_sup',
     itens: [
-      { label: 'Compras', icon: 'compras', path: '/compras', ativo: false },
-      { label: 'Estoque', icon: 'estoque', path: '/estoque', ativo: true },
+      { label: 'Compras', icon: 'compras', path: '/compras', ativo: false, key: 'compras' },
+      { label: 'Estoque', icon: 'estoque', path: '/estoque', ativo: true,  key: 'estoque' },
     ],
   },
   {
@@ -77,7 +77,7 @@ const SECOES = [
     titulo: 'Gerencial',
     secIcon: 'sec_ger',
     itens: [
-      { label: 'Visão Geral', icon: 'visao', path: '/gerencial', ativo: false },
+      { label: 'Visão Geral', icon: 'visao', path: '/gerencial', ativo: false, key: 'gerencial' },
     ],
   },
   {
@@ -168,6 +168,12 @@ export default function Sidebar({ collapsed, setCollapsed }) {
   const { user, logout } = useAuth()
   const { tema, toggleTema } = useTheme()
   const isAdmin = user?.papel === 'admin' || user?.is_staff
+  const modulosPermitidos = user?.modulos_permitidos  // null/undefined = todos
+
+  const podeVerModulo = (item) => {
+    if (!modulosPermitidos || modulosPermitidos.length === 0) return true
+    return modulosPermitidos.includes(item.key)
+  }
   const [search, setSearch]     = useState('')
   const [openSecs, setOpenSecs] = useState(() =>
     Object.fromEntries(SECOES.map(s => [s.id, true]))
@@ -263,7 +269,7 @@ export default function Sidebar({ collapsed, setCollapsed }) {
           <div className="flex flex-col items-center py-1">
             {SECOES.map((secao, si) => {
               if (secao.apenasAdmin && !isAdmin) return null
-              const ativos = secao.itens.filter(it => it.ativo)
+              const ativos = secao.itens.filter(it => it.ativo && podeVerModulo(it))
               if (ativos.length === 0) return null
               return (
                 <div key={secao.id} className="w-full">
@@ -304,7 +310,7 @@ export default function Sidebar({ collapsed, setCollapsed }) {
                   </button>
                   {isOpen && (
                     <div className="space-y-0.5 pl-0.5">
-                      {secao.itens.map(mod => (
+                      {secao.itens.filter(it => podeVerModulo(it)).map(mod => (
                         <NavItem key={mod.path} mod={mod}/>
                       ))}
                     </div>
