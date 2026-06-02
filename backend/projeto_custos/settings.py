@@ -121,6 +121,19 @@ else:
 
 CORS_ALLOW_CREDENTIALS = True
 
+CORS_ALLOW_HEADERS = [
+    'accept',
+    'accept-encoding',
+    'authorization',
+    'content-type',
+    'dnt',
+    'origin',
+    'user-agent',
+    'x-csrftoken',
+    'x-requested-with',
+    'x-empresa-id',
+]
+
 # ── CSRF ──────────────────────────────────────────────────────────────────────
 CSRF_TRUSTED_ORIGINS = ['http://localhost:3000', 'http://localhost:8000']
 _csrf_extra = os.environ.get('CSRF_TRUSTED_ORIGINS', '')
