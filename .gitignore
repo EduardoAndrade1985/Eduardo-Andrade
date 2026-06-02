@@ -21,6 +21,12 @@ frontend/.env.production
 Thumbs.db
 *.log
 
+# ── Claude Code ───────────────────────────────────────────
+.claude/
+
+# ── Anotações locais ──────────────────────────────────────
+*.txt
+
 # ── Arquivos locais que não são do projeto ────────────────
 *.xlsx
 /*.html
