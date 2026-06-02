@@ -23,7 +23,7 @@ Thumbs.db
 
 # ── Arquivos locais que não são do projeto ────────────────
 *.xlsx
-*.html
+/*.html
 Node/
 Relatórios/
 api-integration.js
