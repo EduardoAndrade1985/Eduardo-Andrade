@@ -109,7 +109,15 @@ function Badge({ value }) {
 }
 
 // ── collapsed item (um por módulo ativo) ─────────────────────────
-function CollapsedItem({ mod }) {
+function CollapsedItem({ mod, bloqueado }) {
+  if (bloqueado) return (
+    <div
+      title={`${mod.label} — sem acesso`}
+      className="relative flex items-center justify-center w-10 h-10 mx-auto rounded-lg border border-transparent opacity-30 cursor-not-allowed text-muted"
+    >
+      <Ic n={mod.icon} cls="w-[18px] h-[18px]"/>
+    </div>
+  )
   return (
     <NavLink
       to={mod.path}
@@ -130,9 +138,23 @@ function CollapsedItem({ mod }) {
 }
 
 // ── nav item (expanded) ──────────────────────────────────────────
-function NavItem({ mod }) {
+function NavItem({ mod, bloqueado }) {
   const base = 'relative flex items-center gap-3 px-3 py-[7px] rounded-lg text-[13px] font-medium transition-all'
   const hasBadge = mod.badge != null
+
+  if (bloqueado) {
+    return (
+      <div className={`${base} text-muted opacity-30 cursor-not-allowed`}>
+        <Ic n={mod.icon}/>
+        <span className="flex-1 truncate">{mod.label}</span>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}
+          strokeLinecap="round" strokeLinejoin="round" className="w-3 h-3 ml-auto flex-shrink-0">
+          <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
+          <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+        </svg>
+      </div>
+    )
+  }
 
   if (!mod.ativo) {
     return (
@@ -269,7 +291,7 @@ export default function Sidebar({ collapsed, setCollapsed }) {
           <div className="flex flex-col items-center py-1">
             {SECOES.map((secao, si) => {
               if (secao.apenasAdmin && !isAdmin) return null
-              const ativos = secao.itens.filter(it => it.ativo && podeVerModulo(it))
+              const ativos = secao.itens.filter(it => it.ativo)
               if (ativos.length === 0) return null
               return (
                 <div key={secao.id} className="w-full">
@@ -278,7 +300,7 @@ export default function Sidebar({ collapsed, setCollapsed }) {
                   )}
                   <div className="flex flex-col gap-0.5">
                     {ativos.map(mod => (
-                      <CollapsedItem key={mod.path} mod={mod}/>
+                      <CollapsedItem key={mod.path} mod={mod} bloqueado={!podeVerModulo(mod)}/>
                     ))}
                   </div>
                 </div>
@@ -310,8 +332,8 @@ export default function Sidebar({ collapsed, setCollapsed }) {
                   </button>
                   {isOpen && (
                     <div className="space-y-0.5 pl-0.5">
-                      {secao.itens.filter(it => podeVerModulo(it)).map(mod => (
-                        <NavItem key={mod.path} mod={mod}/>
+                      {secao.itens.map(mod => (
+                        <NavItem key={mod.path} mod={mod} bloqueado={!podeVerModulo(mod)}/>
                       ))}
                     </div>
                   )}
