@@ -1,0 +1,22 @@
+from django.contrib import admin
+from apps.empresas.admin_base import EmpresaModelAdmin
+from .models import ArquivoImportado, Movimentacao
+
+
+@admin.register(ArquivoImportado)
+class ArquivoImportadoAdmin(EmpresaModelAdmin):
+    list_display = ('nome', 'data_upload', 'total_registros', 'ativo')
+    list_filter  = ('ativo',)
+    actions      = ['ativar_arquivo']
+
+    @admin.action(description='Ativar arquivo selecionado')
+    def ativar_arquivo(self, request, queryset):
+        ArquivoImportado.objects.filter(empresa=queryset.first().empresa).update(ativo=False)
+        queryset.update(ativo=True)
+
+
+@admin.register(Movimentacao)
+class MovimentacaoAdmin(admin.ModelAdmin):
+    list_display  = ('item', 'grupo', 'cc', 'mes', 'valor', 'qtde')
+    list_filter   = ('cc', 'grupo', 'mes', 'arquivo')
+    search_fields = ('item', 'cc', 'grupo')

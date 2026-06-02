@@ -1,0 +1,33 @@
+# ── Python / Django ───────────────────────────────────────
+backend/venv/
+backend/__pycache__/
+backend/**/__pycache__/
+backend/**/*.pyc
+backend/**/*.pyo
+backend/.env
+backend/db.sqlite3
+backend/staticfiles/
+backend/uploads/
+
+# ── Node / React ──────────────────────────────────────────
+frontend/node_modules/
+frontend/dist/
+frontend/.env
+frontend/.env.local
+frontend/.env.production
+
+# ── Sistema ───────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+*.log
+
+# ── Arquivos locais que não são do projeto ────────────────
+*.xlsx
+*.html
+Node/
+Relatórios/
+api-integration.js
+iniciar.bat
+iniciar-frontend.bat
+setup_inicial.py
+teste_upload.xlsx
