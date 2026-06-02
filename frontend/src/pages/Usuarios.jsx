@@ -45,6 +45,7 @@ export default function Usuarios() {
   const [salvando,        setSalvando]         = useState(false)
   const [confirmRemover,  setConfirmRemover]   = useState(null) // { usr, empId }
   const [removendo,       setRemovendo]        = useState(false)
+  const [copiarDe,        setCopiarDe]         = useState('')
 
   const carregar = useCallback(async () => {
     setCarregando(true)
@@ -92,6 +93,7 @@ export default function Usuarios() {
       ativo:              vinculo?.ativo !== false,
     })
     setNovaSenha('')
+    setCopiarDe('')
     setEmpresasUsuario([])
     setErro('')
     setModalAberto(true)
@@ -99,6 +101,10 @@ export default function Usuarios() {
     try {
       const res = await api.get(`/empresas/admin/usuario-empresas/?username=${usr.username}`)
       setEmpresasUsuario(res.data)
+      const vinculoAtual = res.data.find(e => e.empresa_id === empresaAtiva?.id)
+      if (vinculoAtual?.modulos_permitidos) {
+        setForm(f => ({ ...f, modulos_permitidos: vinculoAtual.modulos_permitidos }))
+      }
     } catch { /* sem permissão */ }
     finally { setLoadingEmps(false) }
   }
@@ -116,7 +122,7 @@ export default function Usuarios() {
     setErro(''); setSalvando(true)
     try {
       if (editando) {
-        const payload = { papel: form.papel, modulos_permitidos: form.modulos_permitidos, ativo: form.ativo }
+        const payload = { papel: form.papel, modulos_permitidos: form.modulos_permitidos, ativo: form.ativo, username: form.username.trim() }
         if (novaSenha.trim()) payload.senha = novaSenha.trim()
 
         // Atualiza vínculo na empresa ativa (com X-Empresa-ID correto)
@@ -375,9 +381,43 @@ export default function Usuarios() {
                 <label className="block text-[10px] font-semibold text-muted mb-1.5 uppercase tracking-wide">Nome</label>
                 <input type="text" value={form.username}
                   onChange={e => setForm(f => ({ ...f, username: e.target.value }))}
-                  disabled={!!editando} placeholder="nome.usuario"
-                  className="w-full bg-bg3 border border-border rounded-lg px-3 py-2.5 text-sm text-dim placeholder-muted focus:outline-none focus:border-primary disabled:opacity-50 transition" />
+                  placeholder="nome.usuario"
+                  className="w-full bg-bg3 border border-border rounded-lg px-3 py-2.5 text-sm text-dim placeholder-muted focus:outline-none focus:border-primary transition" />
               </div>
+
+              {/* Copiar permissões de outro usuário */}
+              {editando && form.papel === 'operacional' && usuarios.filter(u => u.username !== editando.username).length > 0 && (
+                <div>
+                  <label className="block text-[10px] font-semibold text-muted mb-1.5 uppercase tracking-wide">
+                    Copiar permissões de
+                  </label>
+                  <select value={copiarDe}
+                    onChange={e => {
+                      const origem = e.target.value
+                      setCopiarDe(origem)
+                      if (!origem) return
+                      const usr = usuarios.find(u => u.username === origem)
+                      if (!usr) return
+                      const vinculo = usr.empresas?.find(v => v.empresa_id === empresaAtiva?.id)
+                      if (vinculo?.papel) setForm(f => ({ ...f, papel: vinculo.papel }))
+                      // busca modulos do usuário de origem
+                      api.get(`/empresas/admin/usuario-empresas/?username=${origem}`)
+                        .then(res => {
+                          const v = res.data.find(e => e.empresa_id === empresaAtiva?.id)
+                          if (v) setForm(f => ({ ...f, modulos_permitidos: v.modulos_permitidos || [] }))
+                        }).catch(() => {})
+                    }}
+                    className="w-full bg-bg3 border border-border rounded-lg px-3 py-2.5 text-sm text-dim focus:outline-none focus:border-primary transition">
+                    <option value="">— selecione um usuário —</option>
+                    {usuarios.filter(u => u.username !== editando.username).map(u => (
+                      <option key={u.username} value={u.username}>{u.username}</option>
+                    ))}
+                  </select>
+                  {copiarDe && (
+                    <p className="text-[10px] text-primary mt-1">Permissões copiadas de <strong>{copiarDe}</strong> — revise e salve.</p>
+                  )}
+                </div>
+              )}
 
               {/* Senha (criação) */}
               {!editando && (

@@ -180,6 +180,13 @@ class MembroDetalheView(APIView):
             membro.modulos_permitidos = request.data['modulos_permitidos']
         if 'ativo' in request.data:
             membro.ativo = request.data['ativo']
+        if 'username' in request.data:
+            novo_username = request.data['username'].strip()
+            if novo_username and novo_username != membro.usuario.username:
+                if User.objects.filter(username=novo_username).exclude(pk=membro.usuario.pk).exists():
+                    return Response({'error': 'Este nome de usuário já está em uso.'}, status=400)
+                membro.usuario.username = novo_username
+                membro.usuario.save(update_fields=['username'])
         membro.save()
 
         # reset de senha — ativa flag para troca obrigatória
@@ -353,6 +360,7 @@ class UsuarioEmpresasView(APIView):
                     'papel': mb.papel,
                     'ativo': mb.ativo,
                     'tem_acesso': True,
+                    'modulos_permitidos': mb.modulos_permitidos or [],
                 })
             except MembroEmpresa.DoesNotExist:
                 result.append({
