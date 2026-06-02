@@ -344,18 +344,8 @@ export default function Sidebar({ collapsed, setCollapsed }) {
         )}
       </nav>
 
-      {/* ── Import button ── */}
-      <div className="px-2 py-2 border-t border-border flex-shrink-0">
-        <button
-          title={collapsed ? 'Importar Planilha' : ''}
-          className={`flex items-center gap-3 w-full px-3 py-2 rounded-lg text-[12px] font-medium text-muted hover:text-primary hover:bg-primary/5 border border-dashed border-border hover:border-primary/30 transition ${collapsed ? 'justify-center' : ''}`}
-        >
-          <Ic n="upload" cls="w-4 h-4 flex-shrink-0"/>
-          {!collapsed && <span>Importar Planilha</span>}
-        </button>
-      </div>
 
-      {/* ── User + logout ── */}
+{/* ── User + logout ── */}
       <div className="border-t border-border px-2 py-3 flex-shrink-0">
         {!collapsed && user && (
           <div className="flex items-center gap-2.5 px-3 py-2 mb-2 rounded-lg
