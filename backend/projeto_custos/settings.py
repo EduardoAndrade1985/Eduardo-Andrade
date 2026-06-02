@@ -73,10 +73,10 @@ TEMPLATES = [
 WSGI_APPLICATION = 'projeto_custos.wsgi.application'
 
 # ── Banco de dados ───────────────────────────────────────────────────────────
-DATABASE_URL = os.environ.get('DATABASE_URL')
+DATABASE_URL = (os.environ.get('DATABASE_URL') or '').strip()
 if DATABASE_URL:
     DATABASES = {
-        'default': dj_database_url.parse(DATABASE_URL, conn_max_age=60)
+        'default': dj_database_url.parse(DATABASE_URL, conn_max_age=60, ssl_require=True)
     }
 else:
     DATABASES = {
