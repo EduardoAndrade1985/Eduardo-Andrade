@@ -145,6 +145,11 @@ export default function Usuarios() {
           } else if (estava && !checked && emp.membro_id) {
             await api.delete(`/empresas/membros/${emp.membro_id}/`,
               { headers: { 'X-Empresa-ID': String(emp.empresa_id) } })
+          } else if (estava && checked && emp.membro_id && emp.empresa_id !== editando._empresaId) {
+            // Atualiza permissões nas demais empresas também
+            await api.patch(`/empresas/membros/${emp.membro_id}/`,
+              { papel: form.papel, modulos_permitidos: form.modulos_permitidos },
+              { headers: { 'X-Empresa-ID': String(emp.empresa_id) } })
           }
         }
       } else {

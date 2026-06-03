@@ -24,9 +24,10 @@ export function AuthProvider({ children }) {
     const t = token || localStorage.getItem('access_token')
     if (!t) return null
     try {
-      const me = await axios.get(BASE + '/auth/me/', {
-        headers: { Authorization: `Bearer ${t}` },
-      })
+      const empresaId = localStorage.getItem('empresa_ativa_id')
+      const headers = { Authorization: `Bearer ${t}` }
+      if (empresaId) headers['X-Empresa-ID'] = empresaId
+      const me = await axios.get(BASE + '/auth/me/', { headers })
       localStorage.setItem('user_info', JSON.stringify(me.data))
       setUser(me.data)
       return me.data
