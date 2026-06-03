@@ -39,6 +39,23 @@ def me_view(request):
     return JsonResponse(data)
 
 
+# ─── ALTERAR SENHA (próprio usuário) ─────────────────────────────────────────
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def change_password_view(request):
+    senha_atual = request.data.get('senha_atual', '').strip()
+    senha_nova  = request.data.get('senha_nova', '').strip()
+    if not senha_atual or not senha_nova:
+        return JsonResponse({'error': 'Preencha todos os campos.'}, status=400)
+    if not request.user.check_password(senha_atual):
+        return JsonResponse({'error': 'Senha atual incorreta.'}, status=400)
+    if len(senha_nova) < 6:
+        return JsonResponse({'error': 'A nova senha deve ter ao menos 6 caracteres.'}, status=400)
+    request.user.set_password(senha_nova)
+    request.user.save(update_fields=['password'])
+    return JsonResponse({'ok': True})
+
+
 # ─── MINHAS EMPRESAS ──────────────────────────────────────────────────────────
 class MinhasEmpresasView(APIView):
     permission_classes = [IsAuthenticated]
