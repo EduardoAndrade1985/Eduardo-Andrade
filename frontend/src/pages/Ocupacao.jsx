@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react'
+import { useEmpresa } from '../contexts/EmpresaContext'
 import * as XLSX from 'xlsx'
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid,
@@ -55,6 +56,10 @@ function addDays(iso, n) {
   const d = new Date(iso + 'T12:00:00')
   d.setDate(d.getDate() + n)
   return localISO(d)
+}
+function endOfMonthISO() {
+  const d = new Date()
+  return localISO(new Date(d.getFullYear(), d.getMonth() + 1, 0))
 }
 function prevMonthRange() {
   const now = new Date()
@@ -232,15 +237,19 @@ function pLabel(key, cIni, cFim) {
 // ─── Página principal ─────────────────────────────────────────────────────────
 export default function Ocupacao() {
   const { tema } = useTheme()
+  const { empresaAtiva } = useEmpresa()
   const C = useMemo(()=>({
     grid: tema==='light'?'#e2e8f0':'#1e2535',
     tick: tema==='light'?'#475569':'#7a8fa8',
     l1:'#2dd4a0', l2:'#0ea5e9',
   }),[tema])
 
-  const [periodo,   setPeriodo]   = useState('MTD')
-  const [customIni, setCustomIni] = useState(addDays(todayISO(),-29))
-  const [customFim, setCustomFim] = useState(addDays(todayISO(), 30))
+  const lsKey   = `filters_ocupacao_${empresaAtiva?.id||'default'}`
+  const initRef = useRef(false)
+
+  const [periodo,   setPeriodo]   = useState('custom')
+  const [customIni, setCustomIni] = useState(todayISO)
+  const [customFim, setCustomFim] = useState(endOfMonthISO)
   const [rotulos,   setRotulos]   = useState(false)
 
   const [dadosHoje,    setDadosHoje]    = useState(null)
@@ -257,6 +266,31 @@ export default function Ocupacao() {
   const [limparModal, setLimparModal] = useState(false)
   const [limpando,    setLimpando]    = useState(false)
   const fileRef = useRef()
+
+  // Restaura filtros do localStorage
+  useEffect(()=>{
+    if (initRef.current) return
+    initRef.current = true
+    try {
+      const saved = localStorage.getItem(lsKey)
+      if (saved) {
+        const s = JSON.parse(saved)
+        if (s.periodo)   setPeriodo(s.periodo)
+        if (s.customIni) setCustomIni(s.customIni)
+        if (s.customFim) setCustomFim(s.customFim)
+      }
+    } catch {}
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  },[lsKey])
+
+  // Reseta ao trocar de empresa
+  useEffect(()=>{ initRef.current = false },[empresaAtiva?.id])
+
+  // Salva filtros ao alterar
+  useEffect(()=>{
+    if (!initRef.current) return
+    localStorage.setItem(lsKey, JSON.stringify({ periodo, customIni, customFim }))
+  },[periodo, customIni, customFim, lsKey])
 
   useEffect(()=>{
     if (document.getElementById('ocupacao-ticker-style')) return
