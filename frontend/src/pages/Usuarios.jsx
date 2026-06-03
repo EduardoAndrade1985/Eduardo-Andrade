@@ -14,9 +14,11 @@ const PAPEIS = {
 const MODULOS = [
   { key: 'custos',    label: 'Custos'    },
   { key: 'cartoes',   label: 'Cartões'   },
+  { key: 'ocupacao',  label: 'Ocupação'  },
+  { key: 'eventos',   label: 'Eventos'   },
+  { key: 'estoque',   label: 'Estoque'   },
   { key: 'compras',   label: 'Compras'   },
   { key: 'gerencial', label: 'Gerencial' },
-  { key: 'estoque',   label: 'Estoque'   },
 ]
 
 const FORM_VAZIO = {
