@@ -107,12 +107,12 @@ function OcupacaoSlide({ dados, cor }) {
       {/* KPI cards */}
       <div className="flex gap-1.5 px-3 pt-2 pb-1.5 flex-shrink-0">
         {kpis.map((k, i) => (
-          <div key={i} className="flex-1 bg-[#161b27] border border-white/[0.06] rounded-xl px-2.5 py-2 min-w-0">
-            <p className="text-[8px] text-white/40 uppercase tracking-wider truncate">{k.label}</p>
-            <p className="text-base font-bold leading-tight" style={{ color: k.color }}>{k.value}</p>
+          <div key={i} className="flex-1 bg-[#161b27] border border-white/[0.06] rounded-xl px-3 py-2 min-w-0">
+            <p className="text-[9px] text-white/40 uppercase tracking-wider truncate">{k.label}</p>
+            <p className="text-lg font-bold leading-tight" style={{ color: k.color }}>{k.value}</p>
             <div className="flex items-center gap-1 mt-0.5 flex-wrap">
               {k.var != null && <Var v={k.var} />}
-              <span className="text-[8px] text-white/30 truncate">{k.sub}</span>
+              <span className="text-[9px] text-white/30 truncate">{k.sub}</span>
             </div>
           </div>
         ))}
@@ -121,17 +121,17 @@ function OcupacaoSlide({ dados, cor }) {
       {/* Corpo principal */}
       <div className="flex gap-2 px-3 pb-2 flex-1 min-h-0">
 
-        {/* Tabela lateral */}
-        <div className="w-[200px] flex-shrink-0 bg-[#161b27] border border-white/[0.06] rounded-xl overflow-hidden flex flex-col">
-          <div className="px-2 py-1.5 border-b border-white/[0.06] flex-shrink-0">
-            <p className="text-[9px] text-white/40 uppercase tracking-wider">
+        {/* Tabela lateral — mais larga */}
+        <div className="w-[260px] flex-shrink-0 bg-[#161b27] border border-white/[0.06] rounded-xl overflow-hidden flex flex-col">
+          <div className="px-3 py-2 border-b border-white/[0.06] flex-shrink-0">
+            <p className="text-[10px] text-white/40 uppercase tracking-wider">
               {tabela[0]?.data || ''} → {tabela[tabela.length-1]?.data || ''}
             </p>
-            <p className="text-[9px] text-white/30">{tabela.length} dias</p>
+            <p className="text-[10px] text-white/30">{tabela.length} dias</p>
           </div>
-          <div className="flex-shrink-0 grid grid-cols-5 gap-0 px-2 py-1 border-b border-white/[0.04]">
+          <div className="flex-shrink-0 grid grid-cols-5 gap-0 px-3 py-1.5 border-b border-white/[0.04]">
             {['DATA','DIA','OCUP','UHS','CI/CO'].map(h => (
-              <span key={h} className="text-[8px] text-white/30 font-semibold uppercase text-center">{h}</span>
+              <span key={h} className="text-[9px] text-white/30 font-bold uppercase text-center">{h}</span>
             ))}
           </div>
           <div className="overflow-y-auto flex-1">
@@ -140,16 +140,16 @@ function OcupacaoSlide({ dados, cor }) {
               const tc     = taxaColor(row.taxa)
               return (
                 <div key={i}
-                  className={`grid grid-cols-5 gap-0 px-2 py-0.5 border-b border-white/[0.025]
+                  className={`grid grid-cols-5 gap-0 px-3 py-1 border-b border-white/[0.025]
                     ${isHoje ? 'bg-primary/10' : ''}`}>
-                  <span className={`text-[9px] font-bold ${isHoje ? 'text-primary' : 'text-white/60'}`}>{row.data}</span>
-                  <span className="text-[8px] text-white/40 text-center">{row.dia}</span>
-                  <span className="text-[9px] font-bold text-center" style={{ color: tc }}>{row.taxa.toFixed(1)}%</span>
-                  <span className="text-[9px] text-white/60 text-center">{row.uhs}</span>
-                  <span className="text-[8px] text-center">
-                    <span className="text-green-400">{row.ci}</span>
+                  <span className={`text-[11px] font-bold ${isHoje ? 'text-primary' : 'text-white/60'}`}>{row.data}</span>
+                  <span className="text-[10px] text-white/40 text-center">{row.dia}</span>
+                  <span className="text-[11px] font-bold text-center" style={{ color: tc }}>{row.taxa.toFixed(1)}%</span>
+                  <span className="text-[11px] text-white/70 text-center font-semibold">{row.uhs}</span>
+                  <span className="text-[10px] text-center">
+                    <span className="text-green-400 font-semibold">{row.ci}</span>
                     <span className="text-white/20">/</span>
-                    <span className="text-red-400">{row.co}</span>
+                    <span className="text-red-400 font-semibold">{row.co}</span>
                   </span>
                 </div>
               )
@@ -157,7 +157,7 @@ function OcupacaoSlide({ dados, cor }) {
           </div>
         </div>
 
-        {/* Gráficos */}
+        {/* Gráficos — menores */}
         <div className="flex-1 flex flex-col gap-2 min-w-0">
           {/* Gráfico Taxa de Ocupação */}
           <div className="flex-1 bg-[#161b27] border border-white/[0.06] rounded-xl p-2 flex flex-col min-h-0">
@@ -203,36 +203,36 @@ function OcupacaoSlide({ dados, cor }) {
           </div>
         </div>
 
-        {/* Painel direito */}
-        <div className="w-[200px] flex-shrink-0 flex flex-col gap-2">
+        {/* Painel direito — mais largo */}
+        <div className="w-[280px] flex-shrink-0 flex flex-col gap-2">
           {/* Gauge */}
-          <div className="bg-[#161b27] border border-white/[0.06] rounded-xl p-2 flex flex-col items-center flex-shrink-0">
-            <p className="text-[9px] text-primary uppercase tracking-wider font-semibold mb-1">
+          <div className="bg-[#161b27] border border-white/[0.06] rounded-xl p-3 flex flex-col items-center flex-shrink-0">
+            <p className="text-[10px] text-primary uppercase tracking-wider font-semibold mb-1">
               OCUPAÇÃO HOJE · {dados.total_uhs} UHs
             </p>
             <Gauge pct={taxa} cor={tColor} />
-            <div className="grid grid-cols-2 gap-1.5 w-full mt-1">
+            <div className="grid grid-cols-2 gap-2 w-full mt-2">
               {[
                 { l: 'Ocup.',    v: dados.uhs_ocupadas, c: tColor },
                 { l: 'Livres',   v: dados.uhs_livres,   c: '#7a8fa8' },
                 { l: 'Check-in', v: dados.checkins,     c: '#22c55e' },
                 { l: 'Check-out',v: dados.checkouts,    c: '#f59e0b' },
               ].map((x, i) => (
-                <div key={i} className="bg-[#0d1117] rounded-lg p-1.5 text-center">
-                  <p className="text-[8px] text-white/40">{x.l}</p>
-                  <p className="text-xl font-bold" style={{ color: x.c }}>{x.v}</p>
+                <div key={i} className="bg-[#0d1117] rounded-xl p-2 text-center">
+                  <p className="text-[10px] text-white/40">{x.l}</p>
+                  <p className="text-3xl font-bold" style={{ color: x.c }}>{x.v}</p>
                 </div>
               ))}
             </div>
           </div>
 
           {/* KPIs vs D-1 */}
-          <div className="bg-[#161b27] border border-white/[0.06] rounded-xl p-2 flex-1">
-            <div className="flex items-center justify-between mb-1.5">
-              <p className="text-[9px] text-white/40 uppercase tracking-wider">KPIs vs D-1</p>
-              <span className="text-[8px] bg-bg3 border border-border text-primary px-1.5 py-0.5 rounded">HOJE</span>
+          <div className="bg-[#161b27] border border-white/[0.06] rounded-xl p-3 flex-1">
+            <div className="flex items-center justify-between mb-2">
+              <p className="text-[10px] text-white/40 uppercase tracking-wider">KPIs vs D-1</p>
+              <span className="text-[9px] bg-bg3 border border-border text-primary px-2 py-0.5 rounded font-semibold">HOJE</span>
             </div>
-            <div className="grid grid-cols-3 text-[8px] text-white/30 uppercase mb-1">
+            <div className="grid grid-cols-3 text-[9px] text-white/30 uppercase mb-1.5 border-b border-white/[0.06] pb-1">
               <span>Indicador</span><span className="text-center">Real</span><span className="text-right">Var.</span>
             </div>
             {[
@@ -242,11 +242,11 @@ function OcupacaoSlide({ dados, cor }) {
               { l: 'Rec. Dia',   v: cur(dados.receita_dia),var: dados.var_receita },
               { l: 'Rec. MTD',   v: cur(dados.receita_mtd || 0) },
             ].map((k, i) => (
-              <div key={i} className="grid grid-cols-3 items-center py-1 border-b border-white/[0.04] last:border-0">
-                <span className="text-[9px] text-white/50">{k.l}</span>
-                <span className="text-[9px] font-semibold text-white/80 text-center">{k.v}</span>
+              <div key={i} className="grid grid-cols-3 items-center py-1.5 border-b border-white/[0.04] last:border-0">
+                <span className="text-[11px] text-white/50">{k.l}</span>
+                <span className="text-[11px] font-bold text-white/90 text-center">{k.v}</span>
                 <div className="text-right">
-                  {k.var != null ? <Var v={k.var} unit={k.unit || '%'} /> : <span className="text-[8px] text-white/20">—</span>}
+                  {k.var != null ? <Var v={k.var} unit={k.unit || '%'} /> : <span className="text-[9px] text-white/20">—</span>}
                 </div>
               </div>
             ))}
