@@ -117,6 +117,36 @@ class TVTokenRegenView(APIView):
         return Response({'token': cfg.token, 'tv_url': f'/tv/{cfg.token}'})
 
 
+# ── Upload de arquivo de mídia ────────────────────────────────────────────────
+class TVMidiaUploadView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        if not _check_admin(request):
+            return Response({'error': 'Sem permissão.'}, status=403)
+        empresa = _empresa(request)
+        if not empresa:
+            return Response({'error': 'Empresa não encontrada.'}, status=400)
+        arquivo = request.FILES.get('arquivo')
+        if not arquivo:
+            return Response({'error': 'Nenhum arquivo enviado.'}, status=400)
+
+        import os, uuid
+        from django.conf import settings
+
+        ext     = os.path.splitext(arquivo.name)[1].lower()
+        nome    = f"tv/{uuid.uuid4().hex}{ext}"
+        caminho = os.path.join(settings.MEDIA_ROOT, nome)
+        os.makedirs(os.path.dirname(caminho), exist_ok=True)
+
+        with open(caminho, 'wb') as f:
+            for chunk in arquivo.chunks():
+                f.write(chunk)
+
+        url = request.build_absolute_uri(settings.MEDIA_URL + nome)
+        return Response({'url': url, 'ok': True})
+
+
 # ── Mídia ─────────────────────────────────────────────────────────────────────
 class TVMidiaListView(APIView):
     permission_classes = [IsAuthenticated]

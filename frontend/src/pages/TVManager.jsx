@@ -321,27 +321,70 @@ function DispositivoEditor({ dispositivo, midias, onUpdate, onDelete, onTokenReg
 
 // ── Aba Biblioteca de Mídia ───────────────────────────────────────────────────
 function AbaMidia({ midias, onMidiasChange }) {
+  const [modo,    setModo]    = useState('url')   // 'url' | 'upload'
   const [mUrl,    setMUrl]    = useState('')
+  const [mFile,   setMFile]   = useState(null)
   const [mTitulo, setMTitulo] = useState('')
   const [mTipo,   setMTipo]   = useState('imagem')
   const [mDur,    setMDur]    = useState(15)
   const [mIni,    setMIni]    = useState('')
   const [mFim,    setMFim]    = useState('')
+  const [devsSel, setDevsSel] = useState([])    // IDs de dispositivos selecionados
+  const [dispositivos, setDispositivos] = useState([])
   const [adding,  setAdding]  = useState(false)
+  const [uploadPct, setUploadPct] = useState(0)
   const [erro,    setErro]    = useState('')
 
+  useEffect(() => {
+    api.get('/tv/config/').then(r => setDispositivos(r.data)).catch(() => {})
+  }, [])
+
+  function toggleDev(id) {
+    setDevsSel(s => s.includes(id) ? s.filter(x => x !== id) : [...s, id])
+  }
+
   async function salvarMidia() {
-    if (!mUrl.trim()) { setErro('URL obrigatória.'); return }
-    setAdding(true); setErro('')
+    setErro(''); setAdding(true)
     try {
-      await api.post('/tv/midia/', {
-        url: mUrl.trim(), titulo: mTitulo.trim(), tipo: mTipo,
+      let url = mUrl.trim()
+
+      // Upload de arquivo
+      if (modo === 'upload') {
+        if (!mFile) { setErro('Selecione um arquivo.'); setAdding(false); return }
+        const fd = new FormData()
+        fd.append('arquivo', mFile)
+        setUploadPct(30)
+        const up = await api.post('/tv/midia/upload/', fd, {
+          headers: { 'Content-Type': 'multipart/form-data' },
+          onUploadProgress: e => setUploadPct(Math.round((e.loaded / e.total) * 80)),
+        })
+        url = up.data.url
+        setUploadPct(90)
+      } else {
+        if (!url) { setErro('URL obrigatória.'); setAdding(false); return }
+      }
+
+      const res = await api.post('/tv/midia/', {
+        url, titulo: mTitulo.trim(), tipo: mTipo,
         duracao: Number(mDur), data_inicio: mIni || null, data_fim: mFim || null,
       })
-      setMUrl(''); setMTitulo(''); setMTipo('imagem'); setMDur(15); setMIni(''); setMFim('')
+      const midiaId = res.data.id
+
+      // Adiciona automaticamente nos dispositivos selecionados
+      for (const devId of devsSel) {
+        const dev = dispositivos.find(d => d.id === devId)
+        if (!dev) continue
+        const nova = [...(dev.playlist || []), { tipo: 'midia', midia_id: midiaId, duracao: Number(mDur) }]
+        await api.patch(`/tv/config/${devId}/`, { playlist: nova })
+        setDispositivos(ds => ds.map(d => d.id === devId ? { ...d, playlist: nova } : d))
+      }
+
+      setMUrl(''); setMFile(null); setMTitulo(''); setMTipo('imagem')
+      setMDur(15); setMIni(''); setMFim(''); setDevsSel([])
+      setUploadPct(0)
       onMidiasChange()
     } catch { setErro('Erro ao adicionar mídia.') }
-    finally { setAdding(false) }
+    finally { setAdding(false); setUploadPct(0) }
   }
 
   async function deletar(id) {
@@ -371,7 +414,7 @@ function AbaMidia({ midias, onMidiasChange }) {
               <div className="flex-1 min-w-0">
                 <p className="text-sm text-dim font-medium truncate">{m.titulo || 'Sem título'}</p>
                 <p className="text-[10px] text-muted truncate">{m.url}</p>
-                <div className="flex items-center gap-2 mt-0.5">
+                <div className="flex items-center gap-2 mt-0.5 flex-wrap">
                   <span className="text-[10px] text-muted">{m.duracao}s</span>
                   {m.data_inicio && <span className="text-[10px] text-primary">De {m.data_inicio}</span>}
                   {m.data_fim    && <span className="text-[10px] text-warn">Até {m.data_fim}</span>}
@@ -389,21 +432,65 @@ function AbaMidia({ midias, onMidiasChange }) {
       <div className="bg-bg2 border border-border rounded-xl overflow-hidden">
         <div className="px-4 py-3 border-b border-border">
           <h3 className="text-sm font-bold text-dim">Adicionar mídia</h3>
-          <p className="text-[10px] text-muted">Links diretos, YouTube ou vídeos MP4</p>
-        </div>
-        <div className="px-4 py-4 space-y-3">
-          <div>
-            <label className="block text-[10px] font-semibold text-muted uppercase tracking-wide mb-1">URL *</label>
-            <input value={mUrl} onChange={e => setMUrl(e.target.value)}
-              placeholder="https://... (imagem, vídeo, YouTube)"
-              className="w-full bg-bg3 border border-border rounded-lg px-3 py-2.5 text-sm text-dim placeholder-muted focus:outline-none focus:border-primary" />
+          {/* Toggle URL / Upload */}
+          <div className="flex gap-1 mt-2">
+            {['url', 'upload'].map(m => (
+              <button key={m} onClick={() => setModo(m)}
+                className={`px-3 py-1 rounded-lg text-xs font-medium transition
+                  ${modo === m ? 'bg-primary text-bg' : 'bg-bg3 text-muted hover:text-dim'}`}>
+                {m === 'url' ? '🔗 Link (URL)' : '📁 Upload de arquivo'}
+              </button>
+            ))}
           </div>
+        </div>
+        <div className="px-4 py-4 space-y-3 overflow-y-auto max-h-[560px]">
+
+          {/* Fonte */}
+          {modo === 'url' ? (
+            <div>
+              <label className="block text-[10px] font-semibold text-muted uppercase tracking-wide mb-1">URL *</label>
+              <input value={mUrl} onChange={e => setMUrl(e.target.value)}
+                placeholder="https://... (imagem, vídeo, YouTube)"
+                className="w-full bg-bg3 border border-border rounded-lg px-3 py-2.5 text-sm text-dim placeholder-muted focus:outline-none focus:border-primary" />
+            </div>
+          ) : (
+            <div>
+              <label className="block text-[10px] font-semibold text-muted uppercase tracking-wide mb-1">Arquivo *</label>
+              <label className={`flex items-center gap-3 w-full bg-bg3 border-2 border-dashed rounded-lg px-3 py-4 cursor-pointer transition
+                ${mFile ? 'border-primary/60 bg-primary/5' : 'border-border hover:border-primary/40'}`}>
+                <span className="text-2xl">{mFile ? '✅' : '📁'}</span>
+                <div className="flex-1 min-w-0">
+                  {mFile
+                    ? <p className="text-sm text-dim font-medium truncate">{mFile.name}</p>
+                    : <p className="text-sm text-muted">Clique para selecionar</p>
+                  }
+                  <p className="text-[10px] text-muted">JPG, PNG, GIF, MP4, WebM</p>
+                </div>
+                <input type="file" className="hidden"
+                  accept="image/*,video/*"
+                  onChange={e => {
+                    const f = e.target.files[0]
+                    if (!f) return
+                    setMFile(f)
+                    if (!mTitulo) setMTitulo(f.name.replace(/\.[^.]+$/, ''))
+                    setMTipo(f.type.startsWith('video') ? 'video' : 'imagem')
+                  }} />
+              </label>
+              {adding && uploadPct > 0 && (
+                <div className="mt-1.5 h-1.5 bg-bg3 rounded-full overflow-hidden">
+                  <div className="h-full bg-primary transition-all duration-300 rounded-full" style={{ width: `${uploadPct}%` }} />
+                </div>
+              )}
+            </div>
+          )}
+
           <div>
             <label className="block text-[10px] font-semibold text-muted uppercase tracking-wide mb-1">Título</label>
             <input value={mTitulo} onChange={e => setMTitulo(e.target.value)}
               placeholder="Nome para identificar (opcional)"
               className="w-full bg-bg3 border border-border rounded-lg px-3 py-2.5 text-sm text-dim placeholder-muted focus:outline-none focus:border-primary" />
           </div>
+
           <div className="grid grid-cols-2 gap-2">
             <div>
               <label className="block text-[10px] font-semibold text-muted uppercase tracking-wide mb-1">Tipo</label>
@@ -439,11 +526,36 @@ function AbaMidia({ midias, onMidiasChange }) {
             <p className="text-[10px] text-muted mt-1.5">Ex: campanha de Natal de 01/12 a 31/12</p>
           </div>
 
+          {/* Adicionar aos dispositivos */}
+          {dispositivos.length > 0 && (
+            <div className="rounded-lg border border-border/60 bg-bg3/50 p-3">
+              <p className="text-[10px] font-semibold text-muted uppercase tracking-wide mb-2">
+                Adicionar à playlist dos dispositivos
+              </p>
+              <div className="space-y-1.5">
+                {dispositivos.map(d => (
+                  <label key={d.id} className="flex items-center gap-2 cursor-pointer">
+                    <input type="checkbox" checked={devsSel.includes(d.id)}
+                      onChange={() => toggleDev(d.id)}
+                      className="accent-primary w-3.5 h-3.5" />
+                    <span className="text-sm text-dim">📺 {d.nome}</span>
+                    {d.local && <span className="text-[10px] text-muted">· {d.local}</span>}
+                  </label>
+                ))}
+              </div>
+              {devsSel.length > 0 && (
+                <p className="text-[10px] text-primary mt-1.5">
+                  Será adicionado automaticamente em {devsSel.length} dispositivo{devsSel.length !== 1 ? 's' : ''}
+                </p>
+              )}
+            </div>
+          )}
+
           {erro && <p className="text-xs text-danger">{erro}</p>}
 
           <button onClick={salvarMidia} disabled={adding}
             className="w-full py-2.5 rounded-lg bg-primary text-bg text-sm font-semibold hover:opacity-90 transition disabled:opacity-50">
-            {adding ? 'Salvando...' : '+ Adicionar à biblioteca'}
+            {adding ? (uploadPct > 0 ? `Enviando ${uploadPct}%...` : 'Salvando...') : '+ Adicionar à biblioteca'}
           </button>
         </div>
       </div>
