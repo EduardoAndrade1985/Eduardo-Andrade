@@ -275,29 +275,60 @@ class TVPublicView(APIView):
 def _get_ocupacao(empresa):
     try:
         from apps.ocupacao.models import OcupacaoDiaria
+        from datetime import timedelta
         hoje = localdate()
-        r = OcupacaoDiaria.objects.filter(
-            empresa=empresa, data=hoje, tipo='historico'
-        ).first()
-        if not r:
-            # tenta o dia anterior se ainda não tem dado de hoje
-            from datetime import timedelta
-            r = OcupacaoDiaria.objects.filter(
-                empresa=empresa, data=hoje - timedelta(days=1), tipo='historico'
-            ).first()
+
+        # Tenta hoje, senão dia anterior
+        r = (OcupacaoDiaria.objects.filter(empresa=empresa, data=hoje, tipo='historico').first()
+             or OcupacaoDiaria.objects.filter(empresa=empresa, data=hoje - timedelta(days=1), tipo='historico').first())
         if not r:
             return None
+
+        # Dados de ontem para variação
+        ontem = OcupacaoDiaria.objects.filter(empresa=empresa, data=r.data - timedelta(days=1), tipo='historico').first()
+
+        # Histórico do mês (para gráfico)
+        mes_ini = r.data.replace(day=1)
+        historico_qs = OcupacaoDiaria.objects.filter(
+            empresa=empresa, tipo='historico',
+            data__gte=mes_ini, data__lte=hoje
+        ).order_by('data')
+
+        historico = []
+        for h in historico_qs:
+            mes = h.data.strftime('%d/%m')
+            historico.append({
+                'data':  mes,
+                'taxa':  float(h.taxa_ocup_perc or 0),
+                'adr':   float(h.diaria_n or 0),
+                'revpar': float(h.revpar or 0),
+            })
+
         total_uhs = r.uh_disp_venda or empresa.total_uhs or 1
         livres    = max(0, total_uhs - (r.ocup_t or 0))
+
+        def var(novo, ant):
+            if ant and float(ant) != 0:
+                return round((float(novo or 0) - float(ant)) / float(ant) * 100, 1)
+            return None
+
         return {
             'taxa_ocupacao': float(r.taxa_ocup_perc or 0),
             'uhs_ocupadas':  r.ocup_t or 0,
             'uhs_livres':    livres,
+            'total_uhs':     total_uhs,
             'adr':           float(r.diaria_n or 0),
             'revpar':        float(r.revpar or 0),
+            'receita_dia':   float(r.total or 0),
+            'hospedes':      r.hosp_t or 0,
             'checkins':      r.check_in or 0,
             'checkouts':     r.check_out or 0,
             'data':          str(r.data),
+            'var_taxa':      var(r.taxa_ocup_perc, ontem.taxa_ocup_perc if ontem else None),
+            'var_adr':       var(r.diaria_n, ontem.diaria_n if ontem else None),
+            'var_revpar':    var(r.revpar, ontem.revpar if ontem else None),
+            'var_receita':   var(r.total, ontem.total if ontem else None),
+            'historico':     historico,
         }
     except Exception:
         return None
