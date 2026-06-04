@@ -38,6 +38,7 @@ INSTALLED_APPS = [
     'apps.ocupacao.apps.OcupacaoConfig',
     'apps.eventos.apps.EventosConfig',
     'apps.estoque.apps.EstoqueConfig',
+    'apps.tv.apps.TvConfig',
 ]
 
 MIDDLEWARE = [

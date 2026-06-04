@@ -32,4 +32,7 @@ urlpatterns = [
     # Estoque
     path('api/estoque/', include('apps.estoque.urls')),
 
+    # TV Manager
+    path('api/tv/', include('apps.tv.urls')),
+
 ] + static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)

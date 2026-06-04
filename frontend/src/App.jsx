@@ -14,6 +14,8 @@ import SelecionarEmpresa from './pages/SelecionarEmpresa'
 import EmBreve from './pages/EmBreve'
 import DefinirSenha from './pages/DefinirSenha'
 import Estoque from './pages/Estoque'
+import TVManager from './pages/TVManager'
+import TVPlayer from './pages/TVPlayer'
 
 export default function App() {
   return (
@@ -47,7 +49,11 @@ export default function App() {
           <Route path="/estoque"   element={<Estoque />} />
           <Route path="/usuarios"  element={<Usuarios />} />
           <Route path="/empresas"  element={<Empresas />} />
+          <Route path="/tv-manager" element={<TVManager />} />
         </Route>
+
+        {/* TV Player — público, sem login */}
+        <Route path="/tv/:token" element={<TVPlayer />} />
 
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
