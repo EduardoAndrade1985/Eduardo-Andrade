@@ -274,22 +274,30 @@ class TVPublicView(APIView):
 
 def _get_ocupacao(empresa):
     try:
-        from apps.ocupacao.models import Ocupacao
-        hoje = str(localdate())
-        qs = Ocupacao.objects.filter(empresa=empresa, data=hoje)
-        if not qs.exists():
+        from apps.ocupacao.models import OcupacaoDiaria
+        hoje = localdate()
+        r = OcupacaoDiaria.objects.filter(
+            empresa=empresa, data=hoje, tipo='historico'
+        ).first()
+        if not r:
+            # tenta o dia anterior se ainda não tem dado de hoje
+            from datetime import timedelta
+            r = OcupacaoDiaria.objects.filter(
+                empresa=empresa, data=hoje - timedelta(days=1), tipo='historico'
+            ).first()
+        if not r:
             return None
-        r = qs.first()
-        total_uhs = empresa.total_uhs or 1
-        taxa = round((r.uhs_ocupadas / total_uhs) * 100, 1) if total_uhs else 0
+        total_uhs = r.uh_disp_venda or empresa.total_uhs or 1
+        livres    = max(0, total_uhs - (r.ocup_t or 0))
         return {
-            'taxa_ocupacao': taxa,
-            'uhs_ocupadas':  r.uhs_ocupadas,
-            'uhs_livres':    total_uhs - r.uhs_ocupadas,
-            'adr':           float(r.adr or 0),
+            'taxa_ocupacao': float(r.taxa_ocup_perc or 0),
+            'uhs_ocupadas':  r.ocup_t or 0,
+            'uhs_livres':    livres,
+            'adr':           float(r.diaria_n or 0),
             'revpar':        float(r.revpar or 0),
-            'checkins':      r.checkins or 0,
-            'checkouts':     r.checkouts or 0,
+            'checkins':      r.check_in or 0,
+            'checkouts':     r.check_out or 0,
+            'data':          str(r.data),
         }
     except Exception:
         return None
