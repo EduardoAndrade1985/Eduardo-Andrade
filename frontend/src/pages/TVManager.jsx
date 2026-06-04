@@ -82,7 +82,7 @@ export default function TVManager() {
     const pl = [...config.playlist]
     const dest = idx + dir
     if (dest < 0 || dest >= pl.length) return
-    ;[pl[idx], pl[dest]] = [pl[dest], pl[idx]]
+    const tmp = pl[idx]; pl[idx] = pl[dest]; pl[dest] = tmp
     salvarPlaylist(pl)
   }
 
