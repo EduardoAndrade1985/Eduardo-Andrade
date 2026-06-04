@@ -430,45 +430,48 @@ function PairingScreen({ scale }) {
   const secs = String(timeLeft % 60).padStart(2, '0')
 
   return (
-    <div style={{
-      width: REF_W, height: REF_H,
-      transform: `scale(${scale})`, transformOrigin: 'top left',
-    }} className="bg-[#0a0f1a] flex flex-col items-center justify-center text-white">
-      <div className="text-6xl mb-8">📺</div>
-      <h1 className="text-4xl font-bold text-primary mb-2">RPHub TV</h1>
-      <p className="text-white/50 text-xl mb-12">Pareamento de dispositivo</p>
+    <div className="w-screen h-screen bg-black overflow-hidden flex items-start justify-start select-none">
+      <div style={{
+        width: REF_W, height: REF_H,
+        transform: `scale(${scale})`, transformOrigin: 'top left',
+        overflow: 'hidden',
+      }} className="bg-[#0a0f1a] flex flex-col items-center justify-center text-white relative">
+        <div className="text-6xl mb-8">📺</div>
+        <h1 className="text-4xl font-bold text-primary mb-2">RPHub TV</h1>
+        <p className="text-white/50 text-xl mb-12">Pareamento de dispositivo</p>
 
-      {status === 'loading' && <p className="text-white/40 text-2xl animate-pulse">Gerando código...</p>}
+        {status === 'loading' && <p className="text-white/40 text-2xl animate-pulse">Gerando código...</p>}
 
-      {status === 'waiting' && code && (
-        <div className="flex flex-col items-center">
-          <p className="text-white/50 text-lg mb-4">Digite este código no TV Manager do sistema:</p>
-          <div className="bg-[#161b27] border-2 border-primary/40 rounded-3xl px-16 py-8 mb-6">
-            <p className="text-8xl font-black tracking-[0.2em] text-primary font-mono">{code}</p>
+        {status === 'waiting' && code && (
+          <div className="flex flex-col items-center">
+            <p className="text-white/50 text-lg mb-4">Digite este código no TV Manager do sistema:</p>
+            <div className="bg-[#161b27] border-2 border-primary/40 rounded-3xl px-16 py-8 mb-6">
+              <p className="text-8xl font-black tracking-[0.2em] text-primary font-mono">{code}</p>
+            </div>
+            <p className="text-white/30 text-base mb-2">
+              Acesse: <span className="text-primary">rphub.com.br</span> → TV Manager → Dispositivos → Parear TV
+            </p>
+            <p className="text-white/20 text-sm">Expira em {mins}:{secs}</p>
           </div>
-          <p className="text-white/30 text-base mb-2">
-            Acesse: <span className="text-primary">rphub.com.br</span> → TV Manager → Dispositivos → Parear TV
-          </p>
-          <p className="text-white/20 text-sm">Expira em {mins}:{secs}</p>
+        )}
+
+        {status === 'expired' && (
+          <div className="flex flex-col items-center gap-4">
+            <p className="text-white/50 text-xl">Código expirado.</p>
+            <button onClick={() => window.location.reload()}
+              className="px-8 py-3 rounded-xl bg-primary text-bg font-bold text-lg hover:opacity-90">
+              Gerar novo código
+            </button>
+          </div>
+        )}
+
+        {status === 'error' && (
+          <p className="text-red-400 text-xl">Erro ao conectar. Verifique a internet.</p>
+        )}
+
+        <div className="absolute bottom-8 text-white/20 text-sm">
+          {window.location.origin}/tv
         </div>
-      )}
-
-      {status === 'expired' && (
-        <div className="flex flex-col items-center gap-4">
-          <p className="text-white/50 text-xl">Código expirado.</p>
-          <button onClick={() => window.location.reload()}
-            className="px-8 py-3 rounded-xl bg-primary text-bg font-bold text-lg hover:opacity-90">
-            Gerar novo código
-          </button>
-        </div>
-      )}
-
-      {status === 'error' && (
-        <p className="text-red-400 text-xl">Erro ao conectar. Verifique a internet.</p>
-      )}
-
-      <div className="absolute bottom-8 text-white/20 text-sm">
-        {window.location.origin}/tv
       </div>
     </div>
   )
