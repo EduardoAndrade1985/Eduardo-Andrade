@@ -44,17 +44,17 @@ function Gauge({ pct, cor }) {
   const ex    = cx + r * Math.cos(rad(angle))
   const ey    = cy + r * Math.sin(rad(angle))
   return (
-    <svg viewBox="0 0 200 110" className="w-full max-w-[200px]">
+    <svg viewBox="0 0 200 120" className="w-full max-w-[200px]">
       <path d={`M ${cx-r},${cy} A ${r},${r} 0 0 1 ${cx+r},${cy}`}
         fill="none" stroke="rgba(255,255,255,0.08)" strokeWidth="18" strokeLinecap="round"/>
       {pct > 0 && (
         <path d={`M ${cx-r},${cy} A ${r},${r} 0 0 1 ${ex},${ey}`}
           fill="none" stroke={cor} strokeWidth="18" strokeLinecap="round"/>
       )}
-      <text x={cx} y={cy-8} textAnchor="middle" fill={cor} fontSize="28" fontWeight="900">
+      <text x={cx} y={cy-10} textAnchor="middle" fill={cor} fontSize="28" fontWeight="900">
         {pct.toFixed(1)}%
       </text>
-      <text x={cx} y={cy+16} textAnchor="middle" fill="rgba(255,255,255,0.4)" fontSize="11">
+      <text x={cx} y={cy+12} textAnchor="middle" fill="rgba(255,255,255,0.4)" fontSize="12" letterSpacing="2">
         OCUPADO
       </text>
     </svg>
