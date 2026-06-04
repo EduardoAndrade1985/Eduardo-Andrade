@@ -53,6 +53,7 @@ export default function App() {
         </Route>
 
         {/* TV Player — público, sem login */}
+        <Route path="/tv"        element={<TVPlayer />} />
         <Route path="/tv/:token" element={<TVPlayer />} />
 
         <Route path="*" element={<Navigate to="/" replace />} />

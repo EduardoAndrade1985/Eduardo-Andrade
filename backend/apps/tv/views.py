@@ -221,6 +221,102 @@ class TVMidiaDetailView(APIView):
         return Response({'ok': True})
 
 
+# ── Pareamento de TV ─────────────────────────────────────────────────────────
+class TVPairRequestView(APIView):
+    """TV solicita um código de pareamento (público — sem auth)."""
+    permission_classes = [AllowAny]
+
+    def post(self, request):
+        from .models import TVPairingCode, gen_pair_code
+        from django.utils.timezone import now
+        from datetime import timedelta
+
+        # Gera código único
+        for _ in range(10):
+            code = gen_pair_code()
+            if not TVPairingCode.objects.filter(code=code, usado=False).exists():
+                break
+
+        expires = now() + timedelta(minutes=10)
+        pc = TVPairingCode.objects.create(code=code, expires_at=expires)
+        return Response({'code': pc.code, 'expires_in': 600})
+
+
+class TVPairStatusView(APIView):
+    """TV consulta se foi pareada (público)."""
+    permission_classes = [AllowAny]
+
+    def get(self, request):
+        from .models import TVPairingCode
+        code = request.query_params.get('code', '').strip().upper()
+        if not code:
+            return Response({'paired': False, 'error': 'Código não informado.'}, status=400)
+        try:
+            pc = TVPairingCode.objects.select_related('tv_config').get(code=code)
+        except TVPairingCode.DoesNotExist:
+            return Response({'paired': False, 'error': 'Código inválido.'}, status=404)
+        if pc.expirado:
+            return Response({'paired': False, 'expired': True})
+        if pc.tv_config and not pc.usado:
+            pc.usado = True
+            pc.save(update_fields=['usado'])
+            return Response({'paired': True, 'token': pc.tv_config.token})
+        return Response({'paired': False})
+
+
+class TVPairConfirmView(APIView):
+    """Admin vincula um código a um dispositivo."""
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        if not _check_admin(request):
+            return Response({'error': 'Sem permissão.'}, status=403)
+        empresa = _empresa(request)
+        code    = request.data.get('code', '').strip().upper()
+        cfg_id  = request.data.get('tv_config_id')
+        if not code or not cfg_id:
+            return Response({'error': 'Código e dispositivo obrigatórios.'}, status=400)
+
+        from .models import TVPairingCode
+        from django.utils.timezone import now
+
+        try:
+            pc = TVPairingCode.objects.get(code=code, usado=False)
+        except TVPairingCode.DoesNotExist:
+            return Response({'error': 'Código inválido ou já utilizado.'}, status=404)
+        if pc.expirado:
+            return Response({'error': 'Código expirado. A TV deve gerar um novo.'}, status=400)
+        try:
+            cfg = TVConfig.objects.get(pk=cfg_id, empresa=empresa)
+        except TVConfig.DoesNotExist:
+            return Response({'error': 'Dispositivo não encontrado.'}, status=404)
+
+        pc.tv_config = cfg
+        pc.save(update_fields=['tv_config'])
+        return Response({'ok': True, 'token': cfg.token, 'dispositivo': cfg.nome})
+
+
+class TVPairPendingView(APIView):
+    """Lista códigos pendentes da empresa (para o admin ver)."""
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        from .models import TVPairingCode
+        from django.utils.timezone import now
+        empresa = _empresa(request)
+        if not empresa:
+            return Response([])
+        # Mostra códigos não usados e não expirados
+        pendentes = TVPairingCode.objects.filter(
+            usado=False, expires_at__gt=now(), tv_config__isnull=True
+        ).order_by('-created_at')[:20]
+        return Response([{
+            'code':       p.code,
+            'created_at': p.created_at,
+            'expires_at': p.expires_at,
+        } for p in pendentes])
+
+
 # ── Endpoint público para a TV ────────────────────────────────────────────────
 class TVPublicView(APIView):
     permission_classes = [AllowAny]

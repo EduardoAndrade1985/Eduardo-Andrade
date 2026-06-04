@@ -371,9 +371,116 @@ function useViewportScale() {
   return scale
 }
 
+// ── Tela de pareamento ────────────────────────────────────────────────────────
+function PairingScreen({ scale }) {
+  const [code,    setCode]    = useState(null)
+  const [status,  setStatus]  = useState('loading') // loading | waiting | paired | expired
+  const [token,   setPToken]  = useState(null)
+  const [timeLeft,setTimeLeft]= useState(600)
+  const pollRef  = useRef(null)
+  const timerRef = useRef(null)
+
+  useEffect(() => {
+    // Solicita código ao backend
+    fetch(`${BASE}/api/tv/pair/request/`, { method: 'POST' })
+      .then(r => r.json())
+      .then(d => { setCode(d.code); setStatus('waiting'); setTimeLeft(d.expires_in || 600) })
+      .catch(() => setStatus('error'))
+  }, [])
+
+  useEffect(() => {
+    if (status !== 'waiting' || !code) return
+    // Poll a cada 3s para verificar se foi pareado
+    pollRef.current = setInterval(async () => {
+      try {
+        const r = await fetch(`${BASE}/api/tv/pair/status/?code=${code}`)
+        const d = await r.json()
+        if (d.paired && d.token) {
+          clearInterval(pollRef.current)
+          clearInterval(timerRef.current)
+          localStorage.setItem('tv_token', d.token)
+          setPToken(d.token)
+          setStatus('paired')
+        } else if (d.expired) {
+          clearInterval(pollRef.current)
+          clearInterval(timerRef.current)
+          setStatus('expired')
+        }
+      } catch {}
+    }, 3000)
+
+    // Countdown
+    timerRef.current = setInterval(() => {
+      setTimeLeft(t => {
+        if (t <= 1) { clearInterval(timerRef.current); setStatus('expired'); return 0 }
+        return t - 1
+      })
+    }, 1000)
+
+    return () => { clearInterval(pollRef.current); clearInterval(timerRef.current) }
+  }, [status, code])
+
+  // Após pareado, redireciona
+  if (status === 'paired' && token) {
+    window.location.href = `/tv/${token}`
+    return null
+  }
+
+  const mins = String(Math.floor(timeLeft / 60)).padStart(2, '0')
+  const secs = String(timeLeft % 60).padStart(2, '0')
+
+  return (
+    <div style={{
+      width: REF_W, height: REF_H,
+      transform: `scale(${scale})`, transformOrigin: 'top left',
+    }} className="bg-[#0a0f1a] flex flex-col items-center justify-center text-white">
+      <div className="text-6xl mb-8">📺</div>
+      <h1 className="text-4xl font-bold text-primary mb-2">RPHub TV</h1>
+      <p className="text-white/50 text-xl mb-12">Pareamento de dispositivo</p>
+
+      {status === 'loading' && <p className="text-white/40 text-2xl animate-pulse">Gerando código...</p>}
+
+      {status === 'waiting' && code && (
+        <div className="flex flex-col items-center">
+          <p className="text-white/50 text-lg mb-4">Digite este código no TV Manager do sistema:</p>
+          <div className="bg-[#161b27] border-2 border-primary/40 rounded-3xl px-16 py-8 mb-6">
+            <p className="text-8xl font-black tracking-[0.2em] text-primary font-mono">{code}</p>
+          </div>
+          <p className="text-white/30 text-base mb-2">
+            Acesse: <span className="text-primary">rphub.com.br</span> → TV Manager → Dispositivos → Parear TV
+          </p>
+          <p className="text-white/20 text-sm">Expira em {mins}:{secs}</p>
+        </div>
+      )}
+
+      {status === 'expired' && (
+        <div className="flex flex-col items-center gap-4">
+          <p className="text-white/50 text-xl">Código expirado.</p>
+          <button onClick={() => window.location.reload()}
+            className="px-8 py-3 rounded-xl bg-primary text-bg font-bold text-lg hover:opacity-90">
+            Gerar novo código
+          </button>
+        </div>
+      )}
+
+      {status === 'error' && (
+        <p className="text-red-400 text-xl">Erro ao conectar. Verifique a internet.</p>
+      )}
+
+      <div className="absolute bottom-8 text-white/20 text-sm">
+        {window.location.origin}/tv
+      </div>
+    </div>
+  )
+}
+
 export default function TVPlayer() {
   const { token }  = useParams()
   const scale      = useViewportScale()
+
+  // Verifica token salvo no localStorage (após pareamento)
+  const savedToken = localStorage.getItem('tv_token')
+  const effectiveToken = token || savedToken
   const [data,    setData]    = useState(null)
   const [current, setCurrent] = useState(0)
   const [playing, setPlaying] = useState(false)
@@ -381,9 +488,14 @@ export default function TVPlayer() {
   const [erro,    setErro]    = useState('')
   const timerRef = useRef(null)
 
+  // Sem token → tela de pareamento
+  if (!effectiveToken) {
+    return <PairingScreen scale={scale} />
+  }
+
   const fetchData = useCallback(async () => {
     try {
-      const res = await fetch(`${BASE}/api/tv/public/${token}/`)
+      const res = await fetch(`${BASE}/api/tv/public/${effectiveToken}/`)
       if (!res.ok) { setErro('TV não encontrada ou inativa.'); return }
       const json = await res.json()
       setData(json)

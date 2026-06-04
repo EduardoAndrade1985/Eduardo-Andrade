@@ -21,6 +21,9 @@ function AbaDispositivos({ midias }) {
   const [showForm, setShowForm]         = useState(false)
   const [erro, setErro]                 = useState('')
   const [msg, setMsg]                   = useState('')
+  const [pairCode, setPairCode]         = useState('')
+  const [pairMsg,  setPairMsg]          = useState('')
+  const [pareando, setPareando]         = useState(false)
   const [copiado, setCopiado]           = useState(null)
 
   const carregar = useCallback(async () => {
@@ -34,6 +37,23 @@ function AbaDispositivos({ midias }) {
   }, [])
 
   useEffect(() => { carregar() }, [carregar])
+
+  async function parearTV() {
+    if (!pairCode.trim()) { setPairMsg('Digite o código exibido na TV.'); return }
+    if (!selecionado) { setPairMsg('Selecione um dispositivo para vincular.'); return }
+    setPareando(true); setPairMsg('')
+    try {
+      const res = await api.post('/tv/pair/confirm/', {
+        code: pairCode.trim().toUpperCase(),
+        tv_config_id: selecionado.id,
+      })
+      setPairMsg(`✓ TV pareada com "${res.data.dispositivo}"!`)
+      setPairCode('')
+      setTimeout(() => setPairMsg(''), 4000)
+    } catch (e) {
+      setPairMsg(e.response?.data?.error || 'Erro ao parear.')
+    } finally { setPareando(false) }
+  }
 
   async function criarDispositivo() {
     if (!novoNome.trim()) { setErro('Nome obrigatório.'); return }
@@ -155,6 +175,46 @@ function AbaDispositivos({ midias }) {
             onCopiar={() => copiarLink(selecionado.token)}
             copiado={copiado === selecionado.token}
           />
+        )}
+      </div>
+
+      {/* Painel de pareamento */}
+      <div className="lg:col-span-3 bg-bg2 border border-primary/20 rounded-xl p-4">
+        <div className="flex items-center gap-3 mb-3">
+          <span className="text-2xl">📲</span>
+          <div>
+            <h3 className="text-sm font-bold text-dim">Parear nova TV</h3>
+            <p className="text-[10px] text-muted">
+              Acesse <span className="text-primary font-semibold">{window.location.origin}/tv</span> na TV → aparecerá um código → informe abaixo e vincule ao dispositivo
+            </p>
+          </div>
+        </div>
+        <div className="flex items-end gap-3">
+          <div className="flex-1">
+            <label className="block text-[10px] font-semibold text-muted uppercase tracking-wide mb-1">Código exibido na TV</label>
+            <input
+              value={pairCode}
+              onChange={e => setPairCode(e.target.value.toUpperCase())}
+              placeholder="AAA-123"
+              maxLength={7}
+              className="w-full bg-bg3 border border-border rounded-lg px-3 py-2.5 text-lg font-mono font-bold text-primary placeholder-muted/50 focus:outline-none focus:border-primary tracking-widest uppercase"
+            />
+          </div>
+          <div className="flex-1">
+            <label className="block text-[10px] font-semibold text-muted uppercase tracking-wide mb-1">Vincular ao dispositivo</label>
+            <select value={selecionado?.id || ''} onChange={e => setSelecionado(dispositivos.find(d => d.id === Number(e.target.value)) || null)}
+              className="w-full bg-bg3 border border-border rounded-lg px-3 py-2.5 text-sm text-dim focus:outline-none focus:border-primary">
+              <option value="">— selecione o dispositivo —</option>
+              {dispositivos.map(d => <option key={d.id} value={d.id}>📺 {d.nome}{d.local ? ` · ${d.local}` : ''}</option>)}
+            </select>
+          </div>
+          <button onClick={parearTV} disabled={pareando || !pairCode || !selecionado}
+            className="px-6 py-2.5 rounded-lg bg-primary text-bg text-sm font-bold hover:opacity-90 transition disabled:opacity-40 flex-shrink-0">
+            {pareando ? 'Pareando...' : 'Parear TV'}
+          </button>
+        </div>
+        {pairMsg && (
+          <p className={`text-xs mt-2 ${pairMsg.startsWith('✓') ? 'text-primary' : 'text-danger'}`}>{pairMsg}</p>
         )}
       </div>
 
