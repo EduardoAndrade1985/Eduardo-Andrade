@@ -473,7 +473,19 @@ function AbaMidia({ midias, onMidiasChange }) {
                     if (!f) return
                     setMFile(f)
                     if (!mTitulo) setMTitulo(f.name.replace(/\.[^.]+$/, ''))
-                    setMTipo(f.type.startsWith('video') ? 'video' : 'imagem')
+                    const isVideo = f.type.startsWith('video')
+                    setMTipo(isVideo ? 'video' : 'imagem')
+                    if (isVideo) {
+                      const vid = document.createElement('video')
+                      vid.preload = 'metadata'
+                      vid.onloadedmetadata = () => {
+                        URL.revokeObjectURL(vid.src)
+                        if (vid.duration && isFinite(vid.duration)) {
+                          setMDur(Math.ceil(vid.duration))
+                        }
+                      }
+                      vid.src = URL.createObjectURL(f)
+                    }
                   }} />
               </label>
               {adding && uploadPct > 0 && (
