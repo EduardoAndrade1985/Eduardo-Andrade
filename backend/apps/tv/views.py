@@ -305,59 +305,86 @@ def _get_ocupacao(empresa):
             if k not in por_data or h.tipo == 'historico':
                 por_data[k] = h
 
+        def calc(h):
+            ocup = float(h.ocup_n or 0)
+            disp = float(h.uh_disp_venda or 0) or 1
+            rec  = float(h.diaria_n or 0)
+            taxa = (ocup / disp) * 100
+            adr  = rec / ocup if ocup > 0 else 0
+            revpar = rec / disp
+            return taxa, adr, revpar, ocup, disp, rec
+
         historico = []
         tabela    = []
         DIAS_PT   = ['Dom','Seg','Ter','Qua','Qui','Sex','Sáb']
         for k in sorted(por_data.keys()):
-            h   = por_data[k]
-            dia = DIAS_PT[h.data.weekday() if hasattr(h.data, 'weekday') else 0]
-            th  = float(h.taxa_ocup_perc or 0)
+            h             = por_data[k]
+            dia           = DIAS_PT[h.data.weekday()]
+            taxa, adr, revpar, ocup, disp, rec = calc(h)
             historico.append({
                 'data':   h.data.strftime('%d/%m'),
-                'taxa':   th,
-                'adr':    float(h.diaria_n or 0),
-                'revpar': float(h.revpar or 0),
+                'taxa':   round(taxa, 2),
+                'adr':    round(adr, 2),
+                'revpar': round(revpar, 2),
             })
             tabela.append({
-                'data':    h.data.strftime('%d/%m'),
-                'iso':     k,
-                'dia':     dia,
-                'taxa':    th,
-                'uhs':     h.ocup_t or 0,
-                'ci':      h.check_in or 0,
-                'co':      h.check_out or 0,
-                'tipo':    h.tipo,
+                'data':  h.data.strftime('%d/%m'),
+                'iso':   k,
+                'dia':   dia,
+                'taxa':  round(taxa, 1),
+                'uhs':   int(ocup),
+                'ci':    h.check_in or 0,
+                'co':    h.check_out or 0,
+                'tipo':  h.tipo,
             })
 
-        total_uhs = r.uh_disp_venda or empresa.total_uhs or 1
-        livres    = max(0, total_uhs - (r.ocup_t or 0))
+        taxa, adr, revpar, ocup, disp, rec = calc(r)
+        livres = max(0, int(disp) - int(ocup))
 
-        def var(novo, ant):
-            if ant and float(ant) != 0:
-                return round((float(novo or 0) - float(ant)) / float(ant) * 100, 1)
-            return None
+        # Variação vs ontem (em p.p. para taxa, % para demais)
+        def var_pp(novo, ant_r):
+            if ant_r is None: return None
+            _, a_adr, a_rev, a_ocup, a_disp, a_rec = calc(ant_r)
+            a_taxa = (a_ocup / (float(a_disp) or 1)) * 100
+            return round(novo - a_taxa, 1)
+
+        def var_pct(novo, ant_val):
+            if ant_val is None or ant_val == 0: return None
+            return round((novo - ant_val) / ant_val * 100, 1)
+
+        o_taxa = o_adr = o_revpar = o_rec = None
+        if ontem:
+            _, oa, orv, oo, od, orc = calc(ontem)
+            o_taxa   = (oo / (od or 1)) * 100
+            o_adr    = oa
+            o_revpar = orv
+            o_rec    = orc
+
+        receita_mtd = sum(
+            float(por_data[k].diaria_n or 0)
+            for k in sorted(por_data.keys())
+            if por_data[k].tipo == 'historico' and k <= str(r.data)
+        )
 
         return {
-            'taxa_ocupacao': float(r.taxa_ocup_perc or 0),
-            'uhs_ocupadas':  r.ocup_t or 0,
+            'taxa_ocupacao': round(taxa, 2),
+            'uhs_ocupadas':  int(ocup),
             'uhs_livres':    livres,
-            'total_uhs':     total_uhs,
-            'adr':           float(r.diaria_n or 0),
-            'revpar':        float(r.revpar or 0),
-            'receita_dia':   float(r.total or 0),
-            'hospedes':      r.hosp_t or 0,
+            'total_uhs':     int(disp),
+            'adr':           round(adr, 2),
+            'revpar':        round(revpar, 2),
+            'receita_dia':   round(rec, 2),
+            'hospedes':      r.hosp_n or 0,
             'checkins':      r.check_in or 0,
             'checkouts':     r.check_out or 0,
             'data':          str(r.data),
-            'var_taxa':      var(r.taxa_ocup_perc, ontem.taxa_ocup_perc if ontem else None),
-            'var_adr':       var(r.diaria_n, ontem.diaria_n if ontem else None),
-            'var_revpar':    var(r.revpar, ontem.revpar if ontem else None),
-            'var_receita':   var(r.total, ontem.total if ontem else None),
+            'var_taxa':      round(taxa - o_taxa, 1) if o_taxa is not None else None,
+            'var_adr':       var_pct(adr, o_adr),
+            'var_revpar':    var_pct(revpar, o_revpar),
+            'var_receita':   var_pct(rec, o_rec),
             'historico':     historico,
             'tabela':        tabela,
-            'receita_mtd':   float(sum(float(por_data[k].total or 0)
-                                      for k in sorted(por_data.keys())
-                                      if por_data[k].tipo == 'historico')),
+            'receita_mtd':   round(receita_mtd, 2),
         }
     except Exception:
         return None
