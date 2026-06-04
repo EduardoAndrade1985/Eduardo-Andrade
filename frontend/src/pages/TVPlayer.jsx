@@ -352,8 +352,28 @@ function Clock() {
 }
 
 // ── Player principal ──────────────────────────────────────────────────────────
+// ── Viewport scaling automático ───────────────────────────────────────────────
+const REF_W = 1920
+const REF_H = 1080
+
+function useViewportScale() {
+  const [scale, setScale] = useState(1)
+  useEffect(() => {
+    function calc() {
+      const sw = window.innerWidth  / REF_W
+      const sh = window.innerHeight / REF_H
+      setScale(Math.min(sw, sh))
+    }
+    calc()
+    window.addEventListener('resize', calc)
+    return () => window.removeEventListener('resize', calc)
+  }, [])
+  return scale
+}
+
 export default function TVPlayer() {
   const { token }  = useParams()
+  const scale      = useViewportScale()
   const [data,    setData]    = useState(null)
   const [current, setCurrent] = useState(0)
   const [playing, setPlaying] = useState(false)
@@ -424,7 +444,15 @@ export default function TVPlayer() {
   const isVideo = item?.tipo === 'midia' && item?.midia?.tipo === 'video'
 
   return (
-    <div className="w-screen h-screen bg-[#0a0f1a] overflow-hidden flex flex-col select-none">
+    <div className="w-screen h-screen bg-black overflow-hidden flex items-start justify-start select-none">
+      {/* Canvas fixo em 1920×1080 escalado para a TV */}
+      <div style={{
+        width:  REF_W,
+        height: REF_H,
+        transform: `scale(${scale})`,
+        transformOrigin: 'top left',
+        overflow: 'hidden',
+      }} className="bg-[#0a0f1a] flex flex-col">
 
       {/* Conteúdo */}
       <div className={`flex-1 transition-opacity duration-500 ${fade ? 'opacity-100' : 'opacity-0'}`}>
@@ -459,6 +487,7 @@ export default function TVPlayer() {
           </div>
         </div>
       </div>
+      </div> {/* fim canvas escalado */}
     </div>
   )
 }
