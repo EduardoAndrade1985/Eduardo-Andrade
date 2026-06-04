@@ -31,7 +31,7 @@ export default function TVManager() {
   // Novo item de playlist
   const [addTipo,   setAddTipo]   = useState('ocupacao')
   const [addDur,    setAddDur]    = useState(30)
-  const [addMidia,  setAddMidia]  = useState('')
+  const [addMidiaId, setAddMidiaId] = useState('')
 
   // Nova mídia
   const [mUrl,   setMUrl]   = useState('')
@@ -65,12 +65,12 @@ export default function TVManager() {
 
   function addToPlaylist() {
     const item = addTipo === 'midia'
-      ? { tipo: 'midia', midia_id: Number(addMidia), duracao: Number(addDur) }
+      ? { tipo: 'midia', midia_id: Number(addMidiaId), duracao: Number(addDur) }
       : { tipo: addTipo, duracao: Number(addDur) }
-    if (addTipo === 'midia' && !addMidia) { setErro('Selecione uma mídia.'); return }
+    if (addTipo === 'midia' && !addMidiaId) { setErro('Selecione uma mídia.'); return }
     const nova = [...(config?.playlist || []), item]
     salvarPlaylist(nova)
-    setAddMidia('')
+    setAddMidiaId('')
   }
 
   function removeItem(idx) {
@@ -86,7 +86,7 @@ export default function TVManager() {
     salvarPlaylist(pl)
   }
 
-  async function addMidia() {
+  async function salvarMidia() {
     if (!mUrl.trim()) { setErro('URL obrigatória.'); return }
     setAddingM(true); setErro('')
     try {
@@ -214,7 +214,7 @@ export default function TVManager() {
                 <option value="midia">🖼 Mídia (imagem/vídeo)</option>
               </select>
               {addTipo === 'midia' && (
-                <select value={addMidia} onChange={e => setAddMidia(e.target.value)}
+                <select value={addMidiaId} onChange={e => setAddMidiaId(e.target.value)}
                   className="w-full bg-bg border border-border rounded-lg px-3 py-2 text-sm text-dim focus:outline-none focus:border-primary">
                   <option value="">— selecione a mídia —</option>
                   {midias.map(m => <option key={m.id} value={m.id}>{m.titulo || m.url.slice(0,40)}</option>)}
@@ -279,7 +279,7 @@ export default function TVManager() {
                 <input type="number" value={mDur} onChange={e => setMDur(e.target.value)}
                   min={5} max={300} placeholder="Seg."
                   className="w-20 bg-bg border border-border rounded-lg px-3 py-2 text-sm text-dim focus:outline-none focus:border-primary" />
-                <button onClick={addMidia} disabled={addingM}
+                <button onClick={salvarMidia} disabled={addingM}
                   className="ml-auto px-4 py-2 rounded-lg bg-primary text-bg text-xs font-semibold hover:opacity-90 transition disabled:opacity-50">
                   {addingM ? '...' : '+ Adicionar'}
                 </button>
