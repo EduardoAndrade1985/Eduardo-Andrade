@@ -216,7 +216,10 @@ export default function TVPlayer() {
       <div className="flex-shrink-0">
         <ProgressBar duracao={item?.duracao || 15} playing={playing && fade} />
         <div className="flex items-center justify-between px-6 py-2 bg-black/50">
-          <span className="text-white/50 text-sm font-semibold truncate">{data.empresa_nome}</span>
+          <div className="min-w-0">
+            <span className="text-white/50 text-sm font-semibold truncate block">{data.empresa_nome}</span>
+            {data.dispositivo && <span className="text-white/30 text-xs truncate block">{data.dispositivo}{data.local ? ` · ${data.local}` : ''}</span>}
+          </div>
           <div className="flex items-center gap-4">
             <span className="text-white/30 text-xs">
               {current + 1} / {playlist.length}

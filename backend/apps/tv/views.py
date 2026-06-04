@@ -1,10 +1,9 @@
-from django.http import JsonResponse
-from django.utils.timezone import now
+from django.db import models as db_models
+from django.utils.timezone import localdate
 from rest_framework.views import APIView
 from rest_framework.permissions import IsAuthenticated, AllowAny
 from rest_framework.response import Response
 
-from apps.empresas.models import MembroEmpresa
 from .models import TVConfig, TVMidia
 
 
@@ -15,99 +14,150 @@ def _check_admin(request):
     return membro and membro.papel in ('admin', 'gerente')
 
 
-# ── Config da TV (privado) ────────────────────────────────────────────────────
-class TVConfigView(APIView):
+def _empresa(request):
+    return getattr(request, 'empresa', None)
+
+
+def _config_data(cfg):
+    return {
+        'id':       cfg.id,
+        'token':    cfg.token,
+        'nome':     cfg.nome,
+        'local':    cfg.local,
+        'ativo':    cfg.ativo,
+        'playlist': cfg.playlist,
+        'tv_url':   f'/tv/{cfg.token}',
+    }
+
+
+# ── Lista / Criar dispositivos ────────────────────────────────────────────────
+class TVConfigListView(APIView):
     permission_classes = [IsAuthenticated]
 
-    def _empresa(self, request):
-        return getattr(request, 'empresa', None)
-
     def get(self, request):
-        empresa = self._empresa(request)
+        empresa = _empresa(request)
         if not empresa:
-            return Response({'error': 'Empresa não encontrada.'}, status=400)
-        cfg, _ = TVConfig.objects.get_or_create(empresa=empresa)
-        midias = list(TVMidia.objects.filter(empresa=empresa, ativo=True).values(
-            'id', 'titulo', 'tipo', 'url', 'duracao', 'ordem'
-        ))
-        return Response({
-            'id':       cfg.id,
-            'token':    cfg.token,
-            'nome':     cfg.nome,
-            'ativo':    cfg.ativo,
-            'playlist': cfg.playlist,
-            'midias':   midias,
-            'tv_url':   f'/tv/{cfg.token}',
-        })
-
-    def patch(self, request):
-        if not _check_admin(request):
-            return Response({'error': 'Sem permissão.'}, status=403)
-        empresa = self._empresa(request)
-        if not empresa:
-            return Response({'error': 'Empresa não encontrada.'}, status=400)
-        cfg, _ = TVConfig.objects.get_or_create(empresa=empresa)
-        if 'nome'     in request.data: cfg.nome     = request.data['nome']
-        if 'ativo'    in request.data: cfg.ativo    = request.data['ativo']
-        if 'playlist' in request.data: cfg.playlist = request.data['playlist']
-        cfg.save()
-        return Response({'ok': True, 'token': cfg.token})
+            return Response([])
+        configs = TVConfig.objects.filter(empresa=empresa)
+        return Response([_config_data(c) for c in configs])
 
     def post(self, request):
-        """Regenera o token."""
         if not _check_admin(request):
             return Response({'error': 'Sem permissão.'}, status=403)
-        empresa = self._empresa(request)
+        empresa = _empresa(request)
         if not empresa:
             return Response({'error': 'Empresa não encontrada.'}, status=400)
-        cfg, _ = TVConfig.objects.get_or_create(empresa=empresa)
-        from apps.tv.models import gen_token
-        cfg.token = gen_token()
-        cfg.save(update_fields=['token'])
-        return Response({'token': cfg.token})
+        nome  = request.data.get('nome', 'Nova TV').strip()
+        local = request.data.get('local', '').strip()
+        cfg   = TVConfig.objects.create(empresa=empresa, nome=nome, local=local)
+        return Response(_config_data(cfg), status=201)
 
 
-# ── Mídia (privado) ───────────────────────────────────────────────────────────
-class TVMidiaView(APIView):
+# ── Detalhe / Editar / Deletar dispositivo ────────────────────────────────────
+class TVConfigDetailView(APIView):
     permission_classes = [IsAuthenticated]
 
-    def _empresa(self, request):
-        return getattr(request, 'empresa', None)
+    def _get(self, request, pk):
+        empresa = _empresa(request)
+        if not empresa:
+            return None
+        try:
+            return TVConfig.objects.get(pk=pk, empresa=empresa)
+        except TVConfig.DoesNotExist:
+            return None
+
+    def get(self, request, pk):
+        cfg = self._get(request, pk)
+        if not cfg:
+            return Response({'error': 'Não encontrado.'}, status=404)
+        midias = list(TVMidia.objects.filter(empresa=cfg.empresa, ativo=True).values(
+            'id', 'titulo', 'tipo', 'url', 'duracao', 'ordem', 'data_inicio', 'data_fim'
+        ))
+        data = _config_data(cfg)
+        data['midias'] = midias
+        return Response(data)
+
+    def patch(self, request, pk):
+        if not _check_admin(request):
+            return Response({'error': 'Sem permissão.'}, status=403)
+        cfg = self._get(request, pk)
+        if not cfg:
+            return Response({'error': 'Não encontrado.'}, status=404)
+        for f in ('nome', 'local', 'ativo', 'playlist'):
+            if f in request.data:
+                setattr(cfg, f, request.data[f])
+        cfg.save()
+        return Response(_config_data(cfg))
+
+    def delete(self, request, pk):
+        if not _check_admin(request):
+            return Response({'error': 'Sem permissão.'}, status=403)
+        cfg = self._get(request, pk)
+        if not cfg:
+            return Response({'error': 'Não encontrado.'}, status=404)
+        cfg.delete()
+        return Response({'ok': True})
+
+
+# ── Regenerar token ───────────────────────────────────────────────────────────
+class TVTokenRegenView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, pk):
+        if not _check_admin(request):
+            return Response({'error': 'Sem permissão.'}, status=403)
+        empresa = _empresa(request)
+        try:
+            cfg = TVConfig.objects.get(pk=pk, empresa=empresa)
+        except TVConfig.DoesNotExist:
+            return Response({'error': 'Não encontrado.'}, status=404)
+        from .models import gen_token
+        cfg.token = gen_token()
+        cfg.save(update_fields=['token'])
+        return Response({'token': cfg.token, 'tv_url': f'/tv/{cfg.token}'})
+
+
+# ── Mídia ─────────────────────────────────────────────────────────────────────
+class TVMidiaListView(APIView):
+    permission_classes = [IsAuthenticated]
 
     def get(self, request):
-        empresa = self._empresa(request)
+        empresa = _empresa(request)
         if not empresa:
             return Response([])
         midias = list(TVMidia.objects.filter(empresa=empresa).values(
-            'id', 'titulo', 'tipo', 'url', 'duracao', 'ordem', 'ativo', 'created_at'
+            'id', 'titulo', 'tipo', 'url', 'duracao', 'ordem',
+            'ativo', 'data_inicio', 'data_fim', 'created_at'
         ))
         return Response(midias)
 
     def post(self, request):
         if not _check_admin(request):
             return Response({'error': 'Sem permissão.'}, status=403)
-        empresa = self._empresa(request)
+        empresa = _empresa(request)
         if not empresa:
             return Response({'error': 'Empresa não encontrada.'}, status=400)
         url    = request.data.get('url', '').strip()
-        titulo = request.data.get('titulo', '').strip()
-        tipo   = request.data.get('tipo', 'imagem')
-        duracao = int(request.data.get('duracao', 15))
         if not url:
             return Response({'error': 'URL obrigatória.'}, status=400)
         midia = TVMidia.objects.create(
-            empresa=empresa, url=url, titulo=titulo,
-            tipo=tipo, duracao=duracao,
+            empresa=empresa,
+            url=url,
+            titulo=request.data.get('titulo', '').strip(),
+            tipo=request.data.get('tipo', 'imagem'),
+            duracao=int(request.data.get('duracao', 15)),
+            data_inicio=request.data.get('data_inicio') or None,
+            data_fim=request.data.get('data_fim') or None,
             ordem=TVMidia.objects.filter(empresa=empresa).count(),
         )
-        return Response({'id': midia.id, 'ok': True})
+        return Response({'id': midia.id, 'ok': True}, status=201)
 
 
 class TVMidiaDetailView(APIView):
     permission_classes = [IsAuthenticated]
 
     def _get(self, request, pk):
-        empresa = getattr(request, 'empresa', None)
+        empresa = _empresa(request)
         if not empresa:
             return None
         try:
@@ -124,6 +174,10 @@ class TVMidiaDetailView(APIView):
         for f in ('titulo', 'url', 'tipo', 'duracao', 'ordem', 'ativo'):
             if f in request.data:
                 setattr(midia, f, request.data[f])
+        if 'data_inicio' in request.data:
+            midia.data_inicio = request.data['data_inicio'] or None
+        if 'data_fim' in request.data:
+            midia.data_fim = request.data['data_fim'] or None
         midia.save()
         return Response({'ok': True})
 
@@ -148,16 +202,21 @@ class TVPublicView(APIView):
             return Response({'error': 'TV não encontrada ou inativa.'}, status=404)
 
         empresa = cfg.empresa
-        midias = {
-            m['id']: m for m in TVMidia.objects.filter(empresa=empresa, ativo=True).values(
-                'id', 'titulo', 'tipo', 'url', 'duracao'
-            )
-        }
+        today   = localdate()
 
-        # Dados de ocupação (hoje)
+        # Mídia filtrada por agendamento
+        midias_qs = TVMidia.objects.filter(
+            empresa=empresa, ativo=True
+        ).filter(
+            db_models.Q(data_inicio__isnull=True) | db_models.Q(data_inicio__lte=today)
+        ).filter(
+            db_models.Q(data_fim__isnull=True) | db_models.Q(data_fim__gte=today)
+        )
+        midias = {m.id: {'id': m.id, 'titulo': m.titulo, 'tipo': m.tipo, 'url': m.url, 'duracao': m.duracao}
+                  for m in midias_qs}
+
         ocupacao_data = _get_ocupacao(empresa)
-        # Dados de custos (mês atual)
-        custos_data = _get_custos(empresa)
+        custos_data   = _get_custos(empresa)
 
         playlist = []
         for item in cfg.playlist:
@@ -175,6 +234,8 @@ class TVPublicView(APIView):
             playlist.append(entry)
 
         return Response({
+            'dispositivo':  cfg.nome,
+            'local':        cfg.local,
             'empresa_nome': empresa.nome_fantasia or empresa.nome,
             'empresa_cor':  empresa.cor_primaria or '#2dd4a0',
             'playlist':     playlist,
@@ -182,9 +243,7 @@ class TVPublicView(APIView):
 
 
 def _get_ocupacao(empresa):
-    """Retorna KPIs de ocupação do dia atual."""
     try:
-        from django.utils.timezone import localdate
         from apps.ocupacao.models import Ocupacao
         hoje = str(localdate())
         qs = Ocupacao.objects.filter(empresa=empresa, data=hoje)
@@ -207,15 +266,14 @@ def _get_ocupacao(empresa):
 
 
 def _get_custos(empresa):
-    """Retorna KPIs de custos do mês atual."""
     try:
-        from django.utils.timezone import localdate
         from apps.custos.models import Movimentacao
-        hoje = localdate()
-        mes_ini = hoje.replace(day=1).isoformat()[:7]  # YYYY-MM
-        total = Movimentacao.objects.filter(
+        from django.db.models import Sum
+        hoje    = localdate()
+        mes_ini = hoje.replace(day=1).isoformat()[:7]
+        total   = Movimentacao.objects.filter(
             empresa=empresa, mes__startswith=mes_ini
-        ).aggregate(total=__import__('django.db.models', fromlist=['Sum']).Sum('valor'))['total'] or 0
+        ).aggregate(total=Sum('valor'))['total'] or 0
         return {'total_mes': float(total), 'mes': mes_ini}
     except Exception:
         return None

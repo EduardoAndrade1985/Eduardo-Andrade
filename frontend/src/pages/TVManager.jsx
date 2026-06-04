@@ -8,292 +8,492 @@ const DASHBOARD_OPTS = [
   { tipo: 'estoque',  label: 'Estoque',   icon: '📦', cor: '#f59e0b' },
 ]
 
-function Badge({ tipo }) {
-  const d = DASHBOARD_OPTS.find(x => x.tipo === tipo)
-  if (!d) return null
-  return (
-    <span className="inline-flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-full"
-      style={{ background: d.cor + '20', color: d.cor }}>
-      {d.icon} {d.label}
-    </span>
-  )
-}
+const TABS = ['Dispositivos', 'Biblioteca de Mídia']
 
-export default function TVManager() {
-  const [config,    setConfig]    = useState(null)
-  const [midias,    setMidias]    = useState([])
-  const [loading,   setLoading]   = useState(true)
-  const [salvando,  setSalvando]  = useState(false)
-  const [copiado,   setCopiado]   = useState(false)
-  const [erro,      setErro]      = useState('')
-  const [msg,       setMsg]       = useState('')
-
-  // Novo item de playlist
-  const [addTipo,   setAddTipo]   = useState('ocupacao')
-  const [addDur,    setAddDur]    = useState(30)
-  const [addMidiaId, setAddMidiaId] = useState('')
-
-  // Nova mídia
-  const [mUrl,   setMUrl]   = useState('')
-  const [mTitulo,setMTitulo]= useState('')
-  const [mTipo,  setMTipo]  = useState('imagem')
-  const [mDur,   setMDur]   = useState(15)
-  const [addingM,setAddingM]= useState(false)
+// ── Aba Dispositivos ──────────────────────────────────────────────────────────
+function AbaDispositivos({ midias }) {
+  const [dispositivos, setDispositivos] = useState([])
+  const [loading, setLoading]           = useState(true)
+  const [selecionado, setSelecionado]   = useState(null)
+  const [novoNome, setNovoNome]         = useState('')
+  const [novoLocal, setNovoLocal]       = useState('')
+  const [criando, setCriando]           = useState(false)
+  const [showForm, setShowForm]         = useState(false)
+  const [erro, setErro]                 = useState('')
+  const [msg, setMsg]                   = useState('')
+  const [copiado, setCopiado]           = useState(null)
 
   const carregar = useCallback(async () => {
     setLoading(true)
     try {
       const res = await api.get('/tv/config/')
-      setConfig(res.data)
-      setMidias(res.data.midias || [])
-    } catch { setErro('Erro ao carregar configuração.') }
+      setDispositivos(res.data)
+      if (res.data.length > 0 && !selecionado) setSelecionado(res.data[0])
+    } catch { setErro('Erro ao carregar dispositivos.') }
     finally { setLoading(false) }
   }, [])
 
   useEffect(() => { carregar() }, [carregar])
 
-  async function salvarPlaylist(newPlaylist) {
-    setSalvando(true); setErro(''); setMsg('')
+  async function criarDispositivo() {
+    if (!novoNome.trim()) { setErro('Nome obrigatório.'); return }
+    setCriando(true); setErro('')
     try {
-      await api.patch('/tv/config/', { playlist: newPlaylist })
-      setConfig(c => ({ ...c, playlist: newPlaylist }))
-      setMsg('Salvo!')
-      setTimeout(() => setMsg(''), 2000)
+      const res = await api.post('/tv/config/', { nome: novoNome.trim(), local: novoLocal.trim() })
+      setDispositivos(d => [...d, res.data])
+      setSelecionado(res.data)
+      setNovoNome(''); setNovoLocal('')
+      setShowForm(false)
+    } catch { setErro('Erro ao criar dispositivo.') }
+    finally { setCriando(false) }
+  }
+
+  async function deletarDispositivo(id) {
+    if (!confirm('Remover este dispositivo? A playlist será perdida.')) return
+    try {
+      await api.delete(`/tv/config/${id}/`)
+      const restante = dispositivos.filter(d => d.id !== id)
+      setDispositivos(restante)
+      setSelecionado(restante[0] || null)
+    } catch { setErro('Erro ao remover dispositivo.') }
+  }
+
+  async function regenerarToken(id) {
+    if (!confirm('Regenerar token invalida o link atual desta TV. Confirma?')) return
+    try {
+      const res = await api.post(`/tv/config/${id}/token/`)
+      setDispositivos(d => d.map(x => x.id === id ? { ...x, token: res.data.token, tv_url: res.data.tv_url } : x))
+      if (selecionado?.id === id) setSelecionado(s => ({ ...s, token: res.data.token, tv_url: res.data.tv_url }))
+    } catch { setErro('Erro ao regenerar token.') }
+  }
+
+  function copiarLink(token) {
+    const url = `${window.location.origin}/tv/${token}`
+    navigator.clipboard.writeText(url)
+    setCopiado(token)
+    setTimeout(() => setCopiado(null), 2000)
+  }
+
+  if (loading) return <div className="py-12 text-center text-muted text-sm">Carregando...</div>
+
+  return (
+    <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+
+      {/* Lista de dispositivos */}
+      <div className="lg:col-span-1">
+        <div className="bg-bg2 border border-border rounded-xl overflow-hidden">
+          <div className="px-4 py-3 border-b border-border flex items-center justify-between">
+            <div>
+              <h3 className="text-sm font-bold text-dim">Dispositivos</h3>
+              <p className="text-[10px] text-muted">{dispositivos.length} TV{dispositivos.length !== 1 ? 's' : ''} cadastrada{dispositivos.length !== 1 ? 's' : ''}</p>
+            </div>
+            <button onClick={() => setShowForm(s => !s)}
+              className="px-3 py-1.5 rounded-lg bg-primary text-bg text-xs font-semibold hover:opacity-90 transition">
+              + Nova TV
+            </button>
+          </div>
+
+          {showForm && (
+            <div className="px-4 py-3 border-b border-border bg-bg3/50 space-y-2">
+              <input value={novoNome} onChange={e => setNovoNome(e.target.value)}
+                placeholder="Nome (ex: TV Recepção)"
+                className="w-full bg-bg border border-border rounded-lg px-3 py-2 text-sm text-dim placeholder-muted focus:outline-none focus:border-primary" />
+              <input value={novoLocal} onChange={e => setNovoLocal(e.target.value)}
+                placeholder="Local (ex: Lobby, Sala de reunião)"
+                className="w-full bg-bg border border-border rounded-lg px-3 py-2 text-sm text-dim placeholder-muted focus:outline-none focus:border-primary" />
+              <div className="flex gap-2">
+                <button onClick={() => { setShowForm(false); setNovoNome(''); setNovoLocal('') }}
+                  className="flex-1 py-1.5 rounded-lg border border-border text-xs text-muted hover:text-dim transition">
+                  Cancelar
+                </button>
+                <button onClick={criarDispositivo} disabled={criando}
+                  className="flex-1 py-1.5 rounded-lg bg-primary text-bg text-xs font-semibold hover:opacity-90 transition disabled:opacity-50">
+                  {criando ? '...' : 'Criar'}
+                </button>
+              </div>
+            </div>
+          )}
+
+          <div className="divide-y divide-border/60">
+            {dispositivos.length === 0 && (
+              <p className="px-4 py-8 text-xs text-muted text-center">Nenhum dispositivo cadastrado.</p>
+            )}
+            {dispositivos.map(d => (
+              <button key={d.id} onClick={() => setSelecionado(d)}
+                className={`w-full flex items-center gap-3 px-4 py-3 text-left transition
+                  ${selecionado?.id === d.id ? 'bg-primary/8 border-l-2 border-primary' : 'hover:bg-bg3'}`}>
+                <span className="text-xl">📺</span>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-semibold text-dim truncate">{d.nome}</p>
+                  {d.local && <p className="text-[10px] text-muted truncate">{d.local}</p>}
+                  <p className="text-[10px] text-muted">{d.playlist?.length || 0} itens</p>
+                </div>
+                <span className={`w-2 h-2 rounded-full flex-shrink-0 ${d.ativo ? 'bg-primary' : 'bg-muted'}`} />
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {/* Configuração do dispositivo selecionado */}
+      <div className="lg:col-span-2">
+        {!selecionado ? (
+          <div className="bg-bg2 border border-border rounded-xl py-16 text-center">
+            <p className="text-4xl mb-3">📺</p>
+            <p className="text-sm text-muted">Selecione ou crie um dispositivo</p>
+          </div>
+        ) : (
+          <DispositivoEditor
+            dispositivo={selecionado}
+            midias={midias}
+            onUpdate={updated => {
+              setDispositivos(d => d.map(x => x.id === updated.id ? updated : x))
+              setSelecionado(updated)
+            }}
+            onDelete={() => deletarDispositivo(selecionado.id)}
+            onTokenRegen={() => regenerarToken(selecionado.id)}
+            onCopiar={() => copiarLink(selecionado.token)}
+            copiado={copiado === selecionado.token}
+          />
+        )}
+      </div>
+
+      {erro && <div className="lg:col-span-3 text-xs text-danger bg-danger/10 border border-danger/20 rounded-lg px-3 py-2">{erro}</div>}
+      {msg  && <div className="lg:col-span-3 text-xs text-primary bg-primary/10 border border-primary/20 rounded-lg px-3 py-2">{msg}</div>}
+    </div>
+  )
+}
+
+function DispositivoEditor({ dispositivo, midias, onUpdate, onDelete, onTokenRegen, onCopiar, copiado }) {
+  const [playlist, setPlaylist] = useState(dispositivo.playlist || [])
+  const [salvando, setSalvando] = useState(false)
+  const [addTipo, setAddTipo]   = useState('ocupacao')
+  const [addDur, setAddDur]     = useState(30)
+  const [addMidiaId, setAddMidiaId] = useState('')
+  const [erro, setErro]         = useState('')
+
+  useEffect(() => {
+    setPlaylist(dispositivo.playlist || [])
+  }, [dispositivo.id])
+
+  async function salvar(nova) {
+    setSalvando(true); setErro('')
+    try {
+      const res = await api.patch(`/tv/config/${dispositivo.id}/`, { playlist: nova })
+      setPlaylist(nova)
+      onUpdate({ ...dispositivo, playlist: nova })
     } catch { setErro('Erro ao salvar.') }
     finally { setSalvando(false) }
   }
 
-  function addToPlaylist() {
+  function addItem() {
+    if (addTipo === 'midia' && !addMidiaId) { setErro('Selecione uma mídia.'); return }
     const item = addTipo === 'midia'
       ? { tipo: 'midia', midia_id: Number(addMidiaId), duracao: Number(addDur) }
       : { tipo: addTipo, duracao: Number(addDur) }
-    if (addTipo === 'midia' && !addMidiaId) { setErro('Selecione uma mídia.'); return }
-    const nova = [...(config?.playlist || []), item]
-    salvarPlaylist(nova)
+    salvar([...playlist, item])
     setAddMidiaId('')
   }
 
-  function removeItem(idx) {
-    const nova = config.playlist.filter((_, i) => i !== idx)
-    salvarPlaylist(nova)
-  }
+  function removeItem(idx) { salvar(playlist.filter((_, i) => i !== idx)) }
 
   function moveItem(idx, dir) {
-    const pl = [...config.playlist]
+    const pl = [...playlist]
     const dest = idx + dir
     if (dest < 0 || dest >= pl.length) return
     const tmp = pl[idx]; pl[idx] = pl[dest]; pl[dest] = tmp
-    salvarPlaylist(pl)
+    salvar(pl)
   }
 
-  async function salvarMidia() {
-    if (!mUrl.trim()) { setErro('URL obrigatória.'); return }
-    setAddingM(true); setErro('')
-    try {
-      await api.post('/tv/midia/', { url: mUrl.trim(), titulo: mTitulo.trim(), tipo: mTipo, duracao: Number(mDur) })
-      setMUrl(''); setMTitulo(''); setMTipo('imagem'); setMDur(15)
-      await carregar()
-    } catch { setErro('Erro ao adicionar mídia.') }
-    finally { setAddingM(false) }
-  }
-
-  async function deleteMidia(id) {
-    if (!confirm('Remover esta mídia?')) return
-    try {
-      await api.delete(`/tv/midia/${id}/`)
-      await carregar()
-    } catch { setErro('Erro ao remover.') }
-  }
-
-  async function regenerarToken() {
-    if (!confirm('Regenerar token invalida o link atual da TV. Confirma?')) return
-    try {
-      const res = await api.post('/tv/config/')
-      setConfig(c => ({ ...c, token: res.data.token, tv_url: `/tv/${res.data.token}` }))
-    } catch { setErro('Erro ao regenerar token.') }
-  }
-
-  function copiarLink() {
-    const url = `${window.location.origin}/tv/${config.token}`
-    navigator.clipboard.writeText(url)
-    setCopiado(true)
-    setTimeout(() => setCopiado(false), 2000)
-  }
-
-  function abrirTV() {
-    window.open(`/tv/${config.token}`, '_blank')
-  }
-
-  const getMidiaLabel = (id) => {
+  function getMidiaLabel(id) {
     const m = midias.find(x => x.id === id)
-    return m ? (m.titulo || m.url.slice(0, 40)) : `Mídia #${id}`
+    return m ? (m.titulo || m.url.slice(0, 35)) : `Mídia #${id}`
   }
 
-  if (loading) return <div className="p-8 text-muted text-sm">Carregando...</div>
-
-  const tvUrl = `${window.location.origin}/tv/${config?.token}`
+  const tvUrl = `${window.location.origin}/tv/${dispositivo.token}`
 
   return (
-    <div className="p-6 fade-up max-w-5xl mx-auto">
-
-      {/* Header */}
-      <div className="flex items-center justify-between mb-6">
-        <div>
-          <h1 className="text-lg font-bold text-dim">TV Manager</h1>
-          <p className="text-xs text-muted mt-0.5">Configure o conteúdo exibido nas TVs da empresa.</p>
+    <div className="bg-bg2 border border-border rounded-xl overflow-hidden">
+      {/* Header do dispositivo */}
+      <div className="px-4 py-3 border-b border-border">
+        <div className="flex items-center justify-between">
+          <div>
+            <h3 className="text-sm font-bold text-dim">{dispositivo.nome}</h3>
+            {dispositivo.local && <p className="text-[10px] text-muted">{dispositivo.local}</p>}
+          </div>
+          <div className="flex items-center gap-2">
+            <button onClick={() => window.open(`/tv/${dispositivo.token}`, '_blank')}
+              className="px-3 py-1.5 rounded-lg bg-primary text-bg text-xs font-semibold hover:opacity-90 transition">
+              📺 Abrir TV
+            </button>
+            <button onClick={onDelete}
+              className="px-2 py-1.5 rounded-lg border border-border text-muted hover:text-danger hover:border-danger/40 text-xs transition">
+              Remover
+            </button>
+          </div>
         </div>
-        <button onClick={abrirTV}
-          className="flex items-center gap-2 px-4 py-2 rounded-lg bg-primary text-bg text-sm font-semibold hover:opacity-90 transition">
-          📺 Abrir TV
-        </button>
-      </div>
 
-      {/* Link da TV */}
-      <div className="bg-bg2 border border-border rounded-xl p-4 mb-6">
-        <p className="text-[10px] font-semibold text-muted uppercase tracking-wide mb-2">Link da TV</p>
-        <div className="flex items-center gap-2">
-          <code className="flex-1 bg-bg3 border border-border rounded-lg px-3 py-2 text-xs text-primary truncate">
+        {/* Link */}
+        <div className="flex items-center gap-2 mt-3">
+          <code className="flex-1 bg-bg3 border border-border rounded-lg px-3 py-1.5 text-[11px] text-primary truncate">
             {tvUrl}
           </code>
-          <button onClick={copiarLink}
-            className="px-3 py-2 rounded-lg bg-primary/10 border border-primary/30 text-primary text-xs font-semibold hover:bg-primary/20 transition flex-shrink-0">
-            {copiado ? '✓ Copiado!' : 'Copiar'}
+          <button onClick={onCopiar}
+            className="px-2.5 py-1.5 rounded-lg bg-primary/10 border border-primary/30 text-primary text-[10px] font-semibold hover:bg-primary/20 transition flex-shrink-0">
+            {copiado ? '✓' : 'Copiar'}
           </button>
-          <button onClick={regenerarToken}
-            className="px-3 py-2 rounded-lg bg-bg3 border border-border text-muted text-xs hover:text-danger hover:border-danger/40 transition flex-shrink-0">
+          <button onClick={onTokenRegen}
+            className="px-2.5 py-1.5 rounded-lg bg-bg3 border border-border text-muted text-[10px] hover:text-danger transition flex-shrink-0">
             Regenerar
           </button>
         </div>
-        <p className="text-[10px] text-muted mt-2">Cole este link no navegador da TV. Funciona sem login.</p>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      {/* Playlist */}
+      <div className="p-4">
+        <p className="text-[10px] font-semibold text-muted uppercase tracking-wide mb-3">
+          Playlist — {playlist.length} {playlist.length === 1 ? 'item' : 'itens'}
+          {salvando && <span className="ml-2 text-primary normal-case">Salvando...</span>}
+        </p>
 
-        {/* ── Playlist ── */}
-        <div className="bg-bg2 border border-border rounded-xl overflow-hidden">
-          <div className="px-4 py-3 border-b border-border">
-            <h2 className="text-sm font-bold text-dim">Playlist</h2>
-            <p className="text-[10px] text-muted">Ordem de exibição na TV</p>
-          </div>
-
-          {/* Itens existentes */}
-          <div className="divide-y divide-border/60">
-            {(!config?.playlist || config.playlist.length === 0) && (
-              <p className="px-4 py-6 text-xs text-muted text-center">Nenhum item na playlist ainda.</p>
-            )}
-            {config?.playlist?.map((item, i) => (
-              <div key={i} className="flex items-center gap-3 px-4 py-3">
+        <div className="space-y-1.5 mb-4 max-h-48 overflow-y-auto">
+          {playlist.length === 0 && (
+            <p className="text-xs text-muted text-center py-4">Nenhum item. Adicione abaixo.</p>
+          )}
+          {playlist.map((item, i) => {
+            const dash = DASHBOARD_OPTS.find(d => d.tipo === item.tipo)
+            return (
+              <div key={i} className="flex items-center gap-2 bg-bg3 rounded-lg px-3 py-2">
                 <div className="flex flex-col gap-0.5">
                   <button onClick={() => moveItem(i, -1)} disabled={i === 0}
-                    className="text-muted hover:text-dim disabled:opacity-20 text-xs leading-none">▲</button>
-                  <button onClick={() => moveItem(i, 1)} disabled={i === config.playlist.length - 1}
-                    className="text-muted hover:text-dim disabled:opacity-20 text-xs leading-none">▼</button>
+                    className="text-muted hover:text-dim disabled:opacity-20 text-[10px] leading-none">▲</button>
+                  <button onClick={() => moveItem(i, 1)} disabled={i === playlist.length - 1}
+                    className="text-muted hover:text-dim disabled:opacity-20 text-[10px] leading-none">▼</button>
                 </div>
+                <span className="text-base">{dash?.icon || '🖼'}</span>
                 <div className="flex-1 min-w-0">
                   {item.tipo === 'midia'
-                    ? <span className="text-sm text-dim truncate block">🖼 {getMidiaLabel(item.midia_id)}</span>
-                    : <Badge tipo={item.tipo} />
+                    ? <span className="text-xs text-dim truncate block">{getMidiaLabel(item.midia_id)}</span>
+                    : <span className="text-xs font-semibold" style={{ color: dash?.cor || '#7a8fa8' }}>{dash?.label}</span>
                   }
                   <span className="text-[10px] text-muted">{item.duracao}s</span>
                 </div>
                 <button onClick={() => removeItem(i)}
-                  className="text-muted hover:text-danger transition text-lg leading-none flex-shrink-0">×</button>
+                  className="text-muted hover:text-danger transition text-base leading-none flex-shrink-0">×</button>
               </div>
-            ))}
-          </div>
-
-          {/* Adicionar item */}
-          <div className="px-4 py-4 border-t border-border bg-bg3/50">
-            <p className="text-[10px] font-semibold text-muted uppercase tracking-wide mb-3">Adicionar item</p>
-            <div className="space-y-2">
-              <select value={addTipo} onChange={e => { setAddTipo(e.target.value); setAddMidia('') }}
-                className="w-full bg-bg border border-border rounded-lg px-3 py-2 text-sm text-dim focus:outline-none focus:border-primary">
-                <optgroup label="Dashboards">
-                  {DASHBOARD_OPTS.map(d => <option key={d.tipo} value={d.tipo}>{d.icon} {d.label}</option>)}
-                </optgroup>
-                <option value="midia">🖼 Mídia (imagem/vídeo)</option>
-              </select>
-              {addTipo === 'midia' && (
-                <select value={addMidiaId} onChange={e => setAddMidiaId(e.target.value)}
-                  className="w-full bg-bg border border-border rounded-lg px-3 py-2 text-sm text-dim focus:outline-none focus:border-primary">
-                  <option value="">— selecione a mídia —</option>
-                  {midias.map(m => <option key={m.id} value={m.id}>{m.titulo || m.url.slice(0,40)}</option>)}
-                </select>
-              )}
-              <div className="flex gap-2">
-                <input type="number" value={addDur} onChange={e => setAddDur(e.target.value)}
-                  min={5} max={300} placeholder="Duração (s)"
-                  className="w-28 bg-bg border border-border rounded-lg px-3 py-2 text-sm text-dim focus:outline-none focus:border-primary" />
-                <span className="text-xs text-muted self-center">segundos</span>
-                <button onClick={addToPlaylist} disabled={salvando}
-                  className="ml-auto px-4 py-2 rounded-lg bg-primary text-bg text-xs font-semibold hover:opacity-90 transition disabled:opacity-50">
-                  + Adicionar
-                </button>
-              </div>
-            </div>
-          </div>
+            )
+          })}
         </div>
 
-        {/* ── Biblioteca de Mídia ── */}
-        <div className="bg-bg2 border border-border rounded-xl overflow-hidden">
-          <div className="px-4 py-3 border-b border-border">
-            <h2 className="text-sm font-bold text-dim">Biblioteca de Mídia</h2>
-            <p className="text-[10px] text-muted">Imagens e vídeos para exibir na TV</p>
+        {/* Adicionar item */}
+        <div className="border-t border-border/60 pt-3 space-y-2">
+          <p className="text-[10px] font-semibold text-muted uppercase tracking-wide">Adicionar item</p>
+          <select value={addTipo} onChange={e => { setAddTipo(e.target.value); setAddMidiaId('') }}
+            className="w-full bg-bg border border-border rounded-lg px-3 py-2 text-sm text-dim focus:outline-none focus:border-primary">
+            <optgroup label="Dashboards">
+              {DASHBOARD_OPTS.map(d => <option key={d.tipo} value={d.tipo}>{d.icon} {d.label}</option>)}
+            </optgroup>
+            <option value="midia">🖼 Mídia (imagem/vídeo)</option>
+          </select>
+          {addTipo === 'midia' && (
+            <select value={addMidiaId} onChange={e => setAddMidiaId(e.target.value)}
+              className="w-full bg-bg border border-border rounded-lg px-3 py-2 text-sm text-dim focus:outline-none focus:border-primary">
+              <option value="">— selecione a mídia —</option>
+              {midias.map(m => <option key={m.id} value={m.id}>{m.titulo || m.url.slice(0, 40)}</option>)}
+            </select>
+          )}
+          <div className="flex gap-2">
+            <input type="number" value={addDur} onChange={e => setAddDur(e.target.value)}
+              min={5} max={300}
+              className="w-24 bg-bg border border-border rounded-lg px-3 py-2 text-sm text-dim focus:outline-none focus:border-primary" />
+            <span className="text-xs text-muted self-center">seg.</span>
+            <button onClick={addItem} disabled={salvando}
+              className="ml-auto px-4 py-2 rounded-lg bg-primary text-bg text-xs font-semibold hover:opacity-90 transition disabled:opacity-50">
+              + Adicionar
+            </button>
           </div>
+          {erro && <p className="text-xs text-danger">{erro}</p>}
+        </div>
+      </div>
+    </div>
+  )
+}
 
-          {/* Lista */}
-          <div className="divide-y divide-border/60 max-h-64 overflow-y-auto">
-            {midias.length === 0 && (
-              <p className="px-4 py-6 text-xs text-muted text-center">Nenhuma mídia adicionada ainda.</p>
-            )}
-            {midias.map(m => (
-              <div key={m.id} className="flex items-center gap-3 px-4 py-3">
-                <span className="text-lg flex-shrink-0">{m.tipo === 'video' ? '🎬' : '🖼'}</span>
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm text-dim truncate">{m.titulo || 'Sem título'}</p>
-                  <p className="text-[10px] text-muted truncate">{m.url}</p>
-                  <p className="text-[10px] text-muted">{m.duracao}s</p>
+// ── Aba Biblioteca de Mídia ───────────────────────────────────────────────────
+function AbaMidia({ midias, onMidiasChange }) {
+  const [mUrl,    setMUrl]    = useState('')
+  const [mTitulo, setMTitulo] = useState('')
+  const [mTipo,   setMTipo]   = useState('imagem')
+  const [mDur,    setMDur]    = useState(15)
+  const [mIni,    setMIni]    = useState('')
+  const [mFim,    setMFim]    = useState('')
+  const [adding,  setAdding]  = useState(false)
+  const [erro,    setErro]    = useState('')
+
+  async function salvarMidia() {
+    if (!mUrl.trim()) { setErro('URL obrigatória.'); return }
+    setAdding(true); setErro('')
+    try {
+      await api.post('/tv/midia/', {
+        url: mUrl.trim(), titulo: mTitulo.trim(), tipo: mTipo,
+        duracao: Number(mDur), data_inicio: mIni || null, data_fim: mFim || null,
+      })
+      setMUrl(''); setMTitulo(''); setMTipo('imagem'); setMDur(15); setMIni(''); setMFim('')
+      onMidiasChange()
+    } catch { setErro('Erro ao adicionar mídia.') }
+    finally { setAdding(false) }
+  }
+
+  async function deletar(id) {
+    if (!confirm('Remover esta mídia?')) return
+    try {
+      await api.delete(`/tv/midia/${id}/`)
+      onMidiasChange()
+    } catch { setErro('Erro ao remover.') }
+  }
+
+  return (
+    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+
+      {/* Lista */}
+      <div className="bg-bg2 border border-border rounded-xl overflow-hidden">
+        <div className="px-4 py-3 border-b border-border">
+          <h3 className="text-sm font-bold text-dim">Mídias cadastradas</h3>
+          <p className="text-[10px] text-muted">{midias.length} item{midias.length !== 1 ? 's' : ''} · compartilhado entre todos os dispositivos</p>
+        </div>
+        <div className="divide-y divide-border/60 max-h-[500px] overflow-y-auto">
+          {midias.length === 0 && (
+            <p className="px-4 py-8 text-xs text-muted text-center">Nenhuma mídia cadastrada.</p>
+          )}
+          {midias.map(m => (
+            <div key={m.id} className="flex items-start gap-3 px-4 py-3">
+              <span className="text-xl flex-shrink-0">{m.tipo === 'video' ? '🎬' : '🖼'}</span>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm text-dim font-medium truncate">{m.titulo || 'Sem título'}</p>
+                <p className="text-[10px] text-muted truncate">{m.url}</p>
+                <div className="flex items-center gap-2 mt-0.5">
+                  <span className="text-[10px] text-muted">{m.duracao}s</span>
+                  {m.data_inicio && <span className="text-[10px] text-primary">De {m.data_inicio}</span>}
+                  {m.data_fim    && <span className="text-[10px] text-warn">Até {m.data_fim}</span>}
+                  {!m.ativo      && <span className="text-[10px] text-danger">Inativa</span>}
                 </div>
-                <button onClick={() => deleteMidia(m.id)}
-                  className="text-muted hover:text-danger transition text-lg leading-none flex-shrink-0">×</button>
               </div>
-            ))}
-          </div>
-
-          {/* Adicionar mídia */}
-          <div className="px-4 py-4 border-t border-border bg-bg3/50">
-            <p className="text-[10px] font-semibold text-muted uppercase tracking-wide mb-3">Adicionar mídia</p>
-            <div className="space-y-2">
-              <input value={mUrl} onChange={e => setMUrl(e.target.value)}
-                placeholder="URL da imagem ou vídeo (https://...)"
-                className="w-full bg-bg border border-border rounded-lg px-3 py-2 text-sm text-dim placeholder-muted focus:outline-none focus:border-primary" />
-              <input value={mTitulo} onChange={e => setMTitulo(e.target.value)}
-                placeholder="Título (opcional)"
-                className="w-full bg-bg border border-border rounded-lg px-3 py-2 text-sm text-dim placeholder-muted focus:outline-none focus:border-primary" />
-              <div className="flex gap-2">
-                <select value={mTipo} onChange={e => setMTipo(e.target.value)}
-                  className="bg-bg border border-border rounded-lg px-3 py-2 text-sm text-dim focus:outline-none focus:border-primary">
-                  <option value="imagem">🖼 Imagem</option>
-                  <option value="video">🎬 Vídeo</option>
-                </select>
-                <input type="number" value={mDur} onChange={e => setMDur(e.target.value)}
-                  min={5} max={300} placeholder="Seg."
-                  className="w-20 bg-bg border border-border rounded-lg px-3 py-2 text-sm text-dim focus:outline-none focus:border-primary" />
-                <button onClick={salvarMidia} disabled={addingM}
-                  className="ml-auto px-4 py-2 rounded-lg bg-primary text-bg text-xs font-semibold hover:opacity-90 transition disabled:opacity-50">
-                  {addingM ? '...' : '+ Adicionar'}
-                </button>
-              </div>
-              <p className="text-[10px] text-muted">
-                Suporta links diretos de imagens (.jpg, .png), vídeos (.mp4) ou embeds do YouTube.
-              </p>
+              <button onClick={() => deletar(m.id)}
+                className="text-muted hover:text-danger transition text-lg leading-none flex-shrink-0">×</button>
             </div>
-          </div>
+          ))}
         </div>
       </div>
 
-      {erro && <p className="mt-4 text-xs text-danger bg-danger/10 border border-danger/20 rounded-lg px-3 py-2">{erro}</p>}
-      {msg  && <p className="mt-4 text-xs text-primary bg-primary/10 border border-primary/20 rounded-lg px-3 py-2">{msg}</p>}
+      {/* Formulário */}
+      <div className="bg-bg2 border border-border rounded-xl overflow-hidden">
+        <div className="px-4 py-3 border-b border-border">
+          <h3 className="text-sm font-bold text-dim">Adicionar mídia</h3>
+          <p className="text-[10px] text-muted">Links diretos, YouTube ou vídeos MP4</p>
+        </div>
+        <div className="px-4 py-4 space-y-3">
+          <div>
+            <label className="block text-[10px] font-semibold text-muted uppercase tracking-wide mb-1">URL *</label>
+            <input value={mUrl} onChange={e => setMUrl(e.target.value)}
+              placeholder="https://... (imagem, vídeo, YouTube)"
+              className="w-full bg-bg3 border border-border rounded-lg px-3 py-2.5 text-sm text-dim placeholder-muted focus:outline-none focus:border-primary" />
+          </div>
+          <div>
+            <label className="block text-[10px] font-semibold text-muted uppercase tracking-wide mb-1">Título</label>
+            <input value={mTitulo} onChange={e => setMTitulo(e.target.value)}
+              placeholder="Nome para identificar (opcional)"
+              className="w-full bg-bg3 border border-border rounded-lg px-3 py-2.5 text-sm text-dim placeholder-muted focus:outline-none focus:border-primary" />
+          </div>
+          <div className="grid grid-cols-2 gap-2">
+            <div>
+              <label className="block text-[10px] font-semibold text-muted uppercase tracking-wide mb-1">Tipo</label>
+              <select value={mTipo} onChange={e => setMTipo(e.target.value)}
+                className="w-full bg-bg3 border border-border rounded-lg px-3 py-2.5 text-sm text-dim focus:outline-none focus:border-primary">
+                <option value="imagem">🖼 Imagem</option>
+                <option value="video">🎬 Vídeo</option>
+              </select>
+            </div>
+            <div>
+              <label className="block text-[10px] font-semibold text-muted uppercase tracking-wide mb-1">Duração (seg.)</label>
+              <input type="number" value={mDur} onChange={e => setMDur(e.target.value)}
+                min={5} max={300}
+                className="w-full bg-bg3 border border-border rounded-lg px-3 py-2.5 text-sm text-dim focus:outline-none focus:border-primary" />
+            </div>
+          </div>
+
+          {/* Agendamento */}
+          <div className="rounded-lg border border-border/60 bg-bg3/50 p-3">
+            <p className="text-[10px] font-semibold text-muted uppercase tracking-wide mb-2">Agendamento (opcional)</p>
+            <div className="grid grid-cols-2 gap-2">
+              <div>
+                <label className="block text-[10px] text-muted mb-1">Exibir a partir de</label>
+                <input type="date" value={mIni} onChange={e => setMIni(e.target.value)}
+                  className="w-full bg-bg border border-border rounded-lg px-3 py-2 text-sm text-dim focus:outline-none focus:border-primary" />
+              </div>
+              <div>
+                <label className="block text-[10px] text-muted mb-1">Exibir até</label>
+                <input type="date" value={mFim} onChange={e => setMFim(e.target.value)}
+                  className="w-full bg-bg border border-border rounded-lg px-3 py-2 text-sm text-dim focus:outline-none focus:border-primary" />
+              </div>
+            </div>
+            <p className="text-[10px] text-muted mt-1.5">Ex: campanha de Natal de 01/12 a 31/12</p>
+          </div>
+
+          {erro && <p className="text-xs text-danger">{erro}</p>}
+
+          <button onClick={salvarMidia} disabled={adding}
+            className="w-full py-2.5 rounded-lg bg-primary text-bg text-sm font-semibold hover:opacity-90 transition disabled:opacity-50">
+            {adding ? 'Salvando...' : '+ Adicionar à biblioteca'}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ── Componente principal ──────────────────────────────────────────────────────
+export default function TVManager() {
+  const [abaAtiva, setAbaAtiva] = useState(0)
+  const [midias,   setMidias]   = useState([])
+  const [loadM,    setLoadM]    = useState(true)
+
+  const carregarMidias = useCallback(async () => {
+    setLoadM(true)
+    try {
+      const res = await api.get('/tv/midia/')
+      setMidias(res.data)
+    } catch {}
+    finally { setLoadM(false) }
+  }, [])
+
+  useEffect(() => { carregarMidias() }, [carregarMidias])
+
+  return (
+    <div className="p-6 fade-up">
+
+      {/* Header */}
+      <div className="mb-6">
+        <h1 className="text-lg font-bold text-dim">TV Manager</h1>
+        <p className="text-xs text-muted mt-0.5">Gerencie dispositivos de TV corporativa da empresa.</p>
+      </div>
+
+      {/* Abas */}
+      <div className="flex gap-1 mb-6 border-b border-border">
+        {TABS.map((tab, i) => (
+          <button key={i} onClick={() => setAbaAtiva(i)}
+            className={`px-4 py-2.5 text-sm font-medium transition border-b-2 -mb-px
+              ${abaAtiva === i
+                ? 'text-primary border-primary'
+                : 'text-muted border-transparent hover:text-dim'}`}>
+            {tab}
+          </button>
+        ))}
+      </div>
+
+      {/* Conteúdo */}
+      {abaAtiva === 0 && <AbaDispositivos midias={midias} />}
+      {abaAtiva === 1 && !loadM && <AbaMidia midias={midias} onMidiasChange={carregarMidias} />}
+      {abaAtiva === 1 && loadM && <div className="py-12 text-center text-muted text-sm">Carregando...</div>}
     </div>
   )
 }

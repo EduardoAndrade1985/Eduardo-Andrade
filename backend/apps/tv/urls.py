@@ -1,9 +1,17 @@
 from django.urls import path
-from .views import TVConfigView, TVMidiaView, TVMidiaDetailView, TVPublicView
+from .views import (
+    TVConfigListView, TVConfigDetailView, TVTokenRegenView,
+    TVMidiaListView, TVMidiaDetailView, TVPublicView,
+)
 
 urlpatterns = [
-    path('config/',          TVConfigView.as_view(),      name='tv_config'),
-    path('midia/',           TVMidiaView.as_view(),        name='tv_midia_list'),
-    path('midia/<int:pk>/',  TVMidiaDetailView.as_view(),  name='tv_midia_detail'),
-    path('public/<str:token>/', TVPublicView.as_view(),    name='tv_public'),
+    # Dispositivos
+    path('config/',               TVConfigListView.as_view(),   name='tv_config_list'),
+    path('config/<int:pk>/',      TVConfigDetailView.as_view(), name='tv_config_detail'),
+    path('config/<int:pk>/token/',TVTokenRegenView.as_view(),   name='tv_token_regen'),
+    # Mídia
+    path('midia/',                TVMidiaListView.as_view(),    name='tv_midia_list'),
+    path('midia/<int:pk>/',       TVMidiaDetailView.as_view(),  name='tv_midia_detail'),
+    # Público
+    path('public/<str:token>/',   TVPublicView.as_view(),       name='tv_public'),
 ]
