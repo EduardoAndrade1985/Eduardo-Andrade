@@ -287,21 +287,46 @@ def _get_ocupacao(empresa):
         # Dados de ontem para variação
         ontem = OcupacaoDiaria.objects.filter(empresa=empresa, data=r.data - timedelta(days=1), tipo='historico').first()
 
-        # Histórico do mês (para gráfico)
+        # Período: início do mês até fim do mês (inclui previsão)
         mes_ini = r.data.replace(day=1)
-        historico_qs = OcupacaoDiaria.objects.filter(
-            empresa=empresa, tipo='historico',
-            data__gte=mes_ini, data__lte=hoje
-        ).order_by('data')
+        import calendar
+        ultimo_dia = calendar.monthrange(r.data.year, r.data.month)[1]
+        mes_fim = r.data.replace(day=ultimo_dia)
+
+        todos_qs = OcupacaoDiaria.objects.filter(
+            empresa=empresa,
+            data__gte=mes_ini, data__lte=mes_fim
+        ).order_by('data', 'tipo')
+
+        # Consolida por data (prefere historico, cai em previsao)
+        por_data = {}
+        for h in todos_qs:
+            k = str(h.data)
+            if k not in por_data or h.tipo == 'historico':
+                por_data[k] = h
 
         historico = []
-        for h in historico_qs:
-            mes = h.data.strftime('%d/%m')
+        tabela    = []
+        DIAS_PT   = ['Dom','Seg','Ter','Qua','Qui','Sex','Sáb']
+        for k in sorted(por_data.keys()):
+            h   = por_data[k]
+            dia = DIAS_PT[h.data.weekday() if hasattr(h.data, 'weekday') else 0]
+            th  = float(h.taxa_ocup_perc or 0)
             historico.append({
-                'data':  mes,
-                'taxa':  float(h.taxa_ocup_perc or 0),
-                'adr':   float(h.diaria_n or 0),
+                'data':   h.data.strftime('%d/%m'),
+                'taxa':   th,
+                'adr':    float(h.diaria_n or 0),
                 'revpar': float(h.revpar or 0),
+            })
+            tabela.append({
+                'data':    h.data.strftime('%d/%m'),
+                'iso':     k,
+                'dia':     dia,
+                'taxa':    th,
+                'uhs':     h.ocup_t or 0,
+                'ci':      h.check_in or 0,
+                'co':      h.check_out or 0,
+                'tipo':    h.tipo,
             })
 
         total_uhs = r.uh_disp_venda or empresa.total_uhs or 1
@@ -329,6 +354,10 @@ def _get_ocupacao(empresa):
             'var_revpar':    var(r.revpar, ontem.revpar if ontem else None),
             'var_receita':   var(r.total, ontem.total if ontem else None),
             'historico':     historico,
+            'tabela':        tabela,
+            'receita_mtd':   float(sum(float(por_data[k].total or 0)
+                                      for k in sorted(por_data.keys())
+                                      if por_data[k].tipo == 'historico')),
         }
     except Exception:
         return None

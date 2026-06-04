@@ -1,6 +1,9 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { useParams } from 'react-router-dom'
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts'
+import {
+  LineChart, Line, XAxis, YAxis, CartesianGrid,
+  Tooltip, ResponsiveContainer,
+} from 'recharts'
 
 const BASE = import.meta.env.VITE_API_BASE_URL || ''
 
@@ -58,7 +61,16 @@ function Gauge({ pct, cor }) {
   )
 }
 
-// ── Slide Ocupação completo ───────────────────────────────────────────────────
+// ── Cor da taxa ───────────────────────────────────────────────────────────────
+function taxaColor(t) {
+  const v = parseFloat(t || 0)
+  if (v >= 80) return '#2dd4a0'
+  if (v >= 50) return '#f59e0b'
+  if (v >= 30) return '#ef4444'
+  return '#ef4444'
+}
+
+// ── Slide Ocupação idêntico ao dashboard ──────────────────────────────────────
 function OcupacaoSlide({ dados, cor }) {
   if (!dados) return (
     <div className="w-full h-full flex flex-col items-center justify-center text-white">
@@ -68,113 +80,179 @@ function OcupacaoSlide({ dados, cor }) {
     </div>
   )
 
-  const taxa = parseFloat(dados.taxa_ocupacao || 0)
-  const taxaColor = taxa >= 80 ? '#22c55e' : taxa >= 50 ? '#f59e0b' : taxa >= 30 ? '#2dd4a0' : '#ef4444'
-  const hist = dados.historico || []
+  const taxa   = parseFloat(dados.taxa_ocupacao || 0)
+  const tColor = taxaColor(taxa)
+  const hist   = dados.historico || []
+  const tabela = dados.tabela    || []
+  const hoje   = dados.data      || ''
 
-  const fmtData = (s) => {
-    if (!s) return ''
-    const [y, m, d] = s.split('-')
-    return `${d}/${m}`
-  }
+  const fmtISO = (s) => { if (!s) return ''; const [,m,d] = s.split('-'); return `${d}/${m}` }
 
+  // KPI cards topo
   const kpis = [
-    { label: 'TAXA OCUP.',  value: `${taxa.toFixed(2)}%`,    var: dados.var_taxa,    sub: fmtData(dados.data) },
-    { label: 'UHs OCUP.',   value: dados.uhs_ocupadas,       sub: `Livre: ${dados.uhs_livres}` },
-    { label: 'ADR',         value: cur(dados.adr),           var: dados.var_adr,     sub: 'Diária média' },
-    { label: 'REVPAR',      value: cur(dados.revpar),        var: dados.var_revpar,  sub: 'p/ UH disp.' },
-    { label: 'RECEITA DIA', value: cur(dados.receita_dia),   var: dados.var_receita, sub: fmtData(dados.data) },
-    { label: 'HÓSPEDES',    value: dados.hospedes,           sub: `In: ${dados.checkins} · Out: ${dados.checkouts}` },
+    { label: 'TAXA OCUP.',   value: `${taxa.toFixed(2)}%`,       sub: fmtISO(hoje), var: dados.var_taxa,    color: tColor },
+    { label: 'UHs OCUP.',    value: dados.uhs_ocupadas,          sub: `Livre: ${dados.uhs_livres}`,          color: cor },
+    { label: 'ADR',          value: cur(dados.adr),              sub: 'Diária média', var: dados.var_adr,    color: cor },
+    { label: 'REVPAR',       value: cur(dados.revpar),           sub: 'p/ UH disp.',  var: dados.var_revpar, color: cor },
+    { label: 'RECEITA DIA',  value: cur(dados.receita_dia),      sub: fmtISO(hoje), var: dados.var_receita,  color: cor },
+    { label: 'RECEITA MTD',  value: cur(dados.receita_mtd || 0), sub: 'Acum.',                               color: cor },
+    { label: 'HÓSPEDES',     value: dados.hospedes,              sub: `In: ${dados.checkins} · Out: ${dados.checkouts}`, color: cor },
   ]
 
-  return (
-    <div className="w-full h-full flex flex-col p-4 text-white bg-[#0d1117]">
+  const C = { grid: '#1e2535', tick: '#7a8fa8' }
 
-      {/* KPI cards no topo */}
-      <div className="grid grid-cols-6 gap-2 mb-3">
+  return (
+    <div className="w-full h-full flex flex-col bg-[#0d1117] text-white overflow-hidden">
+
+      {/* KPI cards */}
+      <div className="flex gap-1.5 px-3 pt-2 pb-1.5 flex-shrink-0">
         {kpis.map((k, i) => (
-          <div key={i} className="bg-[#161b27] border border-white/[0.06] rounded-xl px-3 py-2">
-            <p className="text-[9px] text-white/40 uppercase tracking-wider mb-0.5">{k.label}</p>
-            <p className="text-xl font-bold" style={{ color: i === 0 ? taxaColor : cor }}>{k.value}</p>
-            <div className="flex items-center gap-1 mt-0.5">
+          <div key={i} className="flex-1 bg-[#161b27] border border-white/[0.06] rounded-xl px-2.5 py-2 min-w-0">
+            <p className="text-[8px] text-white/40 uppercase tracking-wider truncate">{k.label}</p>
+            <p className="text-base font-bold leading-tight" style={{ color: k.color }}>{k.value}</p>
+            <div className="flex items-center gap-1 mt-0.5 flex-wrap">
               {k.var != null && <Var v={k.var} />}
-              <span className="text-[9px] text-white/30">{k.sub}</span>
+              <span className="text-[8px] text-white/30 truncate">{k.sub}</span>
             </div>
           </div>
         ))}
       </div>
 
-      {/* Área principal */}
-      <div className="flex gap-3 flex-1 min-h-0">
+      {/* Corpo principal */}
+      <div className="flex gap-2 px-3 pb-2 flex-1 min-h-0">
 
-        {/* Gráfico Taxa de Ocupação */}
-        <div className="flex-1 bg-[#161b27] border border-white/[0.06] rounded-xl p-3 flex flex-col min-w-0">
-          <p className="text-xs font-semibold text-white/50 mb-2 uppercase tracking-wider">
-            Taxa de Ocupação (%) — {hist[0]?.data || ''} → {hist[hist.length-1]?.data || ''}
-          </p>
-          <div className="flex-1 min-h-0">
-            <ResponsiveContainer width="100%" height="100%">
-              <LineChart data={hist} margin={{ top: 8, right: 12, bottom: 0, left: -10 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" />
-                <XAxis dataKey="data" tick={{ fill: '#7a8fa8', fontSize: 10 }} interval="preserveStartEnd" />
-                <YAxis tick={{ fill: '#7a8fa8', fontSize: 10 }} unit="%" />
-                <Tooltip
-                  contentStyle={{ background: '#161b27', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 8 }}
-                  labelStyle={{ color: '#dde3ed' }}
-                  formatter={(v) => [`${v.toFixed(1)}%`, 'Taxa']}
-                />
-                <Line type="monotone" dataKey="taxa" stroke={cor} strokeWidth={2.5} dot={false} />
-              </LineChart>
-            </ResponsiveContainer>
+        {/* Tabela lateral */}
+        <div className="w-[200px] flex-shrink-0 bg-[#161b27] border border-white/[0.06] rounded-xl overflow-hidden flex flex-col">
+          <div className="px-2 py-1.5 border-b border-white/[0.06] flex-shrink-0">
+            <p className="text-[9px] text-white/40 uppercase tracking-wider">
+              {tabela[0]?.data || ''} → {tabela[tabela.length-1]?.data || ''}
+            </p>
+            <p className="text-[9px] text-white/30">{tabela.length} dias</p>
+          </div>
+          <div className="flex-shrink-0 grid grid-cols-5 gap-0 px-2 py-1 border-b border-white/[0.04]">
+            {['DATA','DIA','OCUP','UHS','CI/CO'].map(h => (
+              <span key={h} className="text-[8px] text-white/30 font-semibold uppercase text-center">{h}</span>
+            ))}
+          </div>
+          <div className="overflow-y-auto flex-1">
+            {tabela.map((row, i) => {
+              const isHoje = row.iso === hoje
+              const tc     = taxaColor(row.taxa)
+              return (
+                <div key={i}
+                  className={`grid grid-cols-5 gap-0 px-2 py-0.5 border-b border-white/[0.025]
+                    ${isHoje ? 'bg-primary/10' : ''}`}>
+                  <span className={`text-[9px] font-bold ${isHoje ? 'text-primary' : 'text-white/60'}`}>{row.data}</span>
+                  <span className="text-[8px] text-white/40 text-center">{row.dia}</span>
+                  <span className="text-[9px] font-bold text-center" style={{ color: tc }}>{row.taxa.toFixed(1)}%</span>
+                  <span className="text-[9px] text-white/60 text-center">{row.uhs}</span>
+                  <span className="text-[8px] text-center">
+                    <span className="text-green-400">{row.ci}</span>
+                    <span className="text-white/20">/</span>
+                    <span className="text-red-400">{row.co}</span>
+                  </span>
+                </div>
+              )
+            })}
           </div>
         </div>
 
-        {/* Painel direito — Ocupação hoje + KPIs D-1 */}
-        <div className="w-56 flex flex-col gap-2 flex-shrink-0">
-          <div className="bg-[#161b27] border border-white/[0.06] rounded-xl p-3 flex flex-col items-center">
-            <p className="text-[10px] text-white/40 uppercase tracking-wider mb-1">
-              Ocupação Hoje · {dados.total_uhs} UHs
+        {/* Gráficos */}
+        <div className="flex-1 flex flex-col gap-2 min-w-0">
+          {/* Gráfico Taxa de Ocupação */}
+          <div className="flex-1 bg-[#161b27] border border-white/[0.06] rounded-xl p-2 flex flex-col min-h-0">
+            <p className="text-[9px] font-semibold text-white/50 uppercase tracking-wider mb-1">
+              Taxa de Ocupação (%)
             </p>
-            <Gauge pct={taxa} cor={taxaColor} />
-            <div className="grid grid-cols-2 gap-2 w-full mt-2">
-              <div className="bg-[#0d1117] rounded-lg p-2 text-center">
-                <p className="text-[9px] text-white/40">Ocup.</p>
-                <p className="text-lg font-bold" style={{ color: taxaColor }}>{dados.uhs_ocupadas}</p>
-              </div>
-              <div className="bg-[#0d1117] rounded-lg p-2 text-center">
-                <p className="text-[9px] text-white/40">Livres</p>
-                <p className="text-lg font-bold text-white/60">{dados.uhs_livres}</p>
-              </div>
-              <div className="bg-[#0d1117] rounded-lg p-2 text-center">
-                <p className="text-[9px] text-white/40">Check-in</p>
-                <p className="text-lg font-bold text-green-400">{dados.checkins}</p>
-              </div>
-              <div className="bg-[#0d1117] rounded-lg p-2 text-center">
-                <p className="text-[9px] text-white/40">Check-out</p>
-                <p className="text-lg font-bold text-yellow-400">{dados.checkouts}</p>
-              </div>
+            <div className="flex-1 min-h-0">
+              <ResponsiveContainer width="100%" height="100%">
+                <LineChart data={hist} margin={{ top: 4, right: 8, bottom: 0, left: -15 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke={C.grid} />
+                  <XAxis dataKey="data" tick={{ fill: C.tick, fontSize: 9 }} interval="preserveStartEnd" />
+                  <YAxis tick={{ fill: C.tick, fontSize: 9 }} unit="%" domain={[0, 'auto']} />
+                  <Tooltip
+                    contentStyle={{ background: '#161b27', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 8, fontSize: 11 }}
+                    formatter={(v) => [`${v.toFixed(1)}%`, 'Taxa Ocup.']}
+                  />
+                  <Line type="monotone" dataKey="taxa" stroke={cor} strokeWidth={2} dot={false} />
+                </LineChart>
+              </ResponsiveContainer>
+            </div>
+          </div>
+
+          {/* Gráfico ADR e RevPAR */}
+          <div className="flex-1 bg-[#161b27] border border-white/[0.06] rounded-xl p-2 flex flex-col min-h-0">
+            <p className="text-[9px] font-semibold text-white/50 uppercase tracking-wider mb-1">
+              ADR e RevPAR (R$)
+            </p>
+            <div className="flex-1 min-h-0">
+              <ResponsiveContainer width="100%" height="100%">
+                <LineChart data={hist} margin={{ top: 4, right: 8, bottom: 0, left: -15 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke={C.grid} />
+                  <XAxis dataKey="data" tick={{ fill: C.tick, fontSize: 9 }} interval="preserveStartEnd" />
+                  <YAxis tick={{ fill: C.tick, fontSize: 9 }} />
+                  <Tooltip
+                    contentStyle={{ background: '#161b27', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 8, fontSize: 11 }}
+                    formatter={(v, n) => [cur(v), n === 'adr' ? 'ADR' : 'RevPAR']}
+                  />
+                  <Line type="monotone" dataKey="adr"    stroke={cor}      strokeWidth={2} dot={false} />
+                  <Line type="monotone" dataKey="revpar" stroke="#0ea5e9"   strokeWidth={2} dot={false} strokeDasharray="5 3" />
+                </LineChart>
+              </ResponsiveContainer>
+            </div>
+          </div>
+        </div>
+
+        {/* Painel direito */}
+        <div className="w-[200px] flex-shrink-0 flex flex-col gap-2">
+          {/* Gauge */}
+          <div className="bg-[#161b27] border border-white/[0.06] rounded-xl p-2 flex flex-col items-center flex-shrink-0">
+            <p className="text-[9px] text-primary uppercase tracking-wider font-semibold mb-1">
+              OCUPAÇÃO HOJE · {dados.total_uhs} UHs
+            </p>
+            <Gauge pct={taxa} cor={tColor} />
+            <div className="grid grid-cols-2 gap-1.5 w-full mt-1">
+              {[
+                { l: 'Ocup.',    v: dados.uhs_ocupadas, c: tColor },
+                { l: 'Livres',   v: dados.uhs_livres,   c: '#7a8fa8' },
+                { l: 'Check-in', v: dados.checkins,     c: '#22c55e' },
+                { l: 'Check-out',v: dados.checkouts,    c: '#f59e0b' },
+              ].map((x, i) => (
+                <div key={i} className="bg-[#0d1117] rounded-lg p-1.5 text-center">
+                  <p className="text-[8px] text-white/40">{x.l}</p>
+                  <p className="text-xl font-bold" style={{ color: x.c }}>{x.v}</p>
+                </div>
+              ))}
             </div>
           </div>
 
           {/* KPIs vs D-1 */}
-          <div className="bg-[#161b27] border border-white/[0.06] rounded-xl p-3 flex-1">
-            <p className="text-[10px] text-white/40 uppercase tracking-wider mb-2">KPIs vs D-1</p>
+          <div className="bg-[#161b27] border border-white/[0.06] rounded-xl p-2 flex-1">
+            <div className="flex items-center justify-between mb-1.5">
+              <p className="text-[9px] text-white/40 uppercase tracking-wider">KPIs vs D-1</p>
+              <span className="text-[8px] bg-bg3 border border-border text-primary px-1.5 py-0.5 rounded">HOJE</span>
+            </div>
+            <div className="grid grid-cols-3 text-[8px] text-white/30 uppercase mb-1">
+              <span>Indicador</span><span className="text-center">Real</span><span className="text-right">Var.</span>
+            </div>
             {[
-              { label: 'Taxa Ocup.', value: `${taxa.toFixed(2)}%`, var: dados.var_taxa },
-              { label: 'ADR',        value: cur(dados.adr),        var: dados.var_adr },
-              { label: 'RevPAR',     value: cur(dados.revpar),     var: dados.var_revpar },
-              { label: 'Rec. Dia',   value: cur(dados.receita_dia),var: dados.var_receita },
+              { l: 'Taxa Ocup.', v: `${taxa.toFixed(2)}%`, var: dados.var_taxa,    unit: ' p.p.' },
+              { l: 'ADR (R$)',   v: cur(dados.adr),        var: dados.var_adr },
+              { l: 'RevPAR',     v: cur(dados.revpar),     var: dados.var_revpar },
+              { l: 'Rec. Dia',   v: cur(dados.receita_dia),var: dados.var_receita },
+              { l: 'Rec. MTD',   v: cur(dados.receita_mtd || 0) },
             ].map((k, i) => (
-              <div key={i} className="flex items-center justify-between py-1 border-b border-white/[0.04] last:border-0">
-                <span className="text-[10px] text-white/50">{k.label}</span>
-                <div className="flex items-center gap-1.5">
-                  <span className="text-[11px] font-semibold text-white/80">{k.value}</span>
-                  <Var v={k.var} />
+              <div key={i} className="grid grid-cols-3 items-center py-1 border-b border-white/[0.04] last:border-0">
+                <span className="text-[9px] text-white/50">{k.l}</span>
+                <span className="text-[9px] font-semibold text-white/80 text-center">{k.v}</span>
+                <div className="text-right">
+                  {k.var != null ? <Var v={k.var} unit={k.unit || '%'} /> : <span className="text-[8px] text-white/20">—</span>}
                 </div>
               </div>
             ))}
           </div>
         </div>
+
       </div>
     </div>
   )
