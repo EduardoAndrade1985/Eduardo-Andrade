@@ -192,10 +192,6 @@ function AbaDispositivos({ midias }) {
                 className="w-full bg-bg3 border border-border rounded-lg px-3 py-2.5 text-xl font-mono font-bold text-primary placeholder-muted/50 focus:outline-none focus:border-primary tracking-widest uppercase text-center"
               />
             </div>
-            <button onClick={parearTV} disabled={pareando || !pairCode || !selecionado}
-              className="w-full py-2.5 rounded-lg bg-primary text-bg text-sm font-bold hover:opacity-90 transition disabled:opacity-40">
-              {pareando ? 'Pareando...' : 'Parear TV'}
-            </button>
             <div>
               <label className="block text-[10px] font-semibold text-muted uppercase tracking-wide mb-1">Vincular ao dispositivo</label>
               <select value={selecionado?.id || ''} onChange={e => setSelecionado(dispositivos.find(d => d.id === Number(e.target.value)) || null)}
@@ -204,6 +200,10 @@ function AbaDispositivos({ midias }) {
                 {dispositivos.map(d => <option key={d.id} value={d.id}>📺 {d.nome}{d.local ? ` · ${d.local}` : ''}</option>)}
               </select>
             </div>
+            <button onClick={parearTV} disabled={pareando || !pairCode || !selecionado}
+              className="w-full py-2.5 rounded-lg bg-primary text-bg text-sm font-bold hover:opacity-90 transition disabled:opacity-40">
+              {pareando ? 'Pareando...' : 'Parear TV'}
+            </button>
           </div>
           {pairMsg && (
             <p className={`text-xs mt-3 ${pairMsg.startsWith('✓') ? 'text-primary' : 'text-danger'}`}>{pairMsg}</p>
