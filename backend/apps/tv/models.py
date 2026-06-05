@@ -18,11 +18,12 @@ def gen_pair_code():
 
 class TVConfig(EmpresaBaseModel):
     """Dispositivo de TV — múltiplos por empresa."""
-    token  = models.CharField(max_length=64, unique=True, db_index=True, default=gen_token)
-    nome   = models.CharField(max_length=100, default='TV Principal')
-    local  = models.CharField(max_length=100, blank=True, help_text='Ex: Recepção, Diretoria')
-    ativo  = models.BooleanField(default=True)
-    playlist = models.JSONField(default=list)
+    token     = models.CharField(max_length=64, unique=True, db_index=True, default=gen_token)
+    nome      = models.CharField(max_length=100, default='TV Principal')
+    local     = models.CharField(max_length=100, blank=True, help_text='Ex: Recepção, Diretoria')
+    ativo     = models.BooleanField(default=True)
+    playlist  = models.JSONField(default=list)
+    last_seen = models.DateTimeField(null=True, blank=True, help_text='Último heartbeat da TV')
 
     class Meta:
         verbose_name        = 'Dispositivo TV'

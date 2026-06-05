@@ -8,7 +8,7 @@ const DASHBOARD_OPTS = [
   { tipo: 'estoque',  label: 'Estoque',   icon: '📦', cor: '#f59e0b' },
 ]
 
-const TABS = ['Dispositivos', 'Biblioteca de Mídia']
+const TABS = ['Dispositivos', 'Biblioteca de Mídia', 'Monitoramento']
 
 // ── Aba Dispositivos ──────────────────────────────────────────────────────────
 function AbaDispositivos({ midias }) {
@@ -654,6 +654,106 @@ function AbaMidia({ midias, onMidiasChange }) {
   )
 }
 
+// ── Aba Monitoramento ─────────────────────────────────────────────────────────
+function AbaMonitoramento() {
+  const [dispositivos, setDispositivos] = useState([])
+  const [loading,      setLoading]      = useState(true)
+  const [agora,        setAgora]        = useState(new Date())
+
+  const carregar = useCallback(async () => {
+    try {
+      const res = await api.get('/tv/config/')
+      setDispositivos(res.data)
+    } catch {}
+    finally { setLoading(false) }
+  }, [])
+
+  useEffect(() => {
+    carregar()
+    const id = setInterval(() => { carregar(); setAgora(new Date()) }, 30000)
+    return () => clearInterval(id)
+  }, [carregar])
+
+  function fmtLastSeen(iso) {
+    if (!iso) return 'Nunca conectou'
+    const d = new Date(iso)
+    const diff = Math.floor((agora - d) / 1000)
+    if (diff < 60)   return `há ${diff}s`
+    if (diff < 3600) return `há ${Math.floor(diff / 60)}min`
+    return d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
+  }
+
+  if (loading) return <div className="py-12 text-center text-muted text-sm">Carregando...</div>
+
+  return (
+    <div className="space-y-3">
+      <div className="flex items-center justify-between mb-4">
+        <div>
+          <h3 className="text-sm font-bold text-dim">Status das TVs</h3>
+          <p className="text-[10px] text-muted">Atualiza a cada 30 segundos · {dispositivos.filter(d => d.online).length}/{dispositivos.length} online</p>
+        </div>
+        <button onClick={() => { carregar(); setAgora(new Date()) }}
+          className="px-3 py-1.5 rounded-lg bg-bg3 border border-border text-xs text-muted hover:text-dim transition">
+          Atualizar
+        </button>
+      </div>
+
+      {dispositivos.length === 0 && (
+        <div className="bg-bg2 border border-border rounded-xl py-12 text-center">
+          <p className="text-3xl mb-2">📺</p>
+          <p className="text-sm text-muted">Nenhum dispositivo cadastrado.</p>
+        </div>
+      )}
+
+      <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-4">
+        {dispositivos.map(d => (
+          <div key={d.id} className={`bg-bg2 border rounded-xl p-4 transition
+            ${d.online ? 'border-primary/30' : 'border-border'}`}>
+            <div className="flex items-start justify-between mb-3">
+              <div className="flex items-center gap-3">
+                <span className="text-2xl">📺</span>
+                <div>
+                  <p className="text-sm font-bold text-dim">{d.nome}</p>
+                  {d.local && <p className="text-[10px] text-muted">{d.local}</p>}
+                </div>
+              </div>
+              <div className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-semibold
+                ${d.online
+                  ? 'bg-primary/10 text-primary'
+                  : 'bg-muted/10 text-muted'}`}>
+                <span className={`w-1.5 h-1.5 rounded-full ${d.online ? 'bg-primary animate-pulse' : 'bg-muted'}`} />
+                {d.online ? 'Online' : 'Offline'}
+              </div>
+            </div>
+
+            <div className="space-y-1.5 text-xs">
+              <div className="flex justify-between text-muted">
+                <span>Última conexão</span>
+                <span className={d.online ? 'text-primary' : 'text-muted'}>{fmtLastSeen(d.last_seen)}</span>
+              </div>
+              <div className="flex justify-between text-muted">
+                <span>Playlist</span>
+                <span className="text-dim">{d.playlist?.length || 0} itens</span>
+              </div>
+              <div className="flex justify-between text-muted">
+                <span>Status</span>
+                <span className={d.ativo ? 'text-primary' : 'text-danger'}>{d.ativo ? 'Ativo' : 'Inativo'}</span>
+              </div>
+            </div>
+
+            <div className="mt-3 pt-3 border-t border-border/60">
+              <button onClick={() => window.open(`/tv/${d.token}`, '_blank')}
+                className="w-full py-1.5 rounded-lg bg-bg3 border border-border text-xs text-muted hover:text-dim transition">
+                Abrir TV
+              </button>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
 // ── Componente principal ──────────────────────────────────────────────────────
 export default function TVManager() {
   const [abaAtiva, setAbaAtiva] = useState(0)
@@ -697,6 +797,7 @@ export default function TVManager() {
       {abaAtiva === 0 && <AbaDispositivos midias={midias} />}
       {abaAtiva === 1 && !loadM && <AbaMidia midias={midias} onMidiasChange={carregarMidias} />}
       {abaAtiva === 1 && loadM && <div className="py-12 text-center text-muted text-sm">Carregando...</div>}
+      {abaAtiva === 2 && <AbaMonitoramento />}
     </div>
   )
 }

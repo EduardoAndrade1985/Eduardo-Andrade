@@ -19,14 +19,19 @@ def _empresa(request):
 
 
 def _config_data(cfg):
+    from django.utils.timezone import now
+    from datetime import timedelta
+    online = bool(cfg.last_seen and (now() - cfg.last_seen) < timedelta(minutes=2))
     return {
-        'id':       cfg.id,
-        'token':    cfg.token,
-        'nome':     cfg.nome,
-        'local':    cfg.local,
-        'ativo':    cfg.ativo,
-        'playlist': cfg.playlist,
-        'tv_url':   f'/tv/{cfg.token}',
+        'id':        cfg.id,
+        'token':     cfg.token,
+        'nome':      cfg.nome,
+        'local':     cfg.local,
+        'ativo':     cfg.ativo,
+        'playlist':  cfg.playlist,
+        'tv_url':    f'/tv/{cfg.token}',
+        'online':    online,
+        'last_seen': cfg.last_seen.isoformat() if cfg.last_seen else None,
     }
 
 
@@ -315,6 +320,22 @@ class TVPairPendingView(APIView):
             'created_at': p.created_at,
             'expires_at': p.expires_at,
         } for p in pendentes])
+
+
+# ── Heartbeat da TV ──────────────────────────────────────────────────────────
+class TVHeartbeatView(APIView):
+    """TV envia ping a cada 30s para registrar que está online (público)."""
+    permission_classes = [AllowAny]
+
+    def post(self, request):
+        token = request.data.get('token', '').strip()
+        if not token:
+            return Response({'error': 'Token obrigatório.'}, status=400)
+        from django.utils.timezone import now
+        updated = TVConfig.objects.filter(token=token, ativo=True).update(last_seen=now())
+        if not updated:
+            return Response({'error': 'TV não encontrada.'}, status=404)
+        return Response({'ok': True})
 
 
 # ── Endpoint público para a TV ────────────────────────────────────────────────

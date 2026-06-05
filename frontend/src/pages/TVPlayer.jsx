@@ -498,6 +498,18 @@ export default function TVPlayer() {
     return <PairingScreen scale={scale} />
   }
 
+  // Heartbeat a cada 30s
+  useEffect(() => {
+    const ping = () => fetch(`${BASE}/api/tv/heartbeat/`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ token: effectiveToken }),
+    }).catch(() => {})
+    ping()
+    const id = setInterval(ping, 30000)
+    return () => clearInterval(id)
+  }, [effectiveToken])
+
   const fetchData = useCallback(async () => {
     try {
       const res = await fetch(`${BASE}/api/tv/public/${effectiveToken}/`)

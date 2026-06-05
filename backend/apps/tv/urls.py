@@ -3,6 +3,7 @@ from .views import (
     TVConfigListView, TVConfigDetailView, TVTokenRegenView,
     TVMidiaListView, TVMidiaDetailView, TVMidiaUploadView, TVPublicView,
     TVPairRequestView, TVPairStatusView, TVPairConfirmView, TVPairPendingView,
+    TVHeartbeatView,
 )
 
 urlpatterns = [
@@ -19,6 +20,8 @@ urlpatterns = [
     path('pair/status/',          TVPairStatusView.as_view(),   name='tv_pair_status'),
     path('pair/confirm/',         TVPairConfirmView.as_view(),  name='tv_pair_confirm'),
     path('pair/pending/',         TVPairPendingView.as_view(),  name='tv_pair_pending'),
+    # Heartbeat
+    path('heartbeat/',            TVHeartbeatView.as_view(),    name='tv_heartbeat'),
     # Público
     path('public/<str:token>/',   TVPublicView.as_view(),       name='tv_public'),
 ]
