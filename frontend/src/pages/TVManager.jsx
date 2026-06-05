@@ -399,7 +399,8 @@ function DispositivoEditor({ dispositivo, midias, onUpdate, onDelete, onTokenReg
 }
 
 // ── Aba Biblioteca de Mídia ───────────────────────────────────────────────────
-function AbaMidia({ midias, onMidiasChange }) {
+function AbaMidia({ midias: midiasProp, onMidiasChange }) {
+  const [midias,   setMidias]  = useState(midiasProp)
   const [modo,    setModo]    = useState('url')   // 'url' | 'upload'
   const [mUrl,    setMUrl]    = useState('')
   const [mFile,   setMFile]   = useState(null)
@@ -413,6 +414,8 @@ function AbaMidia({ midias, onMidiasChange }) {
   const [adding,  setAdding]  = useState(false)
   const [uploadPct, setUploadPct] = useState(0)
   const [erro,    setErro]    = useState('')
+
+  useEffect(() => { setMidias(midiasProp) }, [midiasProp])
 
   useEffect(() => {
     api.get('/tv/config/').then(r => setDispositivos(r.data)).catch(() => {})
@@ -448,6 +451,14 @@ function AbaMidia({ midias, onMidiasChange }) {
         duracao: Number(mDur), data_inicio: mIni || null, data_fim: mFim || null,
       })
       const midiaId = res.data.id
+      const novasMidia = {
+        id: midiaId, url, titulo: mTitulo.trim(), tipo: mTipo,
+        duracao: Number(mDur), data_inicio: mIni || null, data_fim: mFim || null,
+        ativo: true,
+      }
+
+      // Atualiza lista local imediatamente
+      setMidias(prev => [...prev, novasMidia])
 
       // Adiciona automaticamente nos dispositivos selecionados
       for (const devId of devsSel) {
@@ -461,7 +472,6 @@ function AbaMidia({ midias, onMidiasChange }) {
       setMUrl(''); setMFile(null); setMTitulo(''); setMTipo('imagem')
       setMDur(15); setMIni(''); setMFim(''); setDevsSel([])
       setUploadPct(0)
-      onMidiasChange()
     } catch { setErro('Erro ao adicionar mídia.') }
     finally { setAdding(false); setUploadPct(0) }
   }
@@ -470,7 +480,7 @@ function AbaMidia({ midias, onMidiasChange }) {
     if (!confirm('Remover esta mídia?')) return
     try {
       await api.delete(`/tv/midia/${id}/`)
-      onMidiasChange()
+      setMidias(prev => prev.filter(m => m.id !== id))
     } catch { setErro('Erro ao remover.') }
   }
 
@@ -795,8 +805,7 @@ export default function TVManager() {
 
       {/* Conteúdo */}
       {abaAtiva === 0 && <AbaDispositivos midias={midias} />}
-      {abaAtiva === 1 && !loadM && <AbaMidia midias={midias} onMidiasChange={carregarMidias} />}
-      {abaAtiva === 1 && loadM && <div className="py-12 text-center text-muted text-sm">Carregando...</div>}
+      {abaAtiva === 1 && <AbaMidia midias={midias} onMidiasChange={carregarMidias} />}
       {abaAtiva === 2 && <AbaMonitoramento />}
     </div>
   )
