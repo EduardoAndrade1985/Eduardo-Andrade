@@ -430,10 +430,12 @@ function PairingScreen({ scale }) {
   const secs = String(timeLeft % 60).padStart(2, '0')
 
   return (
-    <div className="w-screen h-screen bg-black overflow-hidden flex items-start justify-start select-none">
+    <div style={{ position: 'fixed', inset: 0, background: 'black', overflow: 'hidden' }} className="select-none">
       <div style={{
+        position: 'absolute',
         width: REF_W, height: REF_H,
-        transform: `scale(${scale})`, transformOrigin: 'top left',
+        top: '50%', left: '50%',
+        transform: `translate(-50%, -50%) scale(${scale})`,
         overflow: 'hidden',
       }} className="bg-[#0a0f1a] flex flex-col items-center justify-center text-white relative">
         <div className="text-6xl mb-8">📺</div>
@@ -559,13 +561,14 @@ export default function TVPlayer() {
   const isVideo = item?.tipo === 'midia' && item?.midia?.tipo === 'video'
 
   return (
-    <div className="w-screen h-screen bg-black overflow-hidden flex items-start justify-start select-none">
-      {/* Canvas fixo em 1920×1080 escalado para a TV */}
+    <div style={{ position: 'fixed', inset: 0, background: 'black', overflow: 'hidden' }} className="select-none">
       <div style={{
+        position: 'absolute',
         width:  REF_W,
         height: REF_H,
-        transform: `scale(${scale})`,
-        transformOrigin: 'top left',
+        top: '50%',
+        left: '50%',
+        transform: `translate(-50%, -50%) scale(${scale})`,
         overflow: 'hidden',
       }} className="bg-[#0a0f1a] flex flex-col">
 
