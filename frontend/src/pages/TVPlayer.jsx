@@ -501,7 +501,13 @@ export default function TVPlayer() {
   const fetchData = useCallback(async () => {
     try {
       const res = await fetch(`${BASE}/api/tv/public/${effectiveToken}/`)
-      if (!res.ok) { setErro('TV não encontrada ou inativa.'); return }
+      if (res.status === 404) {
+        // Token inválido (despareado ou regenerado) — limpa e volta ao pareamento
+        localStorage.removeItem('tv_token')
+        window.location.href = '/tv'
+        return
+      }
+      if (!res.ok) { setErro('Erro ao carregar dados da TV.'); return }
       const json = await res.json()
       setData(json)
       setPlaying(true)
