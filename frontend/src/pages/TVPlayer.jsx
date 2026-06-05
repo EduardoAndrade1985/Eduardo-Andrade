@@ -528,7 +528,7 @@ export default function TVPlayer() {
 
   useEffect(() => {
     fetchData()
-    const id = setInterval(fetchData, 5 * 60 * 1000)
+    const id = setInterval(fetchData, 60 * 1000)
     return () => clearInterval(id)
   }, [fetchData])
 
