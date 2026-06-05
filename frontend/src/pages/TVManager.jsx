@@ -171,7 +171,7 @@ function AbaDispositivos({ midias }) {
 
       {/* Col 2: Parear nova TV */}
       <div className="lg:col-span-1">
-        <div className="bg-bg2 border border-primary/20 rounded-xl p-4 h-full">
+        <div className="bg-bg2 border border-primary/20 rounded-xl p-4">
           <div className="flex items-center gap-2 mb-4">
             <span className="text-xl">📲</span>
             <div>
