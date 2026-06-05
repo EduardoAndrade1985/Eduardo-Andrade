@@ -105,31 +105,31 @@ function OcupacaoSlide({ dados, cor }) {
     <div className="w-full h-full flex flex-col bg-[#0d1117] text-white overflow-hidden">
 
       {/* KPI cards */}
-      <div className="flex gap-2 px-4 pt-3 pb-2 flex-shrink-0">
+      <div className="flex gap-1.5 px-3 pt-2 pb-1.5 flex-shrink-0">
         {kpis.map((k, i) => (
-          <div key={i} className="flex-1 bg-[#161b27] border border-white/[0.06] rounded-xl px-3 py-2.5 min-w-0">
+          <div key={i} className="flex-1 bg-[#161b27] border border-white/[0.06] rounded-xl px-3 py-2 min-w-0">
             <p className="text-[11px] text-white/40 uppercase tracking-wider truncate">{k.label}</p>
             <p className="text-xl font-bold leading-tight" style={{ color: k.color }}>{k.value}</p>
             <div className="flex items-center gap-1 mt-0.5 flex-wrap">
               {k.var != null && <Var v={k.var} />}
-              <span className="text-[11px] text-white/30 truncate">{k.sub}</span>
+              <span className="text-[10px] text-white/30 truncate">{k.sub}</span>
             </div>
           </div>
         ))}
       </div>
 
       {/* Corpo principal */}
-      <div className="flex gap-3 px-4 pb-3 flex-1 min-h-0">
+      <div className="flex gap-2 px-3 pb-2 flex-1 min-h-0">
 
-        {/* Tabela lateral */}
-        <div className="w-[300px] flex-shrink-0 bg-[#161b27] border border-white/[0.06] rounded-xl overflow-hidden flex flex-col">
+        {/* Tabela lateral — dias do mês */}
+        <div className="w-[310px] flex-shrink-0 bg-[#161b27] border border-white/[0.06] rounded-xl overflow-hidden flex flex-col">
           <div className="px-3 py-2 border-b border-white/[0.06] flex-shrink-0">
             <p className="text-[11px] text-white/40 uppercase tracking-wider">
               {tabela[0]?.data || ''} → {tabela[tabela.length-1]?.data || ''}
             </p>
-            <p className="text-[11px] text-white/30">{tabela.length} dias</p>
+            <p className="text-[10px] text-white/30">{tabela.length} dias</p>
           </div>
-          <div className="flex-shrink-0 grid grid-cols-5 gap-0 px-3 py-2 border-b border-white/[0.04]">
+          <div className="flex-shrink-0 grid grid-cols-5 gap-0 px-3 py-1.5 border-b border-white/[0.04]">
             {['DATA','DIA','OCUP','UHS','CI/CO'].map(h => (
               <span key={h} className="text-[11px] text-white/30 font-bold uppercase text-center">{h}</span>
             ))}
@@ -140,7 +140,7 @@ function OcupacaoSlide({ dados, cor }) {
               const tc     = taxaColor(row.taxa)
               return (
                 <div key={i}
-                  className={`grid grid-cols-5 gap-0 px-3 py-1.5 border-b border-white/[0.025]
+                  className={`grid grid-cols-5 gap-0 px-3 py-1 border-b border-white/[0.025]
                     ${isHoje ? 'bg-primary/10' : ''}`}>
                   <span className={`text-[13px] font-bold ${isHoje ? 'text-primary' : 'text-white/60'}`}>{row.data}</span>
                   <span className="text-[11px] text-white/40 text-center">{row.dia}</span>
@@ -160,54 +160,54 @@ function OcupacaoSlide({ dados, cor }) {
         {/* Gráficos */}
         <div className="flex-1 flex flex-col gap-2 min-w-0">
           {/* Gráfico Taxa de Ocupação */}
-          <div className="flex-1 bg-[#161b27] border border-white/[0.06] rounded-xl p-3 flex flex-col min-h-0">
-            <p className="text-xs font-semibold text-white/50 uppercase tracking-wider mb-1">
+          <div className="flex-1 bg-[#161b27] border border-white/[0.06] rounded-xl p-2 flex flex-col min-h-0">
+            <p className="text-[9px] font-semibold text-white/50 uppercase tracking-wider mb-1">
               Taxa de Ocupação (%)
             </p>
             <div className="flex-1 min-h-0">
               <ResponsiveContainer width="100%" height="100%">
-                <LineChart data={hist} margin={{ top: 4, right: 8, bottom: 0, left: -10 }}>
+                <LineChart data={hist} margin={{ top: 4, right: 8, bottom: 0, left: -15 }}>
                   <CartesianGrid strokeDasharray="3 3" stroke={C.grid} />
-                  <XAxis dataKey="data" tick={{ fill: C.tick, fontSize: 11 }} interval="preserveStartEnd" />
-                  <YAxis tick={{ fill: C.tick, fontSize: 11 }} unit="%" domain={[0, 'auto']} />
+                  <XAxis dataKey="data" tick={{ fill: C.tick, fontSize: 9 }} interval="preserveStartEnd" />
+                  <YAxis tick={{ fill: C.tick, fontSize: 9 }} unit="%" domain={[0, 'auto']} />
                   <Tooltip
-                    contentStyle={{ background: '#161b27', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 8, fontSize: 12 }}
+                    contentStyle={{ background: '#161b27', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 8, fontSize: 11 }}
                     formatter={(v) => [`${v.toFixed(1)}%`, 'Taxa Ocup.']}
                   />
-                  <Line type="monotone" dataKey="taxa" stroke={cor} strokeWidth={2.5} dot={false} />
+                  <Line type="monotone" dataKey="taxa" stroke={cor} strokeWidth={2} dot={false} />
                 </LineChart>
               </ResponsiveContainer>
             </div>
           </div>
 
           {/* Gráfico ADR e RevPAR */}
-          <div className="flex-1 bg-[#161b27] border border-white/[0.06] rounded-xl p-3 flex flex-col min-h-0">
-            <p className="text-xs font-semibold text-white/50 uppercase tracking-wider mb-1">
+          <div className="flex-1 bg-[#161b27] border border-white/[0.06] rounded-xl p-2 flex flex-col min-h-0">
+            <p className="text-[9px] font-semibold text-white/50 uppercase tracking-wider mb-1">
               ADR e RevPAR (R$)
             </p>
             <div className="flex-1 min-h-0">
               <ResponsiveContainer width="100%" height="100%">
-                <LineChart data={hist} margin={{ top: 4, right: 8, bottom: 0, left: -10 }}>
+                <LineChart data={hist} margin={{ top: 4, right: 8, bottom: 0, left: -15 }}>
                   <CartesianGrid strokeDasharray="3 3" stroke={C.grid} />
-                  <XAxis dataKey="data" tick={{ fill: C.tick, fontSize: 11 }} interval="preserveStartEnd" />
-                  <YAxis tick={{ fill: C.tick, fontSize: 11 }} />
+                  <XAxis dataKey="data" tick={{ fill: C.tick, fontSize: 9 }} interval="preserveStartEnd" />
+                  <YAxis tick={{ fill: C.tick, fontSize: 9 }} />
                   <Tooltip
-                    contentStyle={{ background: '#161b27', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 8, fontSize: 12 }}
+                    contentStyle={{ background: '#161b27', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 8, fontSize: 11 }}
                     formatter={(v, n) => [cur(v), n === 'adr' ? 'ADR' : 'RevPAR']}
                   />
-                  <Line type="monotone" dataKey="adr"    stroke={cor}      strokeWidth={2.5} dot={false} />
-                  <Line type="monotone" dataKey="revpar" stroke="#0ea5e9"   strokeWidth={2.5} dot={false} strokeDasharray="5 3" />
+                  <Line type="monotone" dataKey="adr"    stroke={cor}      strokeWidth={2} dot={false} />
+                  <Line type="monotone" dataKey="revpar" stroke="#0ea5e9"   strokeWidth={2} dot={false} strokeDasharray="5 3" />
                 </LineChart>
               </ResponsiveContainer>
             </div>
           </div>
         </div>
 
-        {/* Painel direito */}
-        <div className="w-[310px] flex-shrink-0 flex flex-col gap-2">
+        {/* Painel direito — gauge + KPIs */}
+        <div className="w-[320px] flex-shrink-0 flex flex-col gap-2">
           {/* Gauge */}
           <div className="bg-[#161b27] border border-white/[0.06] rounded-xl p-3 flex flex-col items-center flex-shrink-0">
-            <p className="text-xs text-primary uppercase tracking-wider font-semibold mb-1">
+            <p className="text-[11px] text-primary uppercase tracking-wider font-semibold mb-1">
               OCUPAÇÃO HOJE · {dados.total_uhs} UHs
             </p>
             <Gauge pct={taxa} cor={tColor} />
@@ -218,8 +218,8 @@ function OcupacaoSlide({ dados, cor }) {
                 { l: 'Check-in', v: dados.checkins,     c: '#22c55e' },
                 { l: 'Check-out',v: dados.checkouts,    c: '#f59e0b' },
               ].map((x, i) => (
-                <div key={i} className="bg-[#0d1117] rounded-xl p-2.5 text-center">
-                  <p className="text-xs text-white/40">{x.l}</p>
+                <div key={i} className="bg-[#0d1117] rounded-xl p-2 text-center">
+                  <p className="text-[11px] text-white/40">{x.l}</p>
                   <p className="text-4xl font-bold" style={{ color: x.c }}>{x.v}</p>
                 </div>
               ))}
@@ -229,10 +229,10 @@ function OcupacaoSlide({ dados, cor }) {
           {/* KPIs vs D-1 */}
           <div className="bg-[#161b27] border border-white/[0.06] rounded-xl p-3 flex-1">
             <div className="flex items-center justify-between mb-2">
-              <p className="text-xs text-white/40 uppercase tracking-wider">KPIs vs D-1</p>
-              <span className="text-[10px] bg-bg3 border border-border text-primary px-2 py-0.5 rounded font-semibold">HOJE</span>
+              <p className="text-[11px] text-white/40 uppercase tracking-wider">KPIs vs D-1</p>
+              <span className="text-[9px] bg-bg3 border border-border text-primary px-2 py-0.5 rounded font-semibold">HOJE</span>
             </div>
-            <div className="grid grid-cols-3 text-[11px] text-white/30 uppercase mb-2 border-b border-white/[0.06] pb-1">
+            <div className="grid grid-cols-3 text-[11px] text-white/30 uppercase mb-1.5 border-b border-white/[0.06] pb-1">
               <span>Indicador</span><span className="text-center">Real</span><span className="text-right">Var.</span>
             </div>
             {[
@@ -242,7 +242,7 @@ function OcupacaoSlide({ dados, cor }) {
               { l: 'Rec. Dia',   v: cur(dados.receita_dia),var: dados.var_receita },
               { l: 'Rec. MTD',   v: cur(dados.receita_mtd || 0) },
             ].map((k, i) => (
-              <div key={i} className="grid grid-cols-3 items-center py-2 border-b border-white/[0.04] last:border-0">
+              <div key={i} className="grid grid-cols-3 items-center py-1.5 border-b border-white/[0.04] last:border-0">
                 <span className="text-[13px] text-white/50">{k.l}</span>
                 <span className="text-[13px] font-bold text-white/90 text-center">{k.v}</span>
                 <div className="text-right">
