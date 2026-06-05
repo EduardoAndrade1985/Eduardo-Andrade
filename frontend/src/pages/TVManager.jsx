@@ -96,11 +96,23 @@ function AbaDispositivos({ midias }) {
 
   if (loading) return <div className="py-12 text-center text-muted text-sm">Carregando...</div>
 
-  return (
-    <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+  async function desparearTV(id) {
+    if (!confirm('Desparear esta TV? Ela voltará para a tela de código de pareamento.')) return
+    try {
+      const res = await api.post(`/tv/config/${id}/token/`)
+      setDispositivos(d => d.map(x => x.id === id ? { ...x, token: res.data.token, tv_url: res.data.tv_url } : x))
+      if (selecionado?.id === id) setSelecionado(s => ({ ...s, token: res.data.token, tv_url: res.data.tv_url }))
+      setMsg('TV despareada. Ela solicitará um novo código.')
+      setTimeout(() => setMsg(''), 4000)
+    } catch { setErro('Erro ao desparear.') }
+  }
 
-      {/* Lista de dispositivos */}
-      <div className="lg:col-span-1">
+  return (
+    <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+
+      {/* Coluna esquerda: lista de dispositivos + pareamento */}
+      <div className="lg:col-span-1 flex flex-col gap-4">
+
         <div className="bg-bg2 border border-border rounded-xl overflow-hidden">
           <div className="px-4 py-3 border-b border-border flex items-center justify-between">
             <div>
@@ -134,7 +146,7 @@ function AbaDispositivos({ midias }) {
             </div>
           )}
 
-          <div className="divide-y divide-border/60">
+          <div className="divide-y divide-border/60 max-h-56 overflow-y-auto">
             {dispositivos.length === 0 && (
               <p className="px-4 py-8 text-xs text-muted text-center">Nenhum dispositivo cadastrado.</p>
             )}
@@ -153,9 +165,52 @@ function AbaDispositivos({ midias }) {
             ))}
           </div>
         </div>
+
+        {/* Painel de pareamento */}
+        <div className="bg-bg2 border border-primary/20 rounded-xl p-4">
+          <div className="flex items-center gap-2 mb-3">
+            <span className="text-lg">📲</span>
+            <div>
+              <h3 className="text-sm font-bold text-dim">Parear nova TV</h3>
+              <p className="text-[10px] text-muted">
+                Abra <span className="text-primary font-semibold">{window.location.origin}/tv</span> na TV
+              </p>
+            </div>
+          </div>
+          <div className="space-y-2">
+            <div>
+              <label className="block text-[10px] font-semibold text-muted uppercase tracking-wide mb-1">Código exibido na TV</label>
+              <input
+                value={pairCode}
+                onChange={e => setPairCode(e.target.value.toUpperCase())}
+                placeholder="AAA-123"
+                maxLength={7}
+                className="w-full bg-bg3 border border-border rounded-lg px-3 py-2 text-base font-mono font-bold text-primary placeholder-muted/50 focus:outline-none focus:border-primary tracking-widest uppercase"
+              />
+            </div>
+            <div>
+              <label className="block text-[10px] font-semibold text-muted uppercase tracking-wide mb-1">Vincular ao dispositivo</label>
+              <select value={selecionado?.id || ''} onChange={e => setSelecionado(dispositivos.find(d => d.id === Number(e.target.value)) || null)}
+                className="w-full bg-bg3 border border-border rounded-lg px-3 py-2 text-sm text-dim focus:outline-none focus:border-primary">
+                <option value="">— selecione o dispositivo —</option>
+                {dispositivos.map(d => <option key={d.id} value={d.id}>📺 {d.nome}{d.local ? ` · ${d.local}` : ''}</option>)}
+              </select>
+            </div>
+            <button onClick={parearTV} disabled={pareando || !pairCode || !selecionado}
+              className="w-full py-2 rounded-lg bg-primary text-bg text-sm font-bold hover:opacity-90 transition disabled:opacity-40">
+              {pareando ? 'Pareando...' : 'Parear TV'}
+            </button>
+          </div>
+          {pairMsg && (
+            <p className={`text-xs mt-2 ${pairMsg.startsWith('✓') ? 'text-primary' : 'text-danger'}`}>{pairMsg}</p>
+          )}
+        </div>
+
+        {erro && <div className="text-xs text-danger bg-danger/10 border border-danger/20 rounded-lg px-3 py-2">{erro}</div>}
+        {msg  && <div className="text-xs text-primary bg-primary/10 border border-primary/20 rounded-lg px-3 py-2">{msg}</div>}
       </div>
 
-      {/* Configuração do dispositivo selecionado */}
+      {/* Coluna direita: editor do dispositivo */}
       <div className="lg:col-span-2">
         {!selecionado ? (
           <div className="bg-bg2 border border-border rounded-xl py-16 text-center">
@@ -172,59 +227,18 @@ function AbaDispositivos({ midias }) {
             }}
             onDelete={() => deletarDispositivo(selecionado.id)}
             onTokenRegen={() => regenerarToken(selecionado.id)}
+            onDesparear={() => desparearTV(selecionado.id)}
             onCopiar={() => copiarLink(selecionado.token)}
             copiado={copiado === selecionado.token}
           />
         )}
       </div>
 
-      {/* Painel de pareamento */}
-      <div className="lg:col-span-3 bg-bg2 border border-primary/20 rounded-xl p-4">
-        <div className="flex items-center gap-3 mb-3">
-          <span className="text-2xl">📲</span>
-          <div>
-            <h3 className="text-sm font-bold text-dim">Parear nova TV</h3>
-            <p className="text-[10px] text-muted">
-              Acesse <span className="text-primary font-semibold">{window.location.origin}/tv</span> na TV → aparecerá um código → informe abaixo e vincule ao dispositivo
-            </p>
-          </div>
-        </div>
-        <div className="flex items-end gap-3">
-          <div className="flex-1">
-            <label className="block text-[10px] font-semibold text-muted uppercase tracking-wide mb-1">Código exibido na TV</label>
-            <input
-              value={pairCode}
-              onChange={e => setPairCode(e.target.value.toUpperCase())}
-              placeholder="AAA-123"
-              maxLength={7}
-              className="w-full bg-bg3 border border-border rounded-lg px-3 py-2.5 text-lg font-mono font-bold text-primary placeholder-muted/50 focus:outline-none focus:border-primary tracking-widest uppercase"
-            />
-          </div>
-          <div className="flex-1">
-            <label className="block text-[10px] font-semibold text-muted uppercase tracking-wide mb-1">Vincular ao dispositivo</label>
-            <select value={selecionado?.id || ''} onChange={e => setSelecionado(dispositivos.find(d => d.id === Number(e.target.value)) || null)}
-              className="w-full bg-bg3 border border-border rounded-lg px-3 py-2.5 text-sm text-dim focus:outline-none focus:border-primary">
-              <option value="">— selecione o dispositivo —</option>
-              {dispositivos.map(d => <option key={d.id} value={d.id}>📺 {d.nome}{d.local ? ` · ${d.local}` : ''}</option>)}
-            </select>
-          </div>
-          <button onClick={parearTV} disabled={pareando || !pairCode || !selecionado}
-            className="px-6 py-2.5 rounded-lg bg-primary text-bg text-sm font-bold hover:opacity-90 transition disabled:opacity-40 flex-shrink-0">
-            {pareando ? 'Pareando...' : 'Parear TV'}
-          </button>
-        </div>
-        {pairMsg && (
-          <p className={`text-xs mt-2 ${pairMsg.startsWith('✓') ? 'text-primary' : 'text-danger'}`}>{pairMsg}</p>
-        )}
-      </div>
-
-      {erro && <div className="lg:col-span-3 text-xs text-danger bg-danger/10 border border-danger/20 rounded-lg px-3 py-2">{erro}</div>}
-      {msg  && <div className="lg:col-span-3 text-xs text-primary bg-primary/10 border border-primary/20 rounded-lg px-3 py-2">{msg}</div>}
     </div>
   )
 }
 
-function DispositivoEditor({ dispositivo, midias, onUpdate, onDelete, onTokenRegen, onCopiar, copiado }) {
+function DispositivoEditor({ dispositivo, midias, onUpdate, onDelete, onTokenRegen, onDesparear, onCopiar, copiado }) {
   const [playlist, setPlaylist] = useState(dispositivo.playlist || [])
   const [salvando, setSalvando] = useState(false)
   const [addTipo, setAddTipo]   = useState('ocupacao')
@@ -285,6 +299,10 @@ function DispositivoEditor({ dispositivo, midias, onUpdate, onDelete, onTokenReg
             <button onClick={() => window.open(`/tv/${dispositivo.token}`, '_blank')}
               className="px-3 py-1.5 rounded-lg bg-primary text-bg text-xs font-semibold hover:opacity-90 transition">
               📺 Abrir TV
+            </button>
+            <button onClick={onDesparear}
+              className="px-2 py-1.5 rounded-lg border border-warn/40 text-warn hover:bg-warn/10 text-xs transition">
+              Desparear
             </button>
             <button onClick={onDelete}
               className="px-2 py-1.5 rounded-lg border border-border text-muted hover:text-danger hover:border-danger/40 text-xs transition">
