@@ -108,13 +108,12 @@ function AbaDispositivos({ midias }) {
   }
 
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+    <div className="grid grid-cols-1 lg:grid-cols-4 gap-4">
 
-      {/* Coluna esquerda: lista de dispositivos + pareamento */}
-      <div className="lg:col-span-1 flex flex-col gap-4">
-
-        <div className="bg-bg2 border border-border rounded-xl overflow-hidden">
-          <div className="px-4 py-3 border-b border-border flex items-center justify-between">
+      {/* Col 1: Lista de dispositivos */}
+      <div className="lg:col-span-1 flex flex-col">
+        <div className="bg-bg2 border border-border rounded-xl overflow-hidden flex flex-col">
+          <div className="px-4 py-3 border-b border-border flex items-center justify-between flex-shrink-0">
             <div>
               <h3 className="text-sm font-bold text-dim">Dispositivos</h3>
               <p className="text-[10px] text-muted">{dispositivos.length} TV{dispositivos.length !== 1 ? 's' : ''} cadastrada{dispositivos.length !== 1 ? 's' : ''}</p>
@@ -126,7 +125,7 @@ function AbaDispositivos({ midias }) {
           </div>
 
           {showForm && (
-            <div className="px-4 py-3 border-b border-border bg-bg3/50 space-y-2">
+            <div className="px-4 py-3 border-b border-border bg-bg3/50 space-y-2 flex-shrink-0">
               <input value={novoNome} onChange={e => setNovoNome(e.target.value)}
                 placeholder="Nome (ex: TV Recepção)"
                 className="w-full bg-bg border border-border rounded-lg px-3 py-2 text-sm text-dim placeholder-muted focus:outline-none focus:border-primary" />
@@ -146,7 +145,7 @@ function AbaDispositivos({ midias }) {
             </div>
           )}
 
-          <div className="divide-y divide-border/60 max-h-56 overflow-y-auto">
+          <div className="divide-y divide-border/60 overflow-y-auto">
             {dispositivos.length === 0 && (
               <p className="px-4 py-8 text-xs text-muted text-center">Nenhum dispositivo cadastrado.</p>
             )}
@@ -154,7 +153,7 @@ function AbaDispositivos({ midias }) {
               <button key={d.id} onClick={() => setSelecionado(d)}
                 className={`w-full flex items-center gap-3 px-4 py-3 text-left transition
                   ${selecionado?.id === d.id ? 'bg-primary/8 border-l-2 border-primary' : 'hover:bg-bg3'}`}>
-                <span className="text-xl">📺</span>
+                <span className="text-lg">📺</span>
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-semibold text-dim truncate">{d.nome}</p>
                   {d.local && <p className="text-[10px] text-muted truncate">{d.local}</p>}
@@ -166,10 +165,15 @@ function AbaDispositivos({ midias }) {
           </div>
         </div>
 
-        {/* Painel de pareamento */}
-        <div className="bg-bg2 border border-primary/20 rounded-xl p-4">
-          <div className="flex items-center gap-2 mb-3">
-            <span className="text-lg">📲</span>
+        {erro && <div className="mt-3 text-xs text-danger bg-danger/10 border border-danger/20 rounded-lg px-3 py-2">{erro}</div>}
+        {msg  && <div className="mt-3 text-xs text-primary bg-primary/10 border border-primary/20 rounded-lg px-3 py-2">{msg}</div>}
+      </div>
+
+      {/* Col 2: Parear nova TV */}
+      <div className="lg:col-span-1">
+        <div className="bg-bg2 border border-primary/20 rounded-xl p-4 h-full">
+          <div className="flex items-center gap-2 mb-4">
+            <span className="text-xl">📲</span>
             <div>
               <h3 className="text-sm font-bold text-dim">Parear nova TV</h3>
               <p className="text-[10px] text-muted">
@@ -177,7 +181,7 @@ function AbaDispositivos({ midias }) {
               </p>
             </div>
           </div>
-          <div className="space-y-2">
+          <div className="space-y-3">
             <div>
               <label className="block text-[10px] font-semibold text-muted uppercase tracking-wide mb-1">Código exibido na TV</label>
               <input
@@ -185,35 +189,32 @@ function AbaDispositivos({ midias }) {
                 onChange={e => setPairCode(e.target.value.toUpperCase())}
                 placeholder="AAA-123"
                 maxLength={7}
-                className="w-full bg-bg3 border border-border rounded-lg px-3 py-2 text-base font-mono font-bold text-primary placeholder-muted/50 focus:outline-none focus:border-primary tracking-widest uppercase"
+                className="w-full bg-bg3 border border-border rounded-lg px-3 py-2.5 text-xl font-mono font-bold text-primary placeholder-muted/50 focus:outline-none focus:border-primary tracking-widest uppercase text-center"
               />
             </div>
             <div>
               <label className="block text-[10px] font-semibold text-muted uppercase tracking-wide mb-1">Vincular ao dispositivo</label>
               <select value={selecionado?.id || ''} onChange={e => setSelecionado(dispositivos.find(d => d.id === Number(e.target.value)) || null)}
                 className="w-full bg-bg3 border border-border rounded-lg px-3 py-2 text-sm text-dim focus:outline-none focus:border-primary">
-                <option value="">— selecione o dispositivo —</option>
+                <option value="">— selecione —</option>
                 {dispositivos.map(d => <option key={d.id} value={d.id}>📺 {d.nome}{d.local ? ` · ${d.local}` : ''}</option>)}
               </select>
             </div>
             <button onClick={parearTV} disabled={pareando || !pairCode || !selecionado}
-              className="w-full py-2 rounded-lg bg-primary text-bg text-sm font-bold hover:opacity-90 transition disabled:opacity-40">
+              className="w-full py-2.5 rounded-lg bg-primary text-bg text-sm font-bold hover:opacity-90 transition disabled:opacity-40">
               {pareando ? 'Pareando...' : 'Parear TV'}
             </button>
           </div>
           {pairMsg && (
-            <p className={`text-xs mt-2 ${pairMsg.startsWith('✓') ? 'text-primary' : 'text-danger'}`}>{pairMsg}</p>
+            <p className={`text-xs mt-3 ${pairMsg.startsWith('✓') ? 'text-primary' : 'text-danger'}`}>{pairMsg}</p>
           )}
         </div>
-
-        {erro && <div className="text-xs text-danger bg-danger/10 border border-danger/20 rounded-lg px-3 py-2">{erro}</div>}
-        {msg  && <div className="text-xs text-primary bg-primary/10 border border-primary/20 rounded-lg px-3 py-2">{msg}</div>}
       </div>
 
-      {/* Coluna direita: editor do dispositivo */}
+      {/* Col 3-4: Editor do dispositivo */}
       <div className="lg:col-span-2">
         {!selecionado ? (
-          <div className="bg-bg2 border border-border rounded-xl py-16 text-center">
+          <div className="bg-bg2 border border-border rounded-xl py-16 text-center h-full flex flex-col items-center justify-center">
             <p className="text-4xl mb-3">📺</p>
             <p className="text-sm text-muted">Selecione ou crie um dispositivo</p>
           </div>
