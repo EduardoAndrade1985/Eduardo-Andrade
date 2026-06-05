@@ -299,9 +299,13 @@ function MidiaSlide({ midia, onEnded }) {
         key={midia.url}
         src={midia.url}
         autoPlay
+        muted
         playsInline
+        preload="auto"
         onEnded={onEnded}
+        onError={onEnded}
         className="w-full h-full object-contain bg-black"
+        style={{ WebkitPlaysinline: true }}
       />
     )
   }
