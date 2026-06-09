@@ -523,13 +523,53 @@ export default function TVPlayer() {
         .then(wl => { wakeLock = wl })
         .catch(() => {})
     acquire()
-    // Reaquire após o documento voltar a ficar visível (ex: tab em foco)
     const onVisible = () => { if (document.visibilityState === 'visible') acquire() }
     document.addEventListener('visibilitychange', onVisible)
     return () => {
       document.removeEventListener('visibilitychange', onVisible)
       wakeLock?.release()
     }
+  }, [])
+
+  // Detector de suspensão de script pelo OS (Firestick mata o processo JS)
+  // Se o intervalo de 10s acumular > 25s entre ticks = JS foi suspenso = recarrega
+  useEffect(() => {
+    let lastTick = Date.now()
+    const id = setInterval(() => {
+      const gap = Date.now() - lastTick
+      lastTick = Date.now()
+      if (gap > 25000) window.location.reload()
+    }, 10000)
+    return () => clearInterval(id)
+  }, [])
+
+  // Auto-reload ao voltar do background após longa ausência
+  // (Firestick pode minimizar o browser sem matar o JS, mas a página fica "congelada")
+  useEffect(() => {
+    let hiddenAt = null
+    const onChange = () => {
+      if (document.visibilityState === 'hidden') {
+        hiddenAt = Date.now()
+      } else if (document.visibilityState === 'visible' && hiddenAt) {
+        // Se ficou oculto por mais de 2 minutos, recarrega para garantir conteúdo fresco
+        if (Date.now() - hiddenAt > 120000) window.location.reload()
+        hiddenAt = null
+      }
+    }
+    document.addEventListener('visibilitychange', onChange)
+    return () => document.removeEventListener('visibilitychange', onChange)
+  }, [])
+
+  // Fullscreen automático — mantém o browser em primeiro plano no Firestick
+  useEffect(() => {
+    const goFull = () => {
+      if (!document.fullscreenElement)
+        document.documentElement.requestFullscreen?.().catch(() => {})
+    }
+    goFull()
+    const onVisible = () => { if (document.visibilityState === 'visible') goFull() }
+    document.addEventListener('visibilitychange', onVisible)
+    return () => document.removeEventListener('visibilitychange', onVisible)
   }, [])
 
   const fetchData = useCallback(async () => {
