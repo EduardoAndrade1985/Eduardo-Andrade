@@ -480,6 +480,12 @@ export default function Cartoes() {
         } catch {}
       } catch (err) {
         console.warn('Erro ao carregar dados da API:', err)
+        // Mostra toast de erro para o usuário saber que os dados não carregaram
+        const msg = err?.response?.status
+          ? `Erro ${err.response.status} ao carregar dados do servidor`
+          : 'Sem conexão com o servidor — importe as planilhas para continuar'
+        setToasts(p => [...p, { id: nId(), msg, type: 'er' }])
+        setTimeout(() => setToasts(p => p.slice(1)), 5000)
       } finally {
         setLoading(false)
       }
@@ -1414,7 +1420,15 @@ export default function Cartoes() {
             <tbody>
               {pageData.length === 0 ? (
                 <tr><td colSpan={16} className="py-16 text-center text-sm text-muted">
-                  {activeD.length === 0 ? 'Importe as planilhas e clique em ⚡ Conciliar para iniciar' : 'Nenhum registro com esses filtros'}
+                  {activeD.length === 0 ? (
+                    <div className="flex flex-col items-center gap-3">
+                      <span className="text-2xl">📂</span>
+                      <span>Nenhuma transação carregada</span>
+                      <span className="text-[11px] text-muted/60">
+                        Importe a planilha da <strong className="text-dim">Cielo</strong> e/ou <strong className="text-dim">Rede</strong> e clique em ⚡ Conciliar
+                      </span>
+                    </div>
+                  ) : 'Nenhum registro com esses filtros'}
                 </td></tr>
               ) : pageData.map(r => {
                 const lk = isLocked(r)
@@ -1881,7 +1895,7 @@ export default function Cartoes() {
       </Modal>
 
       {/* Confirm dialog */}
-      {confirm && <Confirm {...confirm} />}
+      {confirm && <Confirm show {...confirm} />}
 
       {/* Toasts */}
       <Toasts list={toasts} />
