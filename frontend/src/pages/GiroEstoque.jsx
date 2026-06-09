@@ -207,7 +207,10 @@ function parseExcel(file) {
             }
           }
           if (!mn) mn = 1
-          const y = parseInt(cA ? row[cA] : 2026) || 2026
+          const rawY = parseInt(cA ? row[cA] : 2026) || 2026
+          // Ignora anos fora do intervalo 2000-2099 (ex.: totais, seriais Excel, células inválidas)
+          if (rawY < 2000 || rawY > 2099) return
+          const y = rawY
 
           const k = `${almRaw}||${clsRaw}||${mn}||${y}`
           if (!agg[k]) agg[k] = { alm: almRaw, cls: clsRaw, mn, y, si: 0, sf: 0, saidas: 0, ent: 0 }
