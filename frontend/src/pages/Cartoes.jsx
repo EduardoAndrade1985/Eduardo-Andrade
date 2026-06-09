@@ -894,19 +894,21 @@ export default function Cartoes() {
     const ex = modals.export || {}
     const dir = ex.dir ?? (viewMode === 'sis2op' ? 'sis2op' : 'op2sis')
     const src = dir === 'sis2op' ? DS : D
-    const { di, df, soDiv, inclComp, inclResTot, inclResDia, inclLog, inclFech } = ex
+    const { di, df, soDiv, inclComp, inclResTot, inclResOp, inclResDia, inclLog, inclFech, opFilter } = ex
     let ac = src.filter(r => r.st!=='agrupado' && r.st!=='pix_ignorado')
     if (di) ac = ac.filter(r => r.d >= di)
     if (df) ac = ac.filter(r => r.d <= df)
+    if (opFilter) ac = ac.filter(r => r.o === opFilter)
     if (soDiv) ac = ac.filter(r => r.st==='divergente'||r.st==='arredondavel'||r.st==='somente_op')
     const dirLabel = dir === 'sis2op' ? 'Sistema → Operadora' : 'Operadora → Sistema'
-    return { ac, di, df, dirLabel, inclComp: inclComp !== false, inclResTot: inclResTot !== false, inclResDia: inclResDia !== false, inclLog: !!inclLog, inclFech: inclFech !== false }
+    return { ac, di, df, dirLabel, opFilter: opFilter || '', inclComp: inclComp !== false, inclResTot: inclResTot !== false, inclResOp: inclResOp !== false, inclResDia: inclResDia !== false, inclLog: !!inclLog, inclFech: inclFech !== false }
   }
 
   const exportXlsx = () => {
-    const { ac, di, df, dirLabel, inclComp, inclResTot, inclResDia, inclLog, inclFech } = _buildExportData()
+    const { ac, di, df, dirLabel, opFilter, inclComp, inclResTot, inclResOp, inclResDia, inclLog, inclFech } = _buildExportData()
+    const opLabel = opFilter ? ` — ${opFilter.toUpperCase()}` : ''
     const rows = [
-      [`CONCILIAÇÃO DE CARTÃO — ${empresaCfg.nome.toUpperCase()}`],
+      [`CONCILIAÇÃO DE CARTÃO — ${empresaCfg.nome.toUpperCase()}${opLabel}`],
       ['Período:', `${fmtDt(di)} a ${fmtDt(df)}`, '', 'Direção:', dirLabel, '', 'Gerado:', new Date().toLocaleString('pt-BR')],
       [],
     ]
@@ -924,6 +926,23 @@ export default function Cartoes() {
       rows.push(['Total Vl.Op', ac.reduce((s,r)=>s+r.vo,0)])
       rows.push(['Total Vl.Sis',ac.reduce((s,r)=>s+r.vs,0)])
       rows.push(['Total Dif.',  Math.round(ac.reduce((s,r)=>s+r.df,0)*100)/100])
+      rows.push([])
+    }
+    if (inclResOp) {
+      rows.push(['RESUMO POR OPERADORA'])
+      rows.push(['Operadora','Total','Conciliados','Divergentes','Ajustados','Só Op','Vl.Operadora','Vl.Sistema','Diferença'])
+      const opsUniq = [...new Set(ac.map(r=>r.o).filter(Boolean))].sort()
+      for (const op of opsUniq) {
+        const opRows = ac.filter(r=>r.o===op)
+        rows.push([op.toUpperCase(),opRows.length,
+          opRows.filter(r=>r.st==='conciliado'||r.st==='arredondado').length,
+          opRows.filter(r=>r.st==='divergente'||r.st==='arredondavel').length,
+          opRows.filter(r=>r.st==='ajustado').length,
+          opRows.filter(r=>r.st==='somente_op').length,
+          opRows.reduce((s,r)=>s+r.vo,0),
+          opRows.reduce((s,r)=>s+r.vs,0),
+          Math.round(opRows.reduce((s,r)=>s+r.df,0)*100)/100])
+      }
       rows.push([])
     }
     if (inclResDia) {
@@ -962,9 +981,10 @@ export default function Cartoes() {
   }
 
   const exportPdf = () => {
-    const { ac, di, df, dirLabel, inclComp, inclResTot, inclResDia, inclLog, inclFech } = _buildExportData()
+    const { ac, di, df, dirLabel, opFilter, inclComp, inclResTot, inclResOp, inclResDia, inclLog, inclFech } = _buildExportData()
+    const opLabel = opFilter ? ` — ${opFilter.toUpperCase()}` : ''
     const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' })
-    const title = `CONCILIAÇÃO DE CARTÃO — ${empresaCfg.nome.toUpperCase()}`
+    const title = `CONCILIAÇÃO DE CARTÃO — ${empresaCfg.nome.toUpperCase()}${opLabel}`
     const sub = `Período: ${fmtDt(di)} a ${fmtDt(df)} · ${dirLabel} · Gerado: ${new Date().toLocaleString('pt-BR')}`
     doc.setFontSize(13); doc.setFont('helvetica', 'bold')
     doc.text(title, 14, 14)
@@ -1008,6 +1028,28 @@ export default function Cartoes() {
       })
       y = doc.lastAutoTable.finalY + 6
     }
+    if (inclResOp) {
+      if (y > 170) { doc.addPage(); y = 14 }
+      doc.setFontSize(9); doc.setFont('helvetica', 'bold'); doc.text('RESUMO POR OPERADORA', 14, y); y += 4
+      const opsUniq = [...new Set(ac.map(r=>r.o).filter(Boolean))].sort()
+      autoTable(doc, {
+        startY: y, margin: { left: 14, right: 14 },
+        head: [['Operadora','Total','Conciliados','Divergentes','Ajustados','Só Op','Vl.Operadora','Vl.Sistema','Diferença']],
+        body: opsUniq.map(op => {
+          const opRows = ac.filter(r=>r.o===op)
+          return [op.toUpperCase(), opRows.length,
+            opRows.filter(r=>r.st==='conciliado'||r.st==='arredondado').length,
+            opRows.filter(r=>r.st==='divergente'||r.st==='arredondavel').length,
+            opRows.filter(r=>r.st==='ajustado').length,
+            opRows.filter(r=>r.st==='somente_op').length,
+            cur(opRows.reduce((s,r)=>s+r.vo,0)),
+            cur(opRows.reduce((s,r)=>s+r.vs,0)),
+            cur(Math.round(opRows.reduce((s,r)=>s+r.df,0)*100)/100)]
+        }),
+        styles: { fontSize: 7 }, headStyles: { fillColor: [30, 30, 40], textColor: 255 },
+      })
+      y = doc.lastAutoTable.finalY + 6
+    }
     if (inclResDia) {
       if (y > 170) { doc.addPage(); y = 14 }
       doc.setFontSize(9); doc.setFont('helvetica', 'bold'); doc.text('RESUMO POR DIA', 14, y); y += 4
@@ -1044,7 +1086,8 @@ export default function Cartoes() {
   }
 
   const printExport = () => {
-    const { ac, di, df, dirLabel, inclComp, inclResTot, inclResDia, inclFech } = _buildExportData()
+    const { ac, di, df, dirLabel, opFilter, inclComp, inclResTot, inclResOp, inclResDia, inclFech } = _buildExportData()
+    const opLabel = opFilter ? ` — ${opFilter.toUpperCase()}` : ''
     const stLabel = { conciliado:'OK', arredondado:'OK(Arr)', divergente:'DIV', arredondavel:'DIV(Arr)', ajustado:'AJ', somente_op:'S/Op' }
     let html = `<html><head><title>Conciliação</title><style>
       body{font-family:Arial,sans-serif;font-size:10px;color:#111}
@@ -1057,7 +1100,7 @@ export default function Cartoes() {
       .ok{color:#1a7a40}.div{color:#cc2222}.aj{color:#b87a00}.so{color:#7048b8}
       @media print{body{margin:0}}
     </style></head><body>
-    <h1>CONCILIAÇÃO DE CARTÃO — ${empresaCfg.nome.toUpperCase()}</h1>
+    <h1>CONCILIAÇÃO DE CARTÃO — ${empresaCfg.nome.toUpperCase()}${opLabel}</h1>
     <p>Período: <b>${fmtDt(di)} a ${fmtDt(df)}</b> · ${dirLabel} · Gerado: ${new Date().toLocaleString('pt-BR')}</p>`
     if (inclComp) {
       html += `<h2>Conciliação Completa</h2><table><tr><th>Operadora</th><th>Data</th><th>Auth</th><th>NSU</th><th>Bandeira</th><th>Modalidade</th><th>Vl.Op</th><th>Vl.Sis</th><th>Dif</th><th>Status</th><th>Qtd.Sis</th><th>Ajuste</th></tr>`
@@ -1080,6 +1123,15 @@ export default function Cartoes() {
         <tr><td><b>Total Vl.Sis</b></td><td>${cur(ac.reduce((s,r)=>s+r.vs,0))}</td></tr>
         <tr><td><b>Total Dif.</b></td><td>${cur(Math.round(ac.reduce((s,r)=>s+r.df,0)*100)/100)}</td></tr>
       </table>`
+    }
+    if (inclResOp) {
+      const opsUniq = [...new Set(ac.map(r=>r.o).filter(Boolean))].sort()
+      html += `<h2>Resumo por Operadora</h2><table><tr><th>Operadora</th><th>Total</th><th class="ok">Conciliados</th><th class="div">Divergentes</th><th class="aj">Ajustados</th><th class="so">Só Op</th><th>Vl.Op</th><th>Vl.Sis</th><th>Diferença</th></tr>`
+      for (const op of opsUniq) {
+        const opRows = ac.filter(r=>r.o===op)
+        html += `<tr><td><b>${op.toUpperCase()}</b></td><td>${opRows.length}</td><td class="ok">${opRows.filter(r=>r.st==='conciliado'||r.st==='arredondado').length}</td><td class="div">${opRows.filter(r=>r.st==='divergente'||r.st==='arredondavel').length}</td><td class="aj">${opRows.filter(r=>r.st==='ajustado').length}</td><td class="so">${opRows.filter(r=>r.st==='somente_op').length}</td><td>${cur(opRows.reduce((s,r)=>s+r.vo,0))}</td><td>${cur(opRows.reduce((s,r)=>s+r.vs,0))}</td><td>${cur(Math.round(opRows.reduce((s,r)=>s+r.df,0)*100)/100)}</td></tr>`
+      }
+      html += '</table>'
     }
     if (inclResDia) {
       html += `<h2>Resumo por Dia</h2><table><tr><th>Data</th><th>Total</th><th>Conciliados</th><th>Divergências</th><th>Só Op</th><th>Vl.Op</th><th>Vl.Sis</th><th>Diferença</th></tr>`
@@ -1168,7 +1220,7 @@ export default function Cartoes() {
           <option value="op2sis">↔ Operadora → Sistema</option>
           <option value="sis2op">↔ Sistema → Operadora</option>
         </select>
-        <Btn variant="ghost" onClick={()=>setModals(p=>({...p,export:{di:'',df:'',dir:viewMode,inclComp:true,soDiv:false,inclResTot:true,inclResDia:true,inclLog:false,inclFech:true}}))} >📥 Exportar</Btn>
+        <Btn variant="ghost" onClick={()=>setModals(p=>({...p,export:{di:'',df:'',dir:viewMode,opFilter:'',inclComp:true,soDiv:false,inclResTot:true,inclResOp:true,inclResDia:true,inclLog:false,inclFech:true}}))} >📥 Exportar</Btn>
         <Btn variant="ghost" className="border-danger/30 text-danger" onClick={()=>setConfirm({
           title:'🗑 Limpar tudo', body:'Remove <strong>todos</strong> os dados. Irreversível.',
           okText:'Limpar', okClass:'bg-danger', onOk:()=>{doClearAll();setConfirm(null)}, onCancel:()=>setConfirm(null)
@@ -1700,11 +1752,13 @@ export default function Cartoes() {
           const ex = modals.export
           const dir = ex.dir ?? (viewMode === 'sis2op' ? 'sis2op' : 'op2sis')
           const src = dir === 'sis2op' ? DS : D
-          const di = ex.di || '', df = ex.df || ''
+          const di = ex.di || '', df = ex.df || '', opFilter = ex.opFilter || ''
           const dates = src.filter(r=>r.d).map(r=>r.d).sort()
+          const allOps = [...new Set(src.map(r=>r.o).filter(Boolean))].sort()
           let ac = src.filter(r=>r.st!=='agrupado'&&r.st!=='pix_ignorado')
           if (di) ac = ac.filter(r=>r.d>=di)
           if (df) ac = ac.filter(r=>r.d<=df)
+          if (opFilter) ac = ac.filter(r=>r.o===opFilter)
           const nOk = ac.filter(r=>r.st==='conciliado'||r.st==='arredondado'||r.st==='ajustado').length
           const nDiv = ac.filter(r=>r.st==='divergente'||r.st==='arredondavel').length
           const dirLabel = dir === 'sis2op' ? 'Sistema → Operadora' : 'Operadora → Sistema'
@@ -1721,11 +1775,22 @@ export default function Cartoes() {
           return (
             <>
               <p className="text-xs text-muted mb-3">Escolha o período, conteúdo e formato.</p>
-              <Lbl>Direção da Conciliação</Lbl>
-              <Sel value={dir} onChange={e=>upd('dir',e.target.value)}>
-                <option value="op2sis">📋 Operadora → busca no Sistema</option>
-                <option value="sis2op">🖥️ Sistema → busca na Operadora</option>
-              </Sel>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <Lbl>Direção da Conciliação</Lbl>
+                  <Sel value={dir} onChange={e=>upd('dir',e.target.value)}>
+                    <option value="op2sis">📋 Operadora → Sistema</option>
+                    <option value="sis2op">🖥️ Sistema → Operadora</option>
+                  </Sel>
+                </div>
+                <div>
+                  <Lbl>Operadora</Lbl>
+                  <Sel value={opFilter} onChange={e=>upd('opFilter',e.target.value)}>
+                    <option value="">Todas operadoras</option>
+                    {allOps.map(o=><option key={o} value={o}>{o.toUpperCase()}</option>)}
+                  </Sel>
+                </div>
+              </div>
               <div className="grid grid-cols-2 gap-3 mt-3">
                 <div><Lbl>Data Inicial</Lbl><Inp type="date" value={di} onChange={e=>upd('di',e.target.value)} /></div>
                 <div><Lbl>Data Final</Lbl><Inp type="date" value={df} onChange={e=>upd('df',e.target.value)} /></div>
@@ -1747,12 +1812,13 @@ export default function Cartoes() {
               </div>
               <Lbl>Conteúdo do Arquivo</Lbl>
               <div className="grid grid-cols-2 gap-2 mb-4">
-                <ChkBox k="inclComp"   label="Conciliação Completa" icon="📋" />
-                <ChkBox k="soDiv"      label="Só Divergências"      icon="✕"  />
-                <ChkBox k="inclResTot" label="Resumo Totais"        icon="📊" />
-                <ChkBox k="inclResDia" label="Resumo por Dia"       icon="📅" />
-                <ChkBox k="inclLog"    label="Log de Ocorrências"   icon="📋" />
+                <ChkBox k="inclComp"   label="Conciliação Completa"  icon="📋" />
+                <ChkBox k="soDiv"      label="Só Divergências"       icon="✕"  />
+                <ChkBox k="inclResTot" label="Resumo Totais"         icon="📊" />
+                <ChkBox k="inclResOp"  label="Resumo por Operadora"  icon="💳" />
+                <ChkBox k="inclResDia" label="Resumo por Dia"        icon="📅" />
                 <ChkBox k="inclFech"   label="Auditoria Fechamentos" icon="🔒" />
+                <ChkBox k="inclLog"    label="Log de Ocorrências"    icon="📋" />
               </div>
               <div className="flex gap-2 justify-end">
                 <Btn variant="ghost" onClick={()=>setModals(p=>({...p,export:null}))}>Cancelar</Btn>
