@@ -5,6 +5,7 @@ import {
   ResponsiveContainer, Legend, Cell, LabelList,
 } from 'recharts'
 import { useTheme } from '../contexts/ThemeContext'
+import { useEmpresa } from '../contexts/EmpresaContext'
 
 // ─── constantes ──────────────────────────────────────────────────────────────
 const MESES_NOME = ['','Janeiro','Fevereiro','Março','Abril','Maio','Junho',
@@ -240,10 +241,13 @@ function parseExcel(file) {
 // ─── componente principal ─────────────────────────────────────────────────────
 export default function GiroEstoque() {
   const { tema } = useTheme()
+  const { empresaAtiva } = useEmpresa()
   const C = {
     grid: tema === 'light' ? '#e2e8f0' : '#1e2535',
     tick: tema === 'light' ? '#475569' : '#7a8fa8',
   }
+
+  const lsKey = `giro_estoque_${empresaAtiva?.id || 'default'}`
 
   // ── dados ──────────────────────────────────────────────────────────────────
   const [rawData,    setRawData]    = useState([])
@@ -273,19 +277,39 @@ export default function GiroEstoque() {
   const [lbls,   setLbls]   = useState({ ch1: false, ch2: false, ch3: false, ch4: false, ch5: false })
   const togLbl = useCallback(k => setLbls(p => ({ ...p, [k]: !p[k] })), [])
 
+  // ── restaurar dados ao montar / trocar empresa ─────────────────────────────
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem(lsKey)
+      if (!saved) return
+      const { data, fn, mesIni, mesFim } = JSON.parse(saved)
+      if (data?.length) {
+        setRawData(data)
+        setFileName(fn || '')
+        setFiltMesIni(mesIni || '')
+        setFiltMesFim(mesFim || '')
+        setFileLoaded(true)
+      }
+    } catch {}
+  }, [lsKey])
+
   // ── upload ─────────────────────────────────────────────────────────────────
   async function handleFile(file) {
     if (!file) return
     setLoading(true); setParseMsg('')
     try {
       const { data, rows } = await parseExcel(file)
+      const meses = [...new Set(data.map(r => toYM(r.y, r.mn)))].sort()
+      const mesIni = meses[0] || ''
+      const mesFim = meses[meses.length - 1] || ''
       setRawData(data)
       setFileName(file.name)
-      // Determina min/max do período para inicializar os inputs
-      const meses = [...new Set(data.map(r => toYM(r.y, r.mn)))].sort()
-      if (meses.length) { setFiltMesIni(meses[0]); setFiltMesFim(meses[meses.length - 1]) }
+      setFiltMesIni(mesIni)
+      setFiltMesFim(mesFim)
       setParseMsg(`✓ ${file.name} — ${data.length} combinações / ${rows} linhas`)
       setFileLoaded(true)
+      // Persiste os dados para não precisar re-fazer upload ao trocar de aba
+      try { localStorage.setItem(lsKey, JSON.stringify({ data, fn: file.name, mesIni, mesFim })) } catch {}
     } catch (err) {
       setParseMsg('Erro: ' + err.message)
       alert('Erro ao processar arquivo:\n' + err.message)
@@ -293,6 +317,7 @@ export default function GiroEstoque() {
   }
 
   function reset() {
+    localStorage.removeItem(lsKey)
     setFileLoaded(false); setRawData([]); setFileName(''); setParseMsg('')
     setFiltMesIni(''); setFiltMesFim('')
     setFiltAlmox(''); setFiltClasse(''); setFiltGiroMin('0')
