@@ -612,9 +612,16 @@ export default function Cartoes() {
       }
     } else if (src === 'rede') {
       const allRows = XLSX.utils.sheet_to_json(ws, { defval: '', header: 1 })
-      let headerIdx = allRows.findIndex(row =>
-        (row || []).some(c => normColName(c).includes('autorizac') || normColName(c).includes('bandeira'))
-      )
+      // Busca header nas primeiras 5 linhas: procura célula contendo 'data da venda'
+      // (mesma lógica do HTML original — evita falso-positivo em linhas de título como "BANDEIRAS")
+      let headerIdx = -1
+      for (let i = 0; i < Math.min(5, allRows.length); i++) {
+        const row = allRows[i] || []
+        if (row.some(c => {
+          const s = String(c).toLowerCase()
+          return s.includes('data da venda') || s.includes('data de venda') || normColName(c).includes('autorizac')
+        })) { headerIdx = i; break }
+      }
       if (headerIdx === -1) headerIdx = 1
       const headers = (allRows[headerIdx] || []).map(String)
       // Map header names to column indexes
@@ -672,7 +679,15 @@ export default function Cartoes() {
       return
     }
 
-    // Envia ao banco → banco faz dedup e retorna apenas os registros criados com IDs
+    // 1. Exibe registros imediatamente com IDs temporários (igual ao HTML original)
+    const tempRecs = nw.map(r => ({ ...r, id: `_t_${nId()}` }))
+    setD(prev => [...prev.filter(r => r.o !== src), ...tempRecs])
+    const newCards = { ...cards, [src]: `${fname} • ${nw.length} reg` }
+    setCards(newCards); saveCardInfo(newCards)
+    toast(`${src.toUpperCase()}: ${nw.length} reg carregados`, 'ok')
+    lg('💳', `${src.toUpperCase()}: <strong>${fname}</strong> — ${nw.length} reg do arquivo`)
+
+    // 2. Persiste no banco e substitui IDs temporários pelos reais
     try {
       const res = await api.post('/cartoes/transacoes/importar/', nw.map(r => ({
         o:r.o, d:r.d, h:r.h, a:r.a, n:r.n, b:r.b, m:r.m, c:r.c,
@@ -680,20 +695,24 @@ export default function Cartoes() {
       })))
       const salvos = (res.data.registros || []).map(dbToFrontend)
       const ignorados = res.data.ignorados || 0
-      setD(prev => {
-        // Adiciona apenas os registros novos (que vieram do banco com ID)
-        const existingIds = new Set(prev.map(r => r.id).filter(Boolean))
-        const novos = salvos.filter(r => !existingIds.has(r.id))
-        const next = [...prev, ...novos]
-        const totalSrc = next.filter(r=>r.o===src).length
-        lg('💳', `${src.toUpperCase()}: <strong>${fname}</strong> — ${salvos.length} novos, ${ignorados} dup., ${totalSrc} total`)
-        toast(`${src}: ${salvos.length} novos`, salvos.length > 0 ? 'ok' : 'in')
-        return next
-      })
-      const newCards = { ...cards, [src]: `${fname} • ${salvos.length + ignorados} reg` }
-      setCards(newCards); saveCardInfo(newCards)
+
+      if (salvos.length > 0) {
+        // Substitui temporários pelos registros reais com IDs do banco
+        setD(prev => {
+          const others = prev.filter(r => r.o !== src)
+          const existingIds = new Set(others.map(r => r.id).filter(id => id && !String(id).startsWith('_t_')))
+          const novos = salvos.filter(r => !existingIds.has(r.id))
+          return [...others, ...novos]
+        })
+        lg('💳', `${src.toUpperCase()}: ${salvos.length} salvos, ${ignorados} já existiam`)
+      } else if (ignorados > 0) {
+        // Todos já existem no banco — recarrega com IDs reais (necessário para conciliação)
+        const rT = await api.get('/cartoes/transacoes/')
+        setD((rT.data || []).map(dbToFrontend))
+        lg('💳', `${src.toUpperCase()}: ${ignorados} registros já existiam no banco, recarregados`)
+      }
     } catch (err) {
-      toast('Erro ao salvar no banco: ' + (err.response?.data?.erro || err.message), 'er')
+      toast('Aviso: arquivo carregado localmente, erro ao salvar no banco: ' + (err.response?.data?.erro || err.message), 'in')
       console.error(err)
     }
   }, [lg, toast, cards, saveCardInfo])

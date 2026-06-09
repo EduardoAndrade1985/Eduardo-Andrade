@@ -57,13 +57,13 @@ def transacoes_importar(request):
     criados = []
     ignorados = 0
 
-    with transaction.atomic():
-        for r in records:
-            data = r.get('d') or r.get('data')
-            if not data:
-                ignorados += 1
-                continue
-            try:
+    for r in records:
+        data = r.get('d') or r.get('data')
+        if not data:
+            ignorados += 1
+            continue
+        try:
+            with transaction.atomic():  # savepoint individual — erro num registro nao quebra os outros
                 obj, created = TransacaoOperadora.objects.get_or_create(
                     empresa=emp,
                     operadora=str(r.get('o', '')),
@@ -83,12 +83,12 @@ def transacoes_importar(request):
                         status='pendente',
                     ),
                 )
-                if created:
-                    criados.append(obj)
-                else:
-                    ignorados += 1
-            except Exception:
+            if created:
+                criados.append(obj)
+            else:
                 ignorados += 1
+        except Exception:
+            ignorados += 1
 
     data_out = TransacaoOperadoraSerializer(criados, many=True).data
     return JsonResponse({'ok': True, 'criados': len(criados), 'ignorados': ignorados, 'registros': data_out})
