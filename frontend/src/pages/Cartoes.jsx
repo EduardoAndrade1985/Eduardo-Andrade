@@ -466,10 +466,17 @@ export default function Cartoes() {
         // Log de auditoria
         setAL(rL.data.map(l => ({ id: l.id || nId(), t: l.criado_em?.substring(11,16) || '', ic: l.icone, d: l.descricao })))
 
-        // Info dos cards (nome do arquivo) — por empresa para não misturar
+        // Info dos cards — localStorage tem prioridade; se não tiver, usa contagem do banco
         try {
           const ci = JSON.parse(localStorage.getItem(lsKey(empresaAtiva?.id)) || '{}')
-          setCards(ci)
+          const opsCount = {}
+          transacoes.forEach(r => { if (r.o) opsCount[r.o] = (opsCount[r.o] || 0) + 1 })
+          const merged = { ...ci }
+          if (!merged.sistema && rS.data.length) merged.sistema = `${rS.data.length} reg (banco)`
+          Object.entries(opsCount).forEach(([op, cnt]) => {
+            if (!merged[op]) merged[op] = `${cnt} reg (banco)`
+          })
+          setCards(merged)
         } catch {}
       } catch (err) {
         console.warn('Erro ao carregar dados da API:', err)
@@ -879,8 +886,9 @@ export default function Cartoes() {
     try {
       await api.delete('/cartoes/limpar/')
     } catch (err) {
-      toast('Erro ao limpar banco: ' + (err.response?.data?.erro || err.message), 'er')
-      return
+      // Avisa mas continua limpando estado local
+      toast('Aviso: erro ao limpar banco — dados locais removidos', 'er')
+      console.error(err)
     }
     setD([]); setDS([]); setSR([]); setAL([]); setCards({ sistema:null, cielo:null, rede:null })
     setCO([]); setLU(''); setSP([]); setUndo([]); setLastRecon('')
@@ -1222,8 +1230,14 @@ export default function Cartoes() {
         </select>
         <Btn variant="ghost" onClick={()=>setModals(p=>({...p,export:{di:'',df:'',dir:viewMode,opFilter:'',inclComp:true,soDiv:false,inclResTot:true,inclResOp:true,inclResDia:true,inclLog:false,inclFech:true}}))} >📥 Exportar</Btn>
         <Btn variant="ghost" className="border-danger/30 text-danger" onClick={()=>setConfirm({
-          title:'🗑 Limpar tudo', body:'Remove <strong>todos</strong> os dados. Irreversível.',
-          okText:'Limpar', okClass:'bg-danger', onOk:()=>{doClearAll();setConfirm(null)}, onCancel:()=>setConfirm(null)
+          title:'🗑 Limpar todos os dados',
+          body: `Tem certeza que deseja remover <strong>todos</strong> os dados?<br/><br/>` +
+                `• <strong>${D.length}</strong> transações de operadoras<br/>` +
+                `• <strong>${SR.length}</strong> registros do Sistema (ERP)<br/>` +
+                `• Histórico de conciliação e fechamentos<br/><br/>` +
+                `<span style="color:#ef4444">Esta ação é <strong>irreversível</strong>.</span>`,
+          okText:'Sim, limpar tudo', okClass:'bg-danger',
+          onOk:()=>{doClearAll();setConfirm(null)}, onCancel:()=>setConfirm(null)
         })}>🗑 Limpar</Btn>
         <Btn variant="ghost" onClick={()=>setModals(p=>({...p,cfg:true}))} className="px-2">⚙</Btn>
       </div>
