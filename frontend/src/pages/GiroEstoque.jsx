@@ -259,9 +259,9 @@ export default function GiroEstoque() {
   const fileRef = useRef()
 
   // ── filtros ────────────────────────────────────────────────────────────────
-  // filtMesIni / filtMesFim no formato "YYYY-MM" (input[type=month])
-  const [filtMesIni,  setFiltMesIni]  = useState('')
-  const [filtMesFim,  setFiltMesFim]  = useState('')
+  // filtDataIni / filtDataFim no formato "YYYY-MM-DD" (input[type=date])
+  const [filtDataIni, setFiltDataIni] = useState('')
+  const [filtDataFim, setFiltDataFim] = useState('')
   const [filtAlmox,   setFiltAlmox]   = useState('')
   const [filtClasse,  setFiltClasse]  = useState('')
   const [filtGiroMin, setFiltGiroMin] = useState('0')
@@ -282,12 +282,13 @@ export default function GiroEstoque() {
     try {
       const saved = localStorage.getItem(lsKey)
       if (!saved) return
-      const { data, fn, mesIni, mesFim } = JSON.parse(saved)
+      const { data, fn, dataIni, dataFim, mesIni, mesFim } = JSON.parse(saved)
       if (data?.length) {
         setRawData(data)
         setFileName(fn || '')
-        setFiltMesIni(mesIni || '')
-        setFiltMesFim(mesFim || '')
+        // suporta formato antigo (mesIni/mesFim YYYY-MM) e novo (dataIni/dataFim YYYY-MM-DD)
+        setFiltDataIni(dataIni || (mesIni ? mesIni + '-01' : ''))
+        setFiltDataFim(dataFim || (mesFim ? mesFim + '-01' : ''))
         setFileLoaded(true)
       }
     } catch {}
@@ -300,16 +301,16 @@ export default function GiroEstoque() {
     try {
       const { data, rows } = await parseExcel(file)
       const meses = [...new Set(data.map(r => toYM(r.y, r.mn)))].sort()
-      const mesIni = meses[0] || ''
-      const mesFim = meses[meses.length - 1] || ''
+      const dataIni = meses[0] ? meses[0] + '-01' : ''
+      const dataFim = meses[meses.length - 1] ? meses[meses.length - 1] + '-01' : ''
       setRawData(data)
       setFileName(file.name)
-      setFiltMesIni(mesIni)
-      setFiltMesFim(mesFim)
+      setFiltDataIni(dataIni)
+      setFiltDataFim(dataFim)
       setParseMsg(`✓ ${file.name} — ${data.length} combinações / ${rows} linhas`)
       setFileLoaded(true)
       // Persiste os dados para não precisar re-fazer upload ao trocar de aba
-      try { localStorage.setItem(lsKey, JSON.stringify({ data, fn: file.name, mesIni, mesFim })) } catch {}
+      try { localStorage.setItem(lsKey, JSON.stringify({ data, fn: file.name, dataIni, dataFim })) } catch {}
     } catch (err) {
       setParseMsg('Erro: ' + err.message)
       alert('Erro ao processar arquivo:\n' + err.message)
@@ -319,7 +320,7 @@ export default function GiroEstoque() {
   function reset() {
     localStorage.removeItem(lsKey)
     setFileLoaded(false); setRawData([]); setFileName(''); setParseMsg('')
-    setFiltMesIni(''); setFiltMesFim('')
+    setFiltDataIni(''); setFiltDataFim('')
     setFiltAlmox(''); setFiltClasse(''); setFiltGiroMin('0')
     setTblSearch(''); setTblSortCol('g_avg'); setTblSortDir('desc')
   }
@@ -340,10 +341,10 @@ export default function GiroEstoque() {
 
   const activeMeses = useMemo(() => {
     if (!allMeses.length) return allMeses
-    const ini = ymVal(filtMesIni) || ymVal(ymMin)
-    const fim = ymVal(filtMesFim) || ymVal(ymMax)
+    const ini = ymVal(filtDataIni ? filtDataIni.slice(0, 7) : '') || ymVal(ymMin)
+    const fim = ymVal(filtDataFim ? filtDataFim.slice(0, 7) : '') || ymVal(ymMax)
     return allMeses.filter(x => x.y * 12 + x.mn >= ini && x.y * 12 + x.mn <= fim)
-  }, [allMeses, filtMesIni, filtMesFim, ymMin, ymMax])
+  }, [allMeses, filtDataIni, filtDataFim, ymMin, ymMax])
 
   const activeKeys = useMemo(() => new Set(activeMeses.map(x => toYM(x.y, x.mn))), [activeMeses])
 
@@ -352,7 +353,8 @@ export default function GiroEstoque() {
 
   function resetFilters() {
     setFiltAlmox(''); setFiltClasse(''); setFiltGiroMin('0')
-    setFiltMesIni(ymMin); setFiltMesFim(ymMax)
+    setFiltDataIni(ymMin ? ymMin + '-01' : '')
+    setFiltDataFim(ymMax ? ymMax + '-01' : '')
   }
 
   // ── dados filtrados ────────────────────────────────────────────────────────
@@ -669,17 +671,21 @@ export default function GiroEstoque() {
       <div className="flex-shrink-0 flex items-stretch bg-bg2 border-b border-white/[0.06]">
         <div className="flex items-end gap-2 px-4 py-2 overflow-x-auto flex-1 min-w-0">
 
-          {/* Período — input[type=month] igual ao date input do Entradas */}
+          {/* Período — input[type=date] igual ao padrão da aba Entradas de Notas */}
           <div className="flex flex-col gap-0.5 flex-shrink-0">
-            <span className="text-[8px] font-bold text-muted uppercase tracking-wider">Mês Inicial</span>
-            <input type="month" value={filtMesIni} min={ymMin} max={filtMesFim || ymMax}
-              onChange={e => setFiltMesIni(e.target.value)}
+            <span className="text-[8px] font-bold text-muted uppercase tracking-wider">Data Inicial</span>
+            <input type="date" value={filtDataIni}
+              min={ymMin ? ymMin + '-01' : ''}
+              max={filtDataFim || (ymMax ? ymMax + '-01' : '')}
+              onChange={e => setFiltDataIni(e.target.value)}
               className="px-1.5 py-1 bg-bg3 border border-white/[0.06] rounded-md text-[11px] text-dim outline-none focus:border-primary/30 w-[130px]" />
           </div>
           <div className="flex flex-col gap-0.5 flex-shrink-0">
-            <span className="text-[8px] font-bold text-muted uppercase tracking-wider">Mês Final</span>
-            <input type="month" value={filtMesFim} min={filtMesIni || ymMin} max={ymMax}
-              onChange={e => setFiltMesFim(e.target.value)}
+            <span className="text-[8px] font-bold text-muted uppercase tracking-wider">Data Final</span>
+            <input type="date" value={filtDataFim}
+              min={filtDataIni || (ymMin ? ymMin + '-01' : '')}
+              max={ymMax ? ymMax + '-01' : ''}
+              onChange={e => setFiltDataFim(e.target.value)}
               className="px-1.5 py-1 bg-bg3 border border-white/[0.06] rounded-md text-[11px] text-dim outline-none focus:border-primary/30 w-[130px]" />
           </div>
 
