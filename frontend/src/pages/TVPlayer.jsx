@@ -514,6 +514,24 @@ export default function TVPlayer() {
     return () => clearInterval(id)
   }, [effectiveToken])
 
+  // Wake Lock — impede Firestick/TV de entrar em modo de descanso
+  useEffect(() => {
+    if (!('wakeLock' in navigator)) return
+    let wakeLock = null
+    const acquire = () =>
+      navigator.wakeLock.request('screen')
+        .then(wl => { wakeLock = wl })
+        .catch(() => {})
+    acquire()
+    // Reaquire após o documento voltar a ficar visível (ex: tab em foco)
+    const onVisible = () => { if (document.visibilityState === 'visible') acquire() }
+    document.addEventListener('visibilitychange', onVisible)
+    return () => {
+      document.removeEventListener('visibilitychange', onVisible)
+      wakeLock?.release()
+    }
+  }, [])
+
   const fetchData = useCallback(async () => {
     try {
       const res = await fetch(`${BASE}/api/tv/public/${effectiveToken}/`)

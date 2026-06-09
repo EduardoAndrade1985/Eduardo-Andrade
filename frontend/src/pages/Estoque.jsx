@@ -1,5 +1,6 @@
 ﻿import { useState, useMemo, useRef, useEffect } from 'react'
 import api from '../services/api'
+import GiroEstoque from './GiroEstoque'
 import {
   ComposedChart, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
   Line, ResponsiveContainer, PieChart, Pie, Cell, LabelList,
@@ -454,28 +455,7 @@ export default function Estoque() {
       </div>
 
       {/* ── Aba: Giro de Estoque ───────────────────────────────────── */}
-      {aba === 'giro' && (
-        <div className="flex-1 flex items-center justify-center p-8">
-          <div className="text-center max-w-sm">
-            <div className="w-16 h-16 mx-auto mb-5 rounded-2xl bg-primary/10 border border-primary/20 flex items-center justify-center">
-              <svg className="w-7 h-7 text-primary" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-                <polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/>
-                <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/>
-              </svg>
-            </div>
-            <p className="font-bold text-dim text-base mb-2">Giro de Estoque</p>
-            <p className="text-sm text-muted/70 leading-relaxed mb-5">
-              Dashboard em elaboração.<br/>
-              Análise de giro, cobertura, ruptura e curva de consumo por item.
-            </p>
-            <div className="flex flex-wrap gap-2 justify-center">
-              {['Índice de Giro','Dias de Cobertura','Ponto de Pedido','Ruptura de Estoque'].map(tag => (
-                <span key={tag} className="text-[10px] px-2.5 py-1 bg-bg3 rounded-lg text-muted border border-white/[0.05]">{tag}</span>
-              ))}
-            </div>
-          </div>
-        </div>
-      )}
+      {aba === 'giro' && <GiroEstoque />}
 
       {/* ── Aba: Entradas de Notas ─────────────────────────────────── */}
       {aba === 'entradas' && <>
