@@ -56,6 +56,26 @@ function normOpBand(b) {
   if (k === 'visa electron') return 'visa'
   return k
 }
+function normColName(s) {
+  return String(s).toLowerCase()
+    .replace(/[àáâãä]/g, 'a').replace(/[èéêë]/g, 'e').replace(/[ìíîï]/g, 'i')
+    .replace(/[òóôõö]/g, 'o').replace(/[ùúûü]/g, 'u').replace(/ç/g, 'c').replace(/ñ/g, 'n')
+    .replace(/[^a-z0-9]/g, '')
+}
+function findColKey(keys, ...patterns) {
+  for (const pat of patterns) {
+    const k = keys.find(k => normColName(k).includes(pat))
+    if (k !== undefined) return k
+  }
+  return null
+}
+function findColIdx(headers, ...patterns) {
+  for (const pat of patterns) {
+    const i = headers.findIndex(h => normColName(h).includes(pat))
+    if (i !== -1) return i
+  }
+  return null
+}
 function cst(r) {
   if (r.ajuste) return r.ajuste.stResult || 'ajustado'
   if (r.st === 'agrupado') return 'agrupado'
@@ -472,9 +492,9 @@ export default function Cartoes() {
           const opsCount = {}
           transacoes.forEach(r => { if (r.o) opsCount[r.o] = (opsCount[r.o] || 0) + 1 })
           const merged = { ...ci }
-          if (!merged.sistema && rS.data.length) merged.sistema = `${rS.data.length} reg (banco)`
+          if (rS.data.length) merged.sistema = `${rS.data.length} reg (banco)`
           Object.entries(opsCount).forEach(([op, cnt]) => {
-            if (!merged[op]) merged[op] = `${cnt} reg (banco)`
+            merged[op] = `${cnt} reg (banco)`
           })
           setCards(merged)
         } catch {}
@@ -554,38 +574,76 @@ export default function Cartoes() {
     const nw = []
 
     if (src === 'cielo') {
-      const rows = XLSX.utils.sheet_to_json(ws, { defval: '', range: 9 })
+      // Detect header row: find first row containing both 'autorizac' and 'valor'
+      const rawRows = XLSX.utils.sheet_to_json(ws, { defval: '', header: 1 })
+      let headerIdx = rawRows.findIndex(row =>
+        (row || []).some(c => normColName(c).includes('autorizac')) &&
+        (row || []).some(c => normColName(c).includes('valorbrut'))
+      )
+      if (headerIdx === -1) headerIdx = 9  // fallback para formato padrão Cielo
+
+      const rows = XLSX.utils.sheet_to_json(ws, { defval: '', range: headerIdx })
+      const keys = rows.length ? Object.keys(rows[0]) : []
+      const authK = findColKey(keys, 'autorizac')
+      const valK  = findColKey(keys, 'valorbrut', 'valorbruto')
+      const dtK   = findColKey(keys, 'data')
+      const stK   = findColKey(keys, 'statusvenda', 'status')
+      const bandK = findColKey(keys, 'bandeira')
+      const horaK = findColKey(keys, 'horavenda', 'hora')
+      const nsuK  = findColKey(keys, 'nsudoc', 'nsu')
+      const pagK  = findColKey(keys, 'pagamento', 'formapag')
+      const taxaK = findColKey(keys, 'taxatarifa', 'taxa')
+      const vliqK = findColKey(keys, 'valorliquid', 'valliquid')
+      const parcK = findColKey(keys, 'parcel')
+      const cartK = findColKey(keys, 'numerodocartao', 'cartao')
       for (const r of rows) {
-        const auth = String(r['Código de autorização'] || '').trim()
-        const val = parseFloat(r['Valor bruto']) || 0
-        const st = String(r['Status da venda'] || '')
-        const band = String(r['Bandeira'] || '')
-        if (!auth || auth === 'nan' || val === 0 || st === 'Cancelada total') continue
+        const auth = String(r[authK] || '').trim()
+        const val  = parseFloat(r[valK]) || 0
+        const st   = String(r[stK] || '')
+        const band = String(r[bandK] || '')
+        if (!auth || auth === 'nan' || val === 0 || st.toLowerCase().includes('cancel')) continue
         if (band.toLowerCase() === 'pix') continue
-        nw.push({ o:'cielo', d:normDate(r['Data da venda']), h:String(r['Hora da venda']||''), a:auth,
-          n:String(r['NSU/DOC']||'').trim(), b:band, m:String(r['Forma de pagamento']||''),
-          vo:val, tx:parseFloat(r['Taxa/tarifa'])||0, vl:parseFloat(r['Valor líquido'])||0,
-          p:parseInt(r['Quantidade total de parcelas'])||0,
-          c:String(r['Número do cartão ']||r['Número do cartão']||''),
+        nw.push({ o:'cielo', d:normDate(r[dtK]), h:String(r[horaK]||''), a:auth,
+          n:String(r[nsuK]||'').trim(), b:band, m:String(r[pagK]||''),
+          vo:val, tx:parseFloat(r[taxaK])||0, vl:parseFloat(r[vliqK])||0,
+          p:parseInt(r[parcK])||0, c:String(r[cartK]||''),
           sv:st, vs:0, df:val, nOp:1, nSis:0, ag:'', mt:'', gt:'', stP:0, stN:0,
           si:'', hp:'', sd:'', sn:'', bi:'', usr:'', vb:true, vn:true, va:true, ajuste:null, st:'pendente', locked:false })
       }
     } else if (src === 'rede') {
       const allRows = XLSX.utils.sheet_to_json(ws, { defval: '', header: 1 })
-      let headerIdx = allRows.findIndex(row => row?.some(c => String(c).toLowerCase().includes('data da venda')))
+      let headerIdx = allRows.findIndex(row =>
+        (row || []).some(c => normColName(c).includes('autorizac') || normColName(c).includes('bandeira'))
+      )
       if (headerIdx === -1) headerIdx = 1
+      const headers = (allRows[headerIdx] || []).map(String)
+      // Map header names to column indexes
+      const iData  = findColIdx(headers, 'data') ?? 0
+      const iHora  = findColIdx(headers, 'hora') ?? 1
+      const iSt    = findColIdx(headers, 'status') ?? 2
+      const iVal   = findColIdx(headers, 'valorbrut', 'valor') ?? 3
+      const iMod1  = findColIdx(headers, 'produto', 'tipo') ?? 5
+      const iMod2  = findColIdx(headers, 'captura') ?? 6
+      const iParc  = findColIdx(headers, 'parcel') ?? 8
+      const iBand  = findColIdx(headers, 'bandeira') ?? 9
+      const iTaxa  = findColIdx(headers, 'taxa') ?? 11
+      const iVliq  = findColIdx(headers, 'valorliquid', 'vliquid') ?? 16
+      const iNsu   = findColIdx(headers, 'nsu', 'tid') ?? 17
+      const iAuth  = findColIdx(headers, 'autorizac') ?? 20
+      const iCart  = findColIdx(headers, 'cartao') ?? 24
       for (let i = headerIdx + 1; i < allRows.length; i++) {
         const row = allRows[i]
         if (!row) continue
-        const val = parseFloat(row[3]) || 0
-        const auth = String(row[20] || '').trim()
+        const val  = parseFloat(row[iVal]) || 0
+        const auth = String(row[iAuth] || '').trim()
         if (!auth || val === 0) continue
-        if (String(row[2] || '').trim().toLowerCase() !== 'aprovada') continue
-        const mod = [String(row[5]||''), String(row[6]||'')].filter(Boolean).join(' ').trim()
-        nw.push({ o:'rede', d:normDate(row[0]), h:String(row[1]||''), a:auth,
-          n:String(row[17]||'').trim(), b:String(row[9]||''), m:mod,
-          vo:val, tx:parseFloat(row[11])||0, vl:parseFloat(row[16])||0,
-          p:parseInt(row[8])||0, c:String(row[24]||''), sv:String(row[2]||''),
+        const stVal = String(row[iSt] || '').trim().toLowerCase()
+        if (!stVal.includes('aprovad')) continue
+        const mod = [String(row[iMod1]||''), String(row[iMod2]||'')].filter(Boolean).join(' ').trim()
+        nw.push({ o:'rede', d:normDate(row[iData]), h:String(row[iHora]||''), a:auth,
+          n:String(row[iNsu]||'').trim(), b:String(row[iBand]||''), m:mod,
+          vo:val, tx:parseFloat(row[iTaxa])||0, vl:parseFloat(row[iVliq])||0,
+          p:parseInt(row[iParc])||0, c:String(row[iCart]||''), sv:stVal,
           vs:0, df:val, nOp:1, nSis:0, ag:'', mt:'', gt:'', stP:0, stN:0,
           si:'', hp:'', sd:'', sn:'', bi:'', usr:'', vb:true, vn:true, va:true, ajuste:null, st:'pendente', locked:false })
       }
@@ -607,6 +665,11 @@ export default function Cartoes() {
           vs:0, df:val, nOp:1, nSis:0, ag:'', mt:'', gt:'', stP:0, stN:0,
           si:'', hp:'', sd:'', sn:'', bi:'', usr:'', vb:true, vn:true, va:true, ajuste:null, st:'pendente', locked:false })
       }
+    }
+
+    if (nw.length === 0) {
+      toast(`${src.toUpperCase()}: Nenhum registro encontrado no arquivo. Verifique o formato.`, 'er')
+      return
     }
 
     // Envia ao banco → banco faz dedup e retorna apenas os registros criados com IDs
