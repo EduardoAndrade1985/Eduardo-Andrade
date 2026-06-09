@@ -1,7 +1,8 @@
 import { useState, useMemo, useRef, useEffect, useCallback } from 'react'
 import * as XLSX from 'xlsx'
 import {
-  LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
+  ComposedChart, LineChart, Line, AreaChart, Area, BarChart, Bar,
+  XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, Legend, Cell, LabelList,
 } from 'recharts'
 import { useTheme } from '../contexts/ThemeContext'
@@ -491,25 +492,34 @@ export default function GiroEstoque() {
     const lbl = lbls.ch5
     return (
       <ResponsiveContainer width="100%" height={height}>
-        <LineChart data={ch5Data} margin={{ top: 8, right: 8, bottom: 0, left: 0 }}>
+        <ComposedChart data={ch5Data} margin={{ top: 8, right: 8, bottom: 0, left: 0 }}>
+          <defs>
+            <linearGradient id="gradTG5" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="5%"  stopColor="#f5a623" stopOpacity={0.28} />
+              <stop offset="95%" stopColor="#f5a623" stopOpacity={0.03} />
+            </linearGradient>
+          </defs>
           <CartesianGrid strokeDasharray="3 3" stroke={C.grid} />
           <XAxis dataKey="mes" tick={{ fill: C.tick, fontSize: 10, fontFamily: 'monospace' }} tickLine={false} axisLine={false} />
           <YAxis tick={{ fill: C.tick, fontSize: 9, fontFamily: 'monospace' }} tickLine={false} axisLine={false} tickFormatter={v => fN(v, 1) + 'x'} />
           <Tooltip content={<GiroTooltip />} />
+          {/* Area do Total Geral primeiro — fica abaixo das linhas dos almoxarifados */}
+          {!filtAlmox && (
+            <Area type="monotone" dataKey="Total Geral" name="Total Geral"
+              stroke="#f5a623" strokeWidth={2.5} strokeDasharray="6 3"
+              fill="url(#gradTG5)" fillOpacity={1}
+              dot={{ fill: '#f5a623', r: 4, strokeWidth: 2, stroke: '#0c0e13' }}
+              activeDot={{ r: 6 }} connectNulls
+              label={lbl ? { position: 'top', formatter: v => fN(v, 2) + 'x', style: { fill: '#f5a623', fontSize: 9, fontFamily: 'monospace' } } : false} />
+          )}
           {almList.map(alm => (
             <Line key={alm} type="monotone" dataKey={alm} name={alm}
               stroke={ALM_COLORS[alm] || PALETTE[0]} strokeWidth={2.5}
               dot={{ fill: ALM_COLORS[alm] || PALETTE[0], r: 4, strokeWidth: 2, stroke: '#0c0e13' }}
               activeDot={{ r: 6 }} connectNulls label={lbl ? { position: 'top', formatter: v => fN(v, 2) + 'x', style: { fill: C.tick, fontSize: 9, fontFamily: 'monospace' } } : false} />
           ))}
-          {!filtAlmox && (
-            <Line type="monotone" dataKey="Total Geral" name="Total Geral"
-              stroke="#f5a623" strokeWidth={2.5} strokeDasharray="6 3"
-              dot={{ fill: '#f5a623', r: 4, strokeWidth: 2, stroke: '#0c0e13' }}
-              activeDot={{ r: 6 }} connectNulls label={lbl ? { position: 'top', formatter: v => fN(v, 2) + 'x', style: { fill: '#f5a623', fontSize: 9, fontFamily: 'monospace' } } : false} />
-          )}
           <Legend wrapperStyle={{ fontSize: 10, paddingTop: 8 }} iconType="circle" iconSize={8} />
-        </LineChart>
+        </ComposedChart>
       </ResponsiveContainer>
     )
   }
@@ -579,25 +589,34 @@ export default function GiroEstoque() {
     const lbl = lbls.ch1
     return (
       <ResponsiveContainer width="100%" height={height}>
-        <LineChart data={ch1Data} margin={{ top: 8, right: 8, bottom: 0, left: 0 }}>
+        <ComposedChart data={ch1Data} margin={{ top: 8, right: 8, bottom: 0, left: 0 }}>
+          <defs>
+            <linearGradient id="gradTG1" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="5%"  stopColor="#f5a623" stopOpacity={0.28} />
+              <stop offset="95%" stopColor="#f5a623" stopOpacity={0.03} />
+            </linearGradient>
+          </defs>
           <CartesianGrid strokeDasharray="3 3" stroke={C.grid} />
           <XAxis dataKey="mes" tick={{ fill: C.tick, fontSize: 10, fontFamily: 'monospace' }} tickLine={false} axisLine={false} />
           <YAxis tick={{ fill: C.tick, fontSize: 9, fontFamily: 'monospace' }} tickLine={false} axisLine={false} tickFormatter={v => fRk(v)} />
           <Tooltip content={<MovTooltip />} />
+          {/* Area do Total Geral primeiro — fica abaixo das linhas dos almoxarifados */}
+          {!filtAlmox && (
+            <Area type="monotone" dataKey="Total Geral" name="Total Geral"
+              stroke="#f5a623" strokeWidth={2.5} strokeDasharray="6 3"
+              fill="url(#gradTG1)" fillOpacity={1}
+              dot={{ fill: '#f5a623', r: 4, strokeWidth: 2, stroke: '#0c0e13' }}
+              activeDot={{ r: 6 }} connectNulls
+              label={lbl ? { position: 'top', formatter: v => fRk(v), style: { fill: '#f5a623', fontSize: 9, fontFamily: 'monospace' } } : false} />
+          )}
           {almList.map(alm => (
             <Line key={alm} type="monotone" dataKey={alm} name={alm}
               stroke={ALM_COLORS[alm] || PALETTE[0]} strokeWidth={2.5}
               dot={{ fill: ALM_COLORS[alm] || PALETTE[0], r: 4, strokeWidth: 2, stroke: '#0c0e13' }}
               activeDot={{ r: 6 }} connectNulls label={lbl ? { position: 'top', formatter: v => fRk(v), style: { fill: C.tick, fontSize: 9, fontFamily: 'monospace' } } : false} />
           ))}
-          {!filtAlmox && (
-            <Line type="monotone" dataKey="Total Geral" name="Total Geral"
-              stroke="#f5a623" strokeWidth={2.5} strokeDasharray="6 3"
-              dot={{ fill: '#f5a623', r: 4, strokeWidth: 2, stroke: '#0c0e13' }}
-              activeDot={{ r: 6 }} connectNulls label={lbl ? { position: 'top', formatter: v => fRk(v), style: { fill: '#f5a623', fontSize: 9, fontFamily: 'monospace' } } : false} />
-          )}
           <Legend wrapperStyle={{ fontSize: 10, paddingTop: 8 }} iconType="circle" iconSize={8} />
-        </LineChart>
+        </ComposedChart>
       </ResponsiveContainer>
     )
   }
