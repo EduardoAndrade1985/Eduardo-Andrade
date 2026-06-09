@@ -270,7 +270,12 @@ export default function GiroEstoque() {
   const [filtClasse,  setFiltClasse]  = useState('')
   const [filtGiroMin, setFiltGiroMin] = useState('0')
 
-  // ── tabela ─────────────────────────────────────────────────────────────────
+  // ── tabela por classe (sem almox) ──────────────────────────────────────────
+  const [clsTblSortCol, setClsTblSortCol] = useState('g_avg')
+  const [clsTblSortDir, setClsTblSortDir] = useState('desc')
+  const [clsTblSearch,  setClsTblSearch]  = useState('')
+
+  // ── tabela pivot classe × almox ────────────────────────────────────────────
   const [showVarPct, setShowVarPct] = useState(true)
   const [tblSearch,  setTblSearch]  = useState('')
   const [tblSortCol, setTblSortCol] = useState('g_avg')
@@ -486,6 +491,39 @@ export default function GiroEstoque() {
 
   const tblMaxG = useMemo(() => Math.max(...tblRows.map(r => r.g_max), 0.01), [tblRows])
   function sortTbl(col) { setTblSortDir(tblSortCol === col ? (tblSortDir === 'asc' ? 'desc' : 'asc') : (col === 'cls' || col === 'alm' ? 'asc' : 'desc')); setTblSortCol(col) }
+
+  // ── tabela por classe (agregada, sem almox) ────────────────────────────────
+  const clsTblRows = useMemo(() => {
+    const byClass = {}
+    filtered.forEach(r => {
+      if (!byClass[r.cls]) byClass[r.cls] = { cls: r.cls, mo: {} }
+      const ym = toYM(r.y, r.mn)
+      if (!byClass[r.cls].mo[ym]) byClass[r.cls].mo[ym] = { s: 0, em: 0 }
+      byClass[r.cls].mo[ym].s  += r.saidas
+      byClass[r.cls].mo[ym].em += r.em
+    })
+    let rows = Object.values(byClass).map(row => {
+      activeMeses.forEach(x => {
+        const ym = toYM(x.y, x.mn)
+        const mo = row.mo[ym]
+        row.mo[ym] = { ...mo, g: mo && mo.em > 0 ? +(mo.s / mo.em).toFixed(4) : (mo ? 0 : null) }
+      })
+      const gs = activeMeses.map(x => row.mo[toYM(x.y, x.mn)]?.g).filter(g => g !== null && g > 0)
+      row.g_avg = gs.length ? gs.reduce((a, v) => a + v, 0) / gs.length : 0
+      row.g_max = Math.max(...activeMeses.map(x => row.mo[toYM(x.y, x.mn)]?.g ?? 0), 0)
+      return row
+    })
+    if (clsTblSearch) { const s = clsTblSearch.toLowerCase(); rows = rows.filter(r => r.cls.toLowerCase().includes(s)) }
+    const mult = clsTblSortDir === 'asc' ? 1 : -1
+    rows.sort((a, b) => {
+      const av = a[clsTblSortCol] ?? '', bv = b[clsTblSortCol] ?? ''
+      return typeof av === 'string' ? av.localeCompare(bv, 'pt-BR') * mult : (av - bv) * mult
+    })
+    return rows
+  }, [filtered, activeMeses, clsTblSearch, clsTblSortCol, clsTblSortDir])
+
+  const clsTblMaxG = useMemo(() => Math.max(...clsTblRows.map(r => r.g_max), 0.01), [clsTblRows])
+  function sortClsTbl(col) { setClsTblSortDir(clsTblSortCol === col ? (clsTblSortDir === 'asc' ? 'desc' : 'asc') : (col === 'cls' ? 'asc' : 'desc')); setClsTblSortCol(col) }
 
   // ── render dos gráficos (reutilizado no modal) ─────────────────────────────
   function renderCh5(height = 240) {
@@ -807,10 +845,98 @@ export default function GiroEstoque() {
           {renderCh1(240)}
         </ChartCard>
 
-        {/* Tabela */}
+        {/* Tabela por Classe */}
         <div className="bg-bg2 rounded-2xl border border-white/[0.06] overflow-hidden">
           <div className="flex items-center px-4 py-2.5 border-b border-white/[0.06] gap-3">
-            <p className="text-xs font-semibold text-dim">Giro de Estoque por Classe e Mês</p>
+            <p className="text-xs font-semibold text-dim">Giro por Classe</p>
+            <span className="text-[10px] font-mono text-muted bg-bg3 border border-white/[0.05] px-2 py-0.5 rounded">
+              {clsTblRows.length} classe{clsTblRows.length !== 1 ? 's' : ''} · {activeMeses.length} {activeMeses.length === 1 ? 'mês' : 'meses'}
+            </span>
+            <div className="ml-auto flex items-center gap-1.5 bg-bg3 border border-white/[0.06] rounded-md px-2 py-1">
+              <svg className="w-3 h-3 text-muted/50" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+              <input value={clsTblSearch} onChange={e => setClsTblSearch(e.target.value)} placeholder="Buscar classe…"
+                className="bg-transparent border-none outline-none text-[11px] text-dim placeholder:text-muted/50 w-28" />
+            </div>
+          </div>
+          <div className="overflow-auto max-h-[420px]">
+            <table className="w-full text-[11px] border-collapse">
+              <thead>
+                <tr className="sticky top-0 z-10">
+                  <th onClick={() => sortClsTbl('cls')}
+                    className="sticky left-0 z-20 bg-bg3 px-3 py-2 text-left font-mono text-[9px] uppercase tracking-wider text-muted border-b border-r border-white/[0.06] cursor-pointer hover:text-dim whitespace-nowrap"
+                    style={{ minWidth: 200 }}>
+                    Classe {clsTblSortCol === 'cls' ? (clsTblSortDir === 'asc' ? '↑' : '↓') : ''}
+                  </th>
+                  {activeMeses.map((x, i) => (
+                    <th key={x.ym} colSpan={showVarPct && i > 0 ? 2 : 1}
+                      className="bg-bg3 px-3 py-2 text-right font-mono text-[9px] uppercase tracking-wider text-muted border-b border-l border-white/[0.06] whitespace-nowrap">
+                      {MESES_ABB[x.mn]}/{String(x.y).slice(2)}
+                    </th>
+                  ))}
+                  <th onClick={() => sortClsTbl('g_avg')}
+                    className="bg-bg3 px-3 py-2 text-right font-mono text-[9px] uppercase tracking-wider text-muted border-b border-l-2 border-white/[0.12] cursor-pointer hover:text-dim whitespace-nowrap">
+                    Giro Méd {clsTblSortCol === 'g_avg' ? (clsTblSortDir === 'asc' ? '↑' : '↓') : ''}
+                  </th>
+                  <th onClick={() => sortClsTbl('g_max')}
+                    className="bg-bg3 px-3 py-2 text-right font-mono text-[9px] uppercase tracking-wider text-muted border-b border-white/[0.06] cursor-pointer hover:text-dim whitespace-nowrap">
+                    Giro Máx {clsTblSortCol === 'g_max' ? (clsTblSortDir === 'asc' ? '↑' : '↓') : ''}
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {clsTblRows.length === 0 && (
+                  <tr><td colSpan={999} className="text-center py-10 text-muted/50">Nenhum resultado. Ajuste os filtros.</td></tr>
+                )}
+                {clsTblRows.map((row, ri) => {
+                  const pct = Math.round(row.g_avg / clsTblMaxG * 100)
+                  return (
+                    <tr key={ri} className="border-b border-white/[0.03] hover:bg-white/[0.02]">
+                      <td className="sticky left-0 bg-bg2 px-3 py-2 border-r border-white/[0.05] whitespace-nowrap" style={{ minWidth: 200 }}>
+                        {row.cls.length > 34 ? row.cls.slice(0, 33) + '…' : row.cls}
+                      </td>
+                      {activeMeses.map((x, idx) => {
+                        const mo   = row.mo[x.ym]
+                        const g    = mo?.g ?? null
+                        const prev = idx > 0 ? row.mo[activeMeses[idx - 1].ym] : null
+                        const pg   = prev?.g ?? null
+                        const hasDelta = showVarPct && idx > 0 && g !== null && pg !== null && pg > 0
+                        const pctD = hasDelta ? ((g - pg) / pg) * 100 : null
+                        return [
+                          <td key={x.ym} className="px-3 py-2 text-right border-l border-white/[0.04] whitespace-nowrap">
+                            {g !== null && g > 0 ? <GiroBadge g={g} /> : <span className="text-muted/40 font-mono">—</span>}
+                          </td>,
+                          showVarPct && idx > 0 && (
+                            <td key={x.ym + '_d'} className="px-2 py-2 text-right whitespace-nowrap w-[52px]">
+                              {pctD !== null && Math.abs(pctD) > 0.5 && (
+                                <span className={`text-[10px] font-mono px-1 py-0.5 rounded ${pctD > 0 ? 'text-emerald-400 bg-emerald-500/10' : 'text-rose-400 bg-rose-500/10'}`}>
+                                  {pctD > 0 ? '▲' : '▼'}{Math.abs(pctD).toFixed(1)}%
+                                </span>
+                              )}
+                            </td>
+                          ),
+                        ]
+                      })}
+                      <td className="px-3 py-2 text-right border-l-2 border-white/[0.08] whitespace-nowrap" style={{ minWidth: 100 }}>
+                        <GiroBadge g={row.g_avg} />
+                        <div className="h-[3px] rounded-full bg-white/[0.06] mt-1.5" style={{ minWidth: 52 }}>
+                          <div className="h-full rounded-full" style={{ width: pct + '%', background: gBarColor(row.g_avg) }} />
+                        </div>
+                      </td>
+                      <td className="px-3 py-2 text-right whitespace-nowrap font-mono text-muted">
+                        {fN(row.g_max, 2)}x
+                      </td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        {/* Tabela Classe × Almoxarifado */}
+        <div className="bg-bg2 rounded-2xl border border-white/[0.06] overflow-hidden">
+          <div className="flex items-center px-4 py-2.5 border-b border-white/[0.06] gap-3">
+            <p className="text-xs font-semibold text-dim">Giro por Classe e Almoxarifado</p>
             <span className="text-[10px] font-mono text-muted bg-bg3 border border-white/[0.05] px-2 py-0.5 rounded">
               {tblRows.length} classe{tblRows.length !== 1 ? 's' : ''} · {activeMeses.length} {activeMeses.length === 1 ? 'mês' : 'meses'}
             </span>
