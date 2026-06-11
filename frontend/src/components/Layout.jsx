@@ -31,7 +31,7 @@ function LayoutInner() {
       <Sidebar collapsed={collapsed} setCollapsed={setCollapsed} />
       <div className="flex flex-col flex-1 min-w-0 overflow-hidden">
         <Header title={title} />
-        <main className="flex-1 overflow-auto">
+        <main className="flex-1 overflow-y-scroll">
           {/* key força remonte completo quando empresa muda — páginas releem dados do banco */}
           <Outlet key={empresaAtiva?.id ?? 'sem-empresa'} />
         </main>

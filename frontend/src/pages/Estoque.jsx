@@ -425,7 +425,7 @@ export default function Estoque() {
 
   // ── render ─────────────────────────────────────────────────────────
   return (
-    <div className="flex flex-col h-full overflow-hidden">
+    <div className="flex flex-col min-h-full">
 
       {carregando && (
         <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex flex-col items-center justify-center gap-3">
@@ -435,7 +435,7 @@ export default function Estoque() {
       )}
 
       {/* ── Abas ──────────────────────────────────────────────────── */}
-      <div className="flex-shrink-0 flex border-b border-white/[0.06] bg-bg2 px-4">
+      <div className="sticky top-0 z-20 flex border-b border-white/[0.06] bg-bg2 px-4">
         {[
           { id: 'entradas', label: 'Entradas de Notas',
             icon: <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg> },
