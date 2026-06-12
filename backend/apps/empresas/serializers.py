@@ -16,6 +16,10 @@ class EmpresaSerializer(serializers.ModelSerializer):
             return None
         if request.user.is_superuser:
             return 'admin'
+        # Fast path: membros_map pre-fetched by the view (avoids N+1)
+        membros_map = self.context.get('membros_map')
+        if membros_map is not None:
+            return membros_map.get(obj.id)
         try:
             membro = MembroEmpresa.objects.get(usuario=request.user, empresa=obj, ativo=True)
             return membro.papel
@@ -34,6 +38,9 @@ class EmpresaAdminSerializer(serializers.ModelSerializer):
                   'created_at', 'total_membros']
 
     def get_total_membros(self, obj):
+        # Use annotation from view if available (avoids N+1)
+        if hasattr(obj, 'membros_ativos'):
+            return obj.membros_ativos
         return obj.membros.filter(ativo=True).count()
 
 

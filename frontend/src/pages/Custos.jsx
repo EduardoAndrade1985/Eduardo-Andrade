@@ -1,6 +1,8 @@
 import { useState, useEffect, useMemo, useCallback, useRef, Fragment } from 'react'
 import { useEmpresa } from '../contexts/EmpresaContext'
 import { useTheme } from '../contexts/ThemeContext'
+import { SkeletonCustos } from '../components/Skeleton'
+import { getCached, setCached, invalidateCache } from '../services/dataCache'
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
   LineChart, Line, PieChart, Pie, Cell, Legend, LabelList,
@@ -257,10 +259,16 @@ export default function Custos() {
   }),[tema])
 
   // ── load ─────────────────────────────────────────────────────
+  const CACHE_KEY = 'movimentacoes'
   const carregar = useCallback(async ()=>{
+    const cached = getCached(CACHE_KEY, empresaAtiva?.id)
+    if (cached) {
+      setDados(cached); setSemDados(cached.length === 0); setCarregando(false); return
+    }
     try {
       setCarregando(true)
       const res = await api.get('/movimentacoes/')
+      setCached(CACHE_KEY, res.data, empresaAtiva?.id)
       if (!res.data.length) { setSemDados(true); setDados([]) }
       else { setSemDados(false); setDados(res.data) }
     } catch { setSemDados(true) }
@@ -595,6 +603,7 @@ export default function Custos() {
       const res=await api.post('/upload/',fd,{headers:{'Content-Type':'multipart/form-data'}})
       if (res.data.ok) {
         setUploadMsg(`✓ ${res.data.total_registros.toLocaleString('pt-BR')} registros importados`)
+        invalidateCache(CACHE_KEY)
         setTimeout(()=>{setImportModal(false);setFileUpload(null);setUploadMsg('');initRef.current=false;carregar()},1500)
       } else setUploadMsg(`Erro: ${res.data.erro}`)
     } catch(e){setUploadMsg(e.response?.data?.erro||'Erro ao conectar com o servidor.')}
@@ -615,7 +624,7 @@ export default function Custos() {
     if (meses.length){setAnoIni(meses[0].slice(0,4));setMesIni(meses[0].slice(5,7));setAnoFim(meses[meses.length-1].slice(0,4));setMesFim(meses[meses.length-1].slice(5,7))}
   }
 
-  if (carregando) return <div className="flex items-center justify-center h-full"><p className="text-muted text-sm animate-pulse">Carregando dados...</p></div>
+  if (carregando) return <SkeletonCustos />
 
   const custoMedioMensal = mesesUniq.length>0?totalGasto/mesesUniq.length:0
   const precoMedioUnit   = totalQtde>0?totalGasto/totalQtde:0

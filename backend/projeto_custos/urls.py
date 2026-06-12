@@ -7,7 +7,15 @@ from django.views.static import serve
 from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
 from rest_framework_simplejwt.exceptions import TokenError, InvalidToken
 from rest_framework.response import Response
+from rest_framework.decorators import api_view, permission_classes
+from rest_framework.permissions import AllowAny
 from apps.empresas.views import me_view, change_password_view
+
+
+@api_view(['GET'])
+@permission_classes([AllowAny])
+def ping(request):
+    return Response({'status': 'ok'})
 
 
 class CustomTokenObtainPairView(TokenObtainPairView):
@@ -29,6 +37,9 @@ class CustomTokenObtainPairView(TokenObtainPairView):
 
 urlpatterns = [
     path('admin/', admin.site.urls),
+
+    # Cold start prevention
+    path('ping/', ping, name='ping'),
 
     # JWT Auth
     path('auth/token/',         CustomTokenObtainPairView.as_view(), name='token_obtain'),

@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react'
 import { useEmpresa } from '../contexts/EmpresaContext'
+import { SkeletonOcupacao } from '../components/Skeleton'
 import * as XLSX from 'xlsx'
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid,
@@ -495,9 +496,7 @@ export default function Ocupacao() {
       {/* ── KPI cards ─────────────────────────────────────────────── */}
       <div className="flex-shrink-0 grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-2 px-4 pt-2 pb-1.5">
         {carregandoHoje?(
-          Array.from({length:7}).map((_,i)=>(
-            <div key={i} className="rounded-2xl border border-white/[0.05] bg-bg2 p-2.5 h-20 animate-pulse"/>
-          ))
+          <SkeletonOcupacao />
         ):kpi?(<>
           <KpiCard label="Taxa Ocup." value={`${kpi.taxa.toFixed(2)}%`} sub={fmtDtShort(kpi.data)} trend={kpi.taxaTrend} trendUnit=" p.p." color="primary"
             icon={<svg className="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>}/>

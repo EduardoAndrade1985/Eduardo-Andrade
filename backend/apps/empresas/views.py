@@ -1,6 +1,7 @@
 from django.http import JsonResponse
 from django.contrib.auth import get_user_model
 from django.utils.text import slugify
+from django.db.models import Count, Q
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated, IsAdminUser
 from rest_framework.views import APIView
@@ -63,13 +64,17 @@ class MinhasEmpresasView(APIView):
     def get(self, request):
         if request.user.is_superuser:
             empresas = Empresa.objects.filter(ativo=True)
+            membros_map = {}
         else:
-            ids = MembroEmpresa.objects.filter(
+            membros = MembroEmpresa.objects.filter(
                 usuario=request.user, ativo=True, empresa__ativo=True
-            ).values_list('empresa_id', flat=True)
-            empresas = Empresa.objects.filter(id__in=ids)
+            ).select_related('empresa')
+            membros_map = {mb.empresa_id: mb.papel for mb in membros}
+            empresas = Empresa.objects.filter(id__in=membros_map.keys())
 
-        serializer = EmpresaSerializer(empresas, many=True, context={'request': request})
+        serializer = EmpresaSerializer(
+            empresas, many=True, context={'request': request, 'membros_map': membros_map}
+        )
         empresa_ativa_id = request.empresa.id if request.empresa else None
         return Response({
             'empresas':      serializer.data,
@@ -258,7 +263,9 @@ class EmpresasAdminView(APIView):
 
     def get(self, request):
         self._check_superuser(request)
-        empresas = Empresa.objects.all().order_by('nome')
+        empresas = Empresa.objects.all().order_by('nome').annotate(
+            membros_ativos=Count('membros', filter=Q(membros__ativo=True))
+        )
         return Response(EmpresaAdminSerializer(empresas, many=True).data)
 
     def post(self, request):
@@ -369,10 +376,15 @@ class UsuarioEmpresasView(APIView):
             ).values_list('empresa_id', flat=True)
             empresas = Empresa.objects.filter(id__in=ids).order_by('nome')
 
+        membro_map = {
+            mb.empresa_id: mb
+            for mb in MembroEmpresa.objects.filter(usuario=target, empresa__in=empresas)
+        }
+
         result = []
         for emp in empresas:
-            try:
-                mb = MembroEmpresa.objects.get(usuario=target, empresa=emp)
+            mb = membro_map.get(emp.id)
+            if mb:
                 result.append({
                     'empresa_id': emp.id,
                     'empresa_nome': emp.nome_fantasia or emp.nome,
@@ -382,7 +394,7 @@ class UsuarioEmpresasView(APIView):
                     'tem_acesso': True,
                     'modulos_permitidos': mb.modulos_permitidos or [],
                 })
-            except MembroEmpresa.DoesNotExist:
+            else:
                 result.append({
                     'empresa_id': emp.id,
                     'empresa_nome': emp.nome_fantasia or emp.nome,
