@@ -41,10 +41,13 @@ export default function Login() {
         navigate('/custos', { replace: true })
       }
     } catch (err) {
+      const code = err.response?.data?.code
       setError(
-        err.response?.status === 401
-          ? 'Usuário ou senha incorretos.'
-          : 'Erro ao conectar com o servidor.'
+        code === 'account_inactive'
+          ? 'Seu acesso está inativo. Entre em contato com a área de Tecnologia para reativação.'
+          : err.response?.status === 401
+            ? 'Usuário ou senha incorretos.'
+            : 'Erro ao conectar com o servidor.'
       )
     } finally {
       setLoading(false)

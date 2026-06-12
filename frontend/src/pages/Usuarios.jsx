@@ -23,7 +23,7 @@ const MODULOS = [
 
 const FORM_VAZIO = {
   username: '', senha: '',
-  papel: 'operacional', modulos_permitidos: [], ativo: true,
+  papel: 'operacional', modulos_permitidos: [], ativo: true, usuario_ativo: true,
 }
 
 export default function Usuarios() {
@@ -93,6 +93,7 @@ export default function Usuarios() {
       papel:              vinculo?.papel || 'operacional',
       modulos_permitidos: [],
       ativo:              vinculo?.ativo !== false,
+      usuario_ativo:      usr.is_active !== false,
     })
     setNovaSenha('')
     setCopiarDe('')
@@ -124,7 +125,7 @@ export default function Usuarios() {
     setErro(''); setSalvando(true)
     try {
       if (editando) {
-        const payload = { papel: form.papel, modulos_permitidos: form.modulos_permitidos, ativo: form.ativo, username: form.username.trim() }
+        const payload = { papel: form.papel, modulos_permitidos: form.modulos_permitidos, ativo: form.ativo, usuario_ativo: form.usuario_ativo, username: form.username.trim() }
         if (novaSenha.trim()) payload.senha = novaSenha.trim()
 
         // Atualiza vínculo na empresa ativa (com X-Empresa-ID correto)
@@ -258,7 +259,12 @@ export default function Usuarios() {
                           {usr.username?.[0]?.toUpperCase() || '?'}
                         </div>
                         <div>
-                          <p className="font-semibold text-dim text-sm">{usr.username}</p>
+                          <div className="flex items-center gap-2">
+                            <p className="font-semibold text-dim text-sm">{usr.username}</p>
+                            {usr.is_active === false && (
+                              <span className="text-[9px] font-bold bg-danger/10 border border-danger/30 text-danger px-1.5 py-0.5 rounded">INATIVO</span>
+                            )}
+                          </div>
                           {usr.email && <p className="text-xs text-muted">{usr.email}</p>}
                         </div>
                       </div>
@@ -540,7 +546,28 @@ export default function Usuarios() {
                 )}
               </div>
 
-              {/* Ativo (edição) */}
+              {/* Acesso ao sistema (global) */}
+              {editando && (
+                <div>
+                  <label className="block text-[10px] font-semibold text-muted mb-1.5 uppercase tracking-wide">
+                    Acesso ao sistema
+                  </label>
+                  <select value={form.usuario_ativo ? 'sim' : 'nao'}
+                    onChange={e => setForm(f => ({ ...f, usuario_ativo: e.target.value === 'sim' }))}
+                    className={`w-full bg-bg3 border rounded-lg px-3 py-2.5 text-sm text-dim focus:outline-none transition
+                      ${form.usuario_ativo ? 'border-border focus:border-primary' : 'border-danger/50 focus:border-danger'}`}>
+                    <option value="sim">Sim — acesso liberado</option>
+                    <option value="nao">Não — bloqueado em todas as empresas</option>
+                  </select>
+                  {!form.usuario_ativo && (
+                    <p className="text-[10px] text-danger mt-1.5 flex items-center gap-1">
+                      ⚠ Usuário não conseguirá fazer login em nenhuma empresa.
+                    </p>
+                  )}
+                </div>
+              )}
+
+              {/* Ativo nesta empresa */}
               {editando && (
                 <label className="flex items-center gap-3 cursor-pointer">
                   <input type="checkbox" checked={form.ativo}

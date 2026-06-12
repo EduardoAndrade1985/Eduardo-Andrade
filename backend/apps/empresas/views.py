@@ -197,6 +197,9 @@ class MembroDetalheView(APIView):
             membro.modulos_permitidos = request.data['modulos_permitidos']
         if 'ativo' in request.data:
             membro.ativo = request.data['ativo']
+        if 'usuario_ativo' in request.data:
+            membro.usuario.is_active = bool(request.data['usuario_ativo'])
+            membro.usuario.save(update_fields=['is_active'])
         if 'username' in request.data:
             novo_username = request.data['username'].strip()
             if novo_username and novo_username != membro.usuario.username:
@@ -424,10 +427,11 @@ class TodosUsuariosView(APIView):
             uid = mb.usuario_id
             if uid not in usuarios:
                 usuarios[uid] = {
-                    'id':       mb.usuario.id,
-                    'username': mb.usuario.username,
-                    'email':    mb.usuario.email or '',
-                    'is_staff': mb.usuario.is_staff,
+                    'id':          mb.usuario.id,
+                    'username':    mb.usuario.username,
+                    'email':       mb.usuario.email or '',
+                    'is_staff':    mb.usuario.is_staff,
+                    'is_active':   mb.usuario.is_active,
                     'empresas': [],
                 }
             usuarios[uid]['empresas'].append({

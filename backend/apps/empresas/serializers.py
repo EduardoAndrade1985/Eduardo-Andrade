@@ -38,9 +38,10 @@ class EmpresaAdminSerializer(serializers.ModelSerializer):
 
 
 class MembroSerializer(serializers.ModelSerializer):
-    username = serializers.CharField(source='usuario.username', read_only=True)
-    email    = serializers.CharField(source='usuario.email', read_only=True)
+    username      = serializers.CharField(source='usuario.username', read_only=True)
+    email         = serializers.CharField(source='usuario.email', read_only=True)
+    usuario_ativo = serializers.BooleanField(source='usuario.is_active', read_only=True)
 
     class Meta:
         model  = MembroEmpresa
-        fields = ['id', 'username', 'email', 'papel', 'modulos_permitidos', 'ativo']
+        fields = ['id', 'username', 'email', 'papel', 'modulos_permitidos', 'ativo', 'usuario_ativo']
