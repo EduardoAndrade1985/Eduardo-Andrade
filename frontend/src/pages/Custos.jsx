@@ -1422,7 +1422,236 @@ export default function Custos() {
               </div>
             </div>
           )}
-          {!['bar','line','stacked','pm','heatmap'].includes(expandInfo.key)&&<p className="text-muted text-sm text-center py-8">Conteúdo expandido: {expandInfo.title}</p>}
+          {expandInfo.key==='pie'&&(
+            <div className="flex gap-6 h-full min-h-0">
+              <div className="flex-1 min-w-0">
+                <ResponsiveContainer width="100%" height="100%" minHeight={400}>
+                  <PieChart>
+                    <Pie data={pieData} dataKey="valor" nameKey="nome" cx="50%" cy="45%" outerRadius={190} innerRadius={95} paddingAngle={2}
+                      label={({cx,cy,midAngle,innerRadius,outerRadius,percent})=>{
+                        if(percent<0.02)return null
+                        const RADIAN=Math.PI/180,r=innerRadius+(outerRadius-innerRadius)*0.55
+                        const x=cx+r*Math.cos(-midAngle*RADIAN),y=cy+r*Math.sin(-midAngle*RADIAN)
+                        return <text x={x} y={y} fill="#fff" textAnchor="middle" dominantBaseline="central" fontSize={12} fontWeight={700}>{`${(percent*100).toFixed(1)}%`}</text>
+                      }} labelLine={false}>
+                      {pieData.map((d,i)=><Cell key={i} fill={d.nome.startsWith('Outros')?'#64748b':CORES[i%10]}/>)}
+                    </Pie>
+                    <Tooltip formatter={(v,n)=>[fmtBRL(v),n]} contentStyle={{background:C.bg2,border:`1px solid ${C.border}`,borderRadius:8,fontSize:12}}/>
+                    <Legend iconSize={12} iconType="circle" formatter={v=><span style={{fontSize:11,color:C.dim}}>{v}</span>}/>
+                  </PieChart>
+                </ResponsiveContainer>
+              </div>
+              <div className="w-80 flex-shrink-0 overflow-auto">
+                <table className="w-full text-xs" style={{borderCollapse:'collapse'}}>
+                  <thead className="sticky top-0">
+                    <tr className="text-muted uppercase tracking-wide text-[9px]">
+                      <th className="px-3 py-2.5 text-left bg-bg3 font-bold border-b border-border">Categoria</th>
+                      <th className="px-3 py-2.5 text-right bg-bg3 font-bold border-b border-border">Total</th>
+                      <th className="px-3 py-2.5 text-right bg-bg3 font-bold border-b border-border">%</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {pieData.map((d,i)=>(
+                      <tr key={i} className="border-b border-border/40 hover:bg-bg3/40 transition">
+                        <td className="px-3 py-2 text-dim font-medium max-w-[200px] truncate">
+                          <span style={{display:'inline-block',width:8,height:8,borderRadius:'50%',background:d.nome.startsWith('Outros')?'#64748b':CORES[i%10],marginRight:6}}/>
+                          {d.nome}
+                        </td>
+                        <td className="px-3 py-2 text-right font-mono text-primary font-bold">{fmtBRL(d.valor)}</td>
+                        <td className="px-3 py-2 text-right text-muted">{totalGasto>0?(d.valor/totalGasto*100).toFixed(1)+'%':'—'}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                  <tfoot className="sticky bottom-0">
+                    <tr className="border-t-2 border-primary/30 bg-primary/5">
+                      <td className="px-3 py-2 font-bold text-primary text-xs">Total</td>
+                      <td className="px-3 py-2 text-right font-bold text-primary font-mono text-xs">{fmtBRL(totalGasto)}</td>
+                      <td className="px-3 py-2 text-right font-bold text-primary text-xs">100%</td>
+                    </tr>
+                  </tfoot>
+                </table>
+              </div>
+            </div>
+          )}
+          {expandInfo.key==='catbar'&&(
+            <ResponsiveContainer width="100%" height="100%" minHeight={400}>
+              <BarChart data={porGrupo} layout="vertical" margin={{top:0,right:90,left:0,bottom:0}}>
+                <CartesianGrid strokeDasharray="3 3" stroke={C.grid} horizontal={false}/>
+                <XAxis type="number" tickFormatter={fmtK} tick={{fill:C.tick,fontSize:11}} axisLine={false} tickLine={false}/>
+                <YAxis type="category" dataKey="nome" tick={{fill:C.dim,fontSize:11}} axisLine={false} tickLine={false} width={170}/>
+                <Tooltip content={<Tip/>} cursor={{fill:C.bg3}}/>
+                <Bar dataKey="valor" radius={[0,4,4,0]} maxBarSize={26}>
+                  {porGrupo.map((_,i)=><Cell key={i} fill={CORES[i%CORES.length]}/>)}
+                  <LabelList dataKey="valor" position="right" formatter={fmtK} style={{fill:C.tick,fontSize:11,fontWeight:700}}/>
+                </Bar>
+              </BarChart>
+            </ResponsiveContainer>
+          )}
+          {expandInfo.key==='tcc'&&(
+            <div className="overflow-auto flex-1">
+              <table className="w-full text-xs" style={{borderCollapse:'collapse'}}>
+                <thead className="sticky top-0 bg-bg3 z-10">
+                  <tr className="text-muted uppercase tracking-wide text-[9px]">
+                    {['#','Centro de Custo','Valor Total','%','Qtde','Preço Médio','Itens','Entradas'].map((h,i)=>(
+                      <th key={h} className={`px-3 py-2.5 font-bold ${i<=1?'text-left':'text-right'}`}>{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {tabelaCC.map((r,i)=>{
+                    const maxV=tabelaCC[0]?.total||1
+                    return (
+                      <tr key={r.cc} className="row-sep hover:bg-bg3/50 transition">
+                        <td className="px-3 py-2 text-muted">{i+1}</td>
+                        <td className="px-3 py-2 text-dim font-medium max-w-[240px] truncate">
+                          <span style={{display:'inline-block',width:7,height:7,borderRadius:'50%',background:ccCor(r.cc),marginRight:5}}/>
+                          {r.cc}
+                        </td>
+                        <td className="px-3 py-2 text-right">
+                          <div className="flex items-center justify-end gap-2">
+                            <span className="text-primary font-bold font-mono">{fmtBRL(r.total)}</span>
+                            <div style={{width:50,height:3,background:'var(--color-bg3)',borderRadius:2,overflow:'hidden',flexShrink:0}}>
+                              <div style={{width:`${(r.total/maxV*100).toFixed(0)}%`,height:'100%',background:'var(--color-primary)',borderRadius:2}}/>
+                            </div>
+                          </div>
+                        </td>
+                        <td className="px-3 py-2 text-right text-muted">{r.pct}%</td>
+                        <td className="px-3 py-2 text-right text-muted font-mono">{fmtN2(r.qtde)}</td>
+                        <td className="px-3 py-2 text-right text-muted font-mono">{fmtBRL(r.pm)}</td>
+                        <td className="px-3 py-2 text-right text-muted">{r.itens}</td>
+                        <td className="px-3 py-2 text-right text-muted">{r.entradas}</td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+                <tfoot className="sticky bottom-0 bg-bg2">
+                  <tr className="border-t-2 border-primary/30 bg-primary/5">
+                    <td colSpan={2} className="px-3 py-2 text-xs font-bold text-primary">Total</td>
+                    <td className="px-3 py-2 text-right font-bold text-primary font-mono">{fmtBRL(totalGasto)}</td>
+                    <td className="px-3 py-2 text-right font-bold text-primary">100%</td>
+                    <td className="px-3 py-2 text-right font-bold text-primary font-mono">{fmtN2(totalQtde)}</td>
+                    <td colSpan={3}/>
+                  </tr>
+                </tfoot>
+              </table>
+            </div>
+          )}
+          {expandInfo.key==='grp'&&(
+            <div className="flex flex-col flex-1 min-h-0">
+              <div className="flex flex-wrap items-end gap-3 mb-3 flex-shrink-0">
+                <ISel label="Ano Início" value={grpFil.anoIni} onChange={v=>setGrpFil(p=>({...p,anoIni:v}))}><option value="">Todos</option>{allAnos.map(a=><option key={a} value={a}>{a}</option>)}</ISel>
+                <ISel label="Mês Início" value={grpFil.mesIni} onChange={v=>setGrpFil(p=>({...p,mesIni:v}))}><option value="">Todos</option>{mMeses().map(m=><option key={m.v} value={m.v}>{m.n}</option>)}</ISel>
+                <span className="text-muted text-xs self-end pb-1.5">→</span>
+                <ISel label="Ano Fim" value={grpFil.anoFim} onChange={v=>setGrpFil(p=>({...p,anoFim:v}))}><option value="">Todos</option>{allAnos.map(a=><option key={a} value={a}>{a}</option>)}</ISel>
+                <ISel label="Mês Fim" value={grpFil.mesFim} onChange={v=>setGrpFil(p=>({...p,mesFim:v}))}><option value="">Todos</option>{mMeses().map(m=><option key={m.v} value={m.v}>{m.n}</option>)}</ISel>
+                <ISel label="Centro de Custo" value={grpCC} onChange={v=>setGrpCC(v)} style={{minWidth:180}}><option value="">Todos os CCs</option>{allCCs.map(c=><option key={c} value={c}>{c}</option>)}</ISel>
+                <label className="flex items-center gap-2 text-xs text-dim cursor-pointer select-none self-end pb-1.5">
+                  <input type="checkbox" checked={grpShowDelta} onChange={e=>setGrpShowDelta(e.target.checked)} className="accent-primary"/>Mostrar variação
+                </label>
+                <span className="text-[10px] text-muted self-end pb-1.5 ml-auto">{grpRows.length} grupos · {grpMeses.length} meses</span>
+              </div>
+              <div className="overflow-auto flex-1">
+                <table className="text-xs" style={{borderCollapse:'separate',borderSpacing:0,minWidth:600,width:'100%'}}>
+                  <thead className="sticky top-0 z-10">
+                    <tr>
+                      <th className="px-3 py-2 text-left text-[9px] font-bold uppercase tracking-wide text-muted bg-bg3 sticky left-0 z-20 border-b border-border whitespace-nowrap" style={{minWidth:180}}>Grupo</th>
+                      {grpMeses.map((m,i)=>(
+                        <Fragment key={m}>
+                          <th className="px-3 py-2 text-right text-[9px] font-bold uppercase tracking-wide text-muted bg-bg3 border-b border-border whitespace-nowrap" style={{minWidth:95}}>{mesLbl(m)}</th>
+                          {grpShowDelta&&i>0&&<th className="px-2 py-2 text-center text-[9px] font-bold uppercase tracking-wide text-muted bg-bg3 border-b border-border whitespace-nowrap" style={{minWidth:56}}>Δ</th>}
+                        </Fragment>
+                      ))}
+                      <th className="px-3 py-2 text-right text-[9px] font-bold uppercase tracking-wide text-primary bg-bg3 border-b border-border whitespace-nowrap">Total</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {grpRows.map(r=>{
+                      const isOpen=grpDrill===r.grupo
+                      return (
+                        <Fragment key={r.grupo}>
+                          <tr className="hover:bg-bg3/40 transition cursor-pointer" onClick={()=>setGrpDrill(isOpen?null:r.grupo)}>
+                            <td className="px-3 py-2 text-dim font-medium sticky left-0 bg-bg2 cell-sep whitespace-nowrap z-10" style={{maxWidth:200}}>
+                              <span className="mr-1 text-muted">{isOpen?'▾':'▸'}</span>
+                              <span style={{display:'inline-block',width:6,height:6,borderRadius:'50%',background:CORES[grpRows.indexOf(r)%CORES.length],marginRight:5}}/>
+                              {r.grupo}
+                            </td>
+                            {grpMeses.map((m,i)=>{
+                              const v=r[m]||0,prev=i>0?r[grpMeses[i-1]]||0:null
+                              const delta=prev!==null&&prev>0?(v-prev)/prev*100:null
+                              const maxV=Math.max(...grpRows.map(x=>x[m]||0))
+                              return (
+                                <Fragment key={m}>
+                                  <td className="px-3 py-2 text-right cell-sep">{v>0?<span className="text-dim font-mono text-[11px]" style={{opacity:0.4+0.6*(v/(maxV||1))}}>{fmtK(v)}</span>:<span className="text-muted opacity-30">—</span>}</td>
+                                  {grpShowDelta&&i>0&&<td className="px-2 py-2 text-center cell-sep">{delta!=null?<span className={`text-[9px] font-bold px-1 py-0.5 rounded ${delta>2?'text-danger bg-danger/10':delta<-2?'text-primary bg-primary/10':'text-muted'}`}>{delta>0?'▲':'▼'} {Math.abs(delta).toFixed(1)}%</span>:<span className="text-muted opacity-30 text-[9px]">—</span>}</td>}
+                                </Fragment>
+                              )
+                            })}
+                            <td className="px-3 py-2 text-right font-bold text-primary font-mono cell-sep">{fmtBRL(r.total)}</td>
+                          </tr>
+                          {isOpen&&grpDrillItems.map(it=>(
+                            <tr key={it.item} className="bg-bg3/30">
+                              <td className="px-3 py-1.5 text-[11px] text-muted sticky left-0 bg-bg3/20 cell-sep-xs z-10 pl-8 truncate" style={{maxWidth:220}}>{it.item}</td>
+                              {grpMeses.map((m,i)=>(<Fragment key={m}><td className="px-3 py-1.5 cell-sep-xs text-right text-[10px] text-muted font-mono"/>{grpShowDelta&&i>0&&<td className="px-2 py-1.5 cell-sep-xs"/>}</Fragment>))}
+                              <td className="px-3 py-1.5 text-right text-[11px] text-dim font-mono cell-sep-xs">{fmtBRL(it.total)}</td>
+                            </tr>
+                          ))}
+                        </Fragment>
+                      )
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+          {expandInfo.key==='abc'&&(
+            <div className="flex flex-col flex-1 min-h-0">
+              <div className="flex flex-wrap items-end gap-3 mb-3 flex-shrink-0">
+                <ISel label="Ano Início" value={abcFil.anoIni} onChange={v=>setAbcFil(p=>({...p,anoIni:v}))}><option value="">Todos</option>{allAnos.map(a=><option key={a} value={a}>{a}</option>)}</ISel>
+                <ISel label="Mês Início" value={abcFil.mesIni} onChange={v=>setAbcFil(p=>({...p,mesIni:v}))}><option value="">Todos</option>{mMeses().map(m=><option key={m.v} value={m.v}>{m.n}</option>)}</ISel>
+                <span className="text-muted text-xs self-end pb-1.5">→</span>
+                <ISel label="Ano Fim" value={abcFil.anoFim} onChange={v=>setAbcFil(p=>({...p,anoFim:v}))}><option value="">Todos</option>{allAnos.map(a=><option key={a} value={a}>{a}</option>)}</ISel>
+                <ISel label="Mês Fim" value={abcFil.mesFim} onChange={v=>setAbcFil(p=>({...p,mesFim:v}))}><option value="">Todos</option>{mMeses().map(m=><option key={m.v} value={m.v}>{m.n}</option>)}</ISel>
+                <ISel label="Grupo" value={abcFil.cat} onChange={v=>setAbcFil(p=>({...p,cat:v}))}><option value="">Todos os grupos</option>{allCats.map(c=><option key={c} value={c}>{c}</option>)}</ISel>
+                <ISel label="Curva" value={abcFil.curva} onChange={v=>setAbcFil(p=>({...p,curva:v}))}><option value="">Todas</option><option value="A">A</option><option value="B">B</option><option value="C">C</option></ISel>
+                <MultiPopup label="Todos os CCs" open={abcCcPop} onToggle={()=>setAbcCcPop(p=>!p)} items={allCCs} sel={abcSelCCs} getColor={ccCor} onAll={()=>setAbcSelCCs(null)} onNone={()=>setAbcSelCCs(new Set())} onToggleItem={cc=>{const next=abcSelCCs===null?new Set(allCCs):new Set(abcSelCCs);next.has(cc)?next.delete(cc):next.add(cc);setAbcSelCCs(next.size===allCCs.length?null:next)}}/>
+                <div className="ml-auto"><div className="text-[9px] font-bold uppercase tracking-wide text-muted mb-1">Buscar Item</div><input type="text" value={abcFil.search} onChange={e=>setAbcFil(p=>({...p,search:e.target.value}))} placeholder="Filtra item..." className="bg-bg3 border border-border rounded-lg px-3 py-1.5 text-xs text-dim focus:outline-none focus:border-primary w-44"/></div>
+              </div>
+              <p className="text-[10px] text-muted mb-2 flex-shrink-0">{abcData.length} itens encontrados</p>
+              <div className="overflow-auto flex-1">
+                <table className="w-full text-xs" style={{tableLayout:'fixed',minWidth:860}}>
+                  <colgroup><col style={{width:32}}/><col style={{width:36}}/><col style={{width:300}}/><col style={{width:180}}/><col/><col/><col style={{width:110}}/><col style={{width:80}}/></colgroup>
+                  <thead className="sticky top-0 bg-bg3 z-10">
+                    <tr className="text-muted uppercase tracking-wide text-[9px]">
+                      {['#','ABC','Item','Categoria','Qtde','Preço Médio','Valor Total','Entradas'].map((h,i)=>(
+                        <th key={h} className={`px-3 py-2.5 font-bold ${i<=2?'text-left':'text-right'}`}>{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {abcData.map((r,i)=>(
+                      <tr key={i} className="row-sep hover:bg-bg3/50 transition">
+                        <td className="px-3 py-2 text-muted">{i+1}</td>
+                        <td className="px-3 py-2 text-center font-bold text-sm"><span className={r.abc==='A'?'text-primary':r.abc==='B'?'text-warn':'text-muted'}>{r.abc}</span></td>
+                        <td className="px-3 py-2 text-dim font-medium truncate">{r.item}</td>
+                        <td className="px-3 py-2 text-muted truncate">{r.grupo}</td>
+                        <td className="px-3 py-2 text-right text-muted font-mono">{fmtN2(r.qtde)}</td>
+                        <td className="px-3 py-2 text-right text-muted font-mono">{fmtBRL(r.pm)}</td>
+                        <td className="px-3 py-2 text-right font-bold text-dim font-mono">{fmtBRL(r.total)}</td>
+                        <td className="px-3 py-2 text-right text-muted">{r.entradas}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                  <tfoot className="sticky bottom-0 bg-bg2">
+                    <tr className="border-t-2 border-primary/30 bg-primary/5">
+                      <td colSpan={6} className="px-3 py-2 font-bold text-primary text-xs">Total ({abcData.length} itens)</td>
+                      <td className="px-3 py-2 text-right font-bold text-primary font-mono">{fmtBRL(abcData.reduce((s,r)=>s+r.total,0))}</td>
+                      <td/>
+                    </tr>
+                  </tfoot>
+                </table>
+              </div>
+            </div>
+          )}
         </ExpandModal>
       )}
 
