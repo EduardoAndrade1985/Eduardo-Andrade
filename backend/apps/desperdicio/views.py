@@ -437,6 +437,36 @@ class RegistroListView(APIView):
 class RegistroDetailView(APIView):
     permission_classes = [IsAuthenticated]
 
+    def patch(self, request, pk):
+        empresa = _empresa(request)
+        try:
+            registro = RegistroDesperdicio.objects.get(pk=pk, unidade__empresa=empresa)
+        except RegistroDesperdicio.DoesNotExist:
+            return Response({'erro': 'Não encontrado.'}, status=404)
+
+        if 'alimento_ia' in request.data:
+            registro.alimento_ia = (request.data['alimento_ia'] or '')[:200]
+        if 'peso_kg' in request.data:
+            peso_kg = _dec(request.data['peso_kg'])
+            if peso_kg <= 0:
+                return Response({'erro': 'Peso deve ser maior que zero.'}, status=400)
+            registro.peso_kg = peso_kg
+        if 'categoria_id' in request.data:
+            categoria_id = request.data['categoria_id']
+            registro.categoria = CategoriaAlimento.objects.filter(pk=categoria_id, empresa=empresa).first() if categoria_id else None
+        if 'tipo_perda_id' in request.data:
+            tipo_perda_id = request.data['tipo_perda_id']
+            registro.tipo_perda = TipoPerda.objects.filter(pk=tipo_perda_id, empresa=empresa).first() if tipo_perda_id else None
+        if 'refeicao_id' in request.data:
+            refeicao_id = request.data['refeicao_id']
+            registro.refeicao = Refeicao.objects.filter(pk=refeicao_id, empresa=empresa).first() if refeicao_id else None
+
+        # recalcula custo sempre que peso ou categoria puderem ter mudado
+        registro.custo_kg = calcular_custo(registro.categoria)
+        registro.valor_perda = (registro.peso_kg * registro.custo_kg).quantize(Decimal('0.01'))
+        registro.save()
+        return Response(RegistroDesperdicioSerializer(registro).data)
+
     def delete(self, request, pk):
         empresa = _empresa(request)
         RegistroDesperdicio.objects.filter(pk=pk, unidade__empresa=empresa).delete()
@@ -445,10 +475,17 @@ class RegistroDetailView(APIView):
 
 # ── CONTAGEM DE CLIENTES ─────────────────────────────────────────────────────
 class ContagemClientesView(APIView):
-    permission_classes = [IsAuthenticated]
+    """GET exige login (dashboard). POST aceita login OU dispositivo pareado (tablet)."""
+    permission_classes = [AllowAny]
 
     def get(self, request):
-        empresa = _empresa(request)
+        dispositivo = _dispositivo_do_token(request)
+        if dispositivo:
+            empresa = dispositivo.unidade.empresa
+        elif request.user.is_authenticated:
+            empresa = _empresa(request)
+        else:
+            return Response({'erro': 'Não autenticado.'}, status=401)
         unidade_id = request.GET.get('unidade_id')
         qs = ContagemClientes.objects.filter(unidade__empresa=empresa) if empresa else ContagemClientes.objects.none()
         if unidade_id:
@@ -462,8 +499,16 @@ class ContagemClientesView(APIView):
         return Response(ContagemClientesSerializer(qs[:90], many=True).data)
 
     def post(self, request):
-        empresa = _empresa(request)
-        unidade_id = request.data.get('unidade_id')
+        dispositivo = _dispositivo_do_token(request)
+        if dispositivo:
+            empresa = dispositivo.unidade.empresa
+            unidade_id = dispositivo.unidade_id
+        elif request.user.is_authenticated:
+            empresa = _empresa(request)
+            unidade_id = request.data.get('unidade_id')
+        else:
+            return Response({'erro': 'Não autenticado.'}, status=401)
+
         data       = request.data.get('data')
         n_clientes = request.data.get('n_clientes', 0)
         refeicao_id = request.data.get('refeicao_id') or None

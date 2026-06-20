@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo, useCallback } from 'react'
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
-  ResponsiveContainer, PieChart, Pie, Cell, ComposedChart, Line,
+  ResponsiveContainer, PieChart, Pie, Cell, ComposedChart, Line, LabelList,
 } from 'recharts'
 import * as XLSX from 'xlsx'
 import { jsPDF } from 'jspdf'
@@ -32,11 +32,122 @@ function KpiCard({ label, value, sub, color = 'text-primary' }) {
   )
 }
 
-function ChartCard({ title, children }) {
+function ChartCard({ title, onExpand, lblOn, onLbl, children }) {
   return (
-    <div className="bg-bg2 rounded-2xl border border-white/[0.06] p-4">
-      <p className="text-xs font-semibold text-muted uppercase tracking-wider mb-3">{title}</p>
+    <div className="bg-bg2 rounded-2xl border border-white/[0.06] p-4 hover:border-primary/10 transition">
+      <div className="flex items-center justify-between mb-3 gap-2">
+        <p className="text-xs font-semibold text-muted uppercase tracking-wider">{title}</p>
+        <div className="flex items-center gap-1.5">
+          {onLbl && (
+            <button onClick={onLbl} className={`text-[10px] px-2 py-1 border rounded transition ${
+              lblOn ? 'border-primary/40 text-primary bg-primary/10' : 'border-white/[0.08] text-muted hover:border-primary/30 hover:text-primary'
+            }`}>🏷 Rótulos</button>
+          )}
+          {onExpand && (
+            <button onClick={onExpand}
+              className="text-[10px] px-2 py-1 border border-white/[0.08] rounded text-muted hover:border-primary/30 hover:text-primary transition">
+              ⛶
+            </button>
+          )}
+        </div>
+      </div>
       {children}
+    </div>
+  )
+}
+
+function ExpandModal({ title, onClose, children }) {
+  useEffect(() => {
+    const fn = e => e.key === 'Escape' && onClose()
+    window.addEventListener('keydown', fn)
+    return () => window.removeEventListener('keydown', fn)
+  }, [onClose])
+  return (
+    <div className="fixed inset-0 z-[9000] bg-black/95 backdrop-blur-sm flex flex-col p-5">
+      <div className="flex items-center justify-between mb-3 flex-shrink-0">
+        <span className="font-bold text-dim text-sm">{title}</span>
+        <button onClick={onClose}
+          className="text-xs px-4 py-1.5 border border-white/[0.08] rounded text-muted hover:border-rose-500/40 hover:text-rose-400 transition">
+          ✕ Fechar
+        </button>
+      </div>
+      <div className="flex-1 bg-bg2 border border-white/[0.06] rounded-2xl p-5 overflow-auto flex flex-col">
+        {children}
+      </div>
+    </div>
+  )
+}
+
+function RegistroEditModal({ registro, categorias, tiposPerda, refeicoes, onClose, onSaved }) {
+  const [alimento, setAlimento] = useState(registro.alimento_ia || '')
+  const [peso, setPeso]         = useState(registro.peso_kg)
+  const [categoriaId, setCategoriaId] = useState(registro.categoria || '')
+  const [tipoPerdaId, setTipoPerdaId] = useState(registro.tipo_perda || '')
+  const [refeicaoId, setRefeicaoId]   = useState(registro.refeicao || '')
+  const [salvando, setSalvando] = useState(false)
+  const [erro, setErro]         = useState('')
+
+  async function salvar() {
+    setSalvando(true); setErro('')
+    try {
+      const { data } = await api.patch(`/desperdicio/registros/${registro.id}/`, {
+        alimento_ia: alimento, peso_kg: peso,
+        categoria_id: categoriaId || '', tipo_perda_id: tipoPerdaId || '', refeicao_id: refeicaoId || '',
+      })
+      onSaved(data)
+    } catch {
+      setErro('Erro ao salvar.')
+    } finally {
+      setSalvando(false)
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-[9000] bg-black/70 backdrop-blur-sm flex items-center justify-center p-4">
+      <div className="bg-bg2 border border-white/[0.08] rounded-2xl p-5 w-full max-w-sm space-y-3">
+        <p className="text-sm font-bold text-dim">Editar Lançamento</p>
+        <div className="flex flex-col gap-1">
+          <span className="text-[10px] text-muted">Alimento</span>
+          <input value={alimento} onChange={e => setAlimento(e.target.value)}
+            className="bg-bg3 border border-white/[0.08] rounded-lg px-2.5 py-2 text-sm text-dim outline-none focus:border-primary/40"/>
+        </div>
+        <div className="flex flex-col gap-1">
+          <span className="text-[10px] text-muted">Peso (kg)</span>
+          <input type="number" step="0.001" min="0" value={peso} onChange={e => setPeso(e.target.value)}
+            className="bg-bg3 border border-white/[0.08] rounded-lg px-2.5 py-2 text-sm text-dim outline-none focus:border-primary/40"/>
+        </div>
+        <div className="flex flex-col gap-1">
+          <span className="text-[10px] text-muted">Categoria de Custo</span>
+          <select value={categoriaId} onChange={e => setCategoriaId(e.target.value)}
+            className="bg-bg3 border border-white/[0.08] rounded-lg px-2.5 py-2 text-sm text-dim outline-none focus:border-primary/40">
+            <option value="">Sem categoria</option>
+            {categorias.map(c => <option key={c.id} value={c.id}>{c.nome}</option>)}
+          </select>
+        </div>
+        <div className="flex flex-col gap-1">
+          <span className="text-[10px] text-muted">Tipo de Perda</span>
+          <select value={tipoPerdaId} onChange={e => setTipoPerdaId(e.target.value)}
+            className="bg-bg3 border border-white/[0.08] rounded-lg px-2.5 py-2 text-sm text-dim outline-none focus:border-primary/40">
+            <option value="">—</option>
+            {tiposPerda.map(t => <option key={t.id} value={t.id}>{t.nome}</option>)}
+          </select>
+        </div>
+        <div className="flex flex-col gap-1">
+          <span className="text-[10px] text-muted">Refeição</span>
+          <select value={refeicaoId} onChange={e => setRefeicaoId(e.target.value)}
+            className="bg-bg3 border border-white/[0.08] rounded-lg px-2.5 py-2 text-sm text-dim outline-none focus:border-primary/40">
+            <option value="">—</option>
+            {refeicoes.map(r => <option key={r.id} value={r.id}>{r.nome}</option>)}
+          </select>
+        </div>
+        {erro && <p className="text-[11px] text-rose-400">{erro}</p>}
+        <div className="flex gap-2 pt-1">
+          <button onClick={onClose} className="flex-1 py-2 rounded-lg border border-white/[0.08] text-muted text-xs hover:text-dim">Cancelar</button>
+          <button onClick={salvar} disabled={salvando} className="flex-1 py-2 rounded-lg bg-primary text-bg text-xs font-semibold disabled:opacity-50">
+            {salvando ? '...' : 'Salvar'}
+          </button>
+        </div>
+      </div>
     </div>
   )
 }
@@ -49,6 +160,20 @@ function CTooltip({ active, payload, label }) {
       {payload.map((p, i) => (
         <p key={i} style={{ color: p.color || p.fill }} className="font-semibold">
           {p.name}: {typeof p.value === 'number' ? fmtK(p.value) : p.value}
+        </p>
+      ))}
+    </div>
+  )
+}
+
+function EvolucaoTooltip({ active, payload, label }) {
+  if (!active || !payload?.length) return null
+  return (
+    <div className="bg-bg3 border border-white/[0.08] rounded-xl px-3 py-2 shadow-xl text-xs">
+      <p className="text-muted mb-1">{label}</p>
+      {payload.map((p, i) => (
+        <p key={i} style={{ color: p.color }} className="font-semibold">
+          {p.name}: {p.dataKey === 'valor' ? fmtR(p.value) : fmtKg(p.value)}
         </p>
       ))}
     </div>
@@ -662,12 +787,25 @@ export default function FoodIntelligence() {
   const [dash, setDash]             = useState(null)
   const [registros, setRegistros]   = useState([])
   const [loading, setLoading]       = useState(false)
+  const [expand, setExpand]         = useState(null)
+  const [lbls, setLbls]             = useState({ evolucao: false, ranking: false, comparativo: false })
+  const togLbl = k => setLbls(p => ({ ...p, [k]: !p[k] }))
+  const [categoriasOpts, setCategoriasOpts] = useState([])
+  const [tiposPerdaOpts, setTiposPerdaOpts] = useState([])
+  const [refeicoesOpts, setRefeicoesOpts]   = useState([])
+  const [editRegistro, setEditRegistro]     = useState(null)
 
   const carregarUnidades = useCallback(() => {
     api.get('/desperdicio/unidades/').then(({ data }) => setUnidades(data)).catch(() => {})
   }, [])
 
   useEffect(() => { carregarUnidades() }, [carregarUnidades, empresaAtiva?.id])
+
+  useEffect(() => {
+    api.get('/desperdicio/categorias/').then(({ data }) => setCategoriasOpts(data)).catch(() => {})
+    api.get('/desperdicio/tipos-perda/').then(({ data }) => setTiposPerdaOpts(data)).catch(() => {})
+    api.get('/desperdicio/refeicoes/').then(({ data }) => setRefeicoesOpts(data)).catch(() => {})
+  }, [empresaAtiva?.id])
 
   const carregar = useCallback(async () => {
     setLoading(true)
@@ -931,30 +1069,21 @@ export default function FoodIntelligence() {
         {loading && <div className="text-center text-xs text-muted py-6">Carregando...</div>}
 
         {!loading && (
-          <ChartCard title="Evolução Diária — Desperdício (kg) e Valor da Perda">
+          <ChartCard title="Evolução Diária — Desperdício (kg) e Valor da Perda"
+            onExpand={() => setExpand('evolucao')} lblOn={lbls.evolucao} onLbl={() => togLbl('evolucao')}>
             {porDia.length === 0 ? (
               <div className="flex items-center justify-center h-[220px] text-xs text-muted/50">Sem dados no período</div>
             ) : (
               <ResponsiveContainer width="100%" height={220}>
-                <ComposedChart data={porDia.map(r => ({ ...r, dia: fmtDiaCurto(r.data) }))} margin={{ top: 8, right: 8, bottom: 0, left: 0 }}>
+                <ComposedChart data={porDia.map(r => ({ ...r, dia: fmtDiaCurto(r.data) }))} margin={{ top: lbls.evolucao ? 24 : 8, right: 8, bottom: 0, left: 0 }}>
                   <CartesianGrid strokeDasharray="3 3" stroke={C.grid} vertical={false}/>
                   <XAxis dataKey="dia" tick={{ fontSize: 10, fill: C.tick }} axisLine={false} tickLine={false}/>
                   <YAxis yAxisId="kg" tickFormatter={fmtKg} tick={{ fontSize: 9, fill: C.tick }} axisLine={false} tickLine={false} width={64}/>
                   <YAxis yAxisId="valor" orientation="right" tickFormatter={fmtK} tick={{ fontSize: 9, fill: '#f43f5e' }} axisLine={false} tickLine={false} width={56}/>
-                  <Tooltip content={({ active, payload, label }) => {
-                    if (!active || !payload?.length) return null
-                    return (
-                      <div className="bg-bg3 border border-white/[0.08] rounded-xl px-3 py-2 shadow-xl text-xs">
-                        <p className="text-muted mb-1">{label}</p>
-                        {payload.map((p, i) => (
-                          <p key={i} style={{ color: p.color }} className="font-semibold">
-                            {p.name}: {p.dataKey === 'valor' ? fmtR(p.value) : fmtKg(p.value)}
-                          </p>
-                        ))}
-                      </div>
-                    )
-                  }}/>
-                  <Bar yAxisId="kg" dataKey="kg" name="Desperdício (kg)" fill="#6366f1" radius={[3,3,0,0]} maxBarSize={48}/>
+                  <Tooltip content={<EvolucaoTooltip/>}/>
+                  <Bar yAxisId="kg" dataKey="kg" name="Desperdício (kg)" fill="#6366f1" radius={[3,3,0,0]} maxBarSize={48}>
+                    {lbls.evolucao && <LabelList dataKey="kg" position="top" formatter={fmtKg} style={{ fill: C.tick, fontSize: 9, fontWeight: 700 }}/>}
+                  </Bar>
                   <Line yAxisId="valor" dataKey="valor" name="Valor da Perda" stroke="#f43f5e" strokeWidth={2} dot={{ r: 3, fill: '#f43f5e' }} type="monotone"/>
                 </ComposedChart>
               </ResponsiveContainer>
@@ -965,7 +1094,7 @@ export default function FoodIntelligence() {
         {!loading && (
           <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
 
-            <ChartCard title="Desperdício por Categoria">
+            <ChartCard title="Desperdício por Categoria" onExpand={() => setExpand('categoria')}>
               {porCategoria.length === 0 ? (
                 <div className="flex items-center justify-center h-[180px] text-xs text-muted/50">Sem dados no período</div>
               ) : (
@@ -991,7 +1120,7 @@ export default function FoodIntelligence() {
               )}
             </ChartCard>
 
-            <ChartCard title="Desperdício por Refeição">
+            <ChartCard title="Desperdício por Refeição" onExpand={() => setExpand('refeicao')}>
               {porRefeicao.length === 0 ? (
                 <div className="flex items-center justify-center h-[180px] text-xs text-muted/50">Sem dados no período</div>
               ) : (
@@ -1017,7 +1146,8 @@ export default function FoodIntelligence() {
               )}
             </ChartCard>
 
-            <ChartCard title="Ranking de Alimentos (kg)">
+            <ChartCard title="Ranking de Alimentos (kg)"
+              onExpand={() => setExpand('ranking')} lblOn={lbls.ranking} onLbl={() => togLbl('ranking')}>
               {ranking.length === 0 ? (
                 <div className="flex items-center justify-center h-[180px] text-xs text-muted/50">Sem dados no período</div>
               ) : (
@@ -1034,6 +1164,7 @@ export default function FoodIntelligence() {
                     <Tooltip content={<CTooltip/>}/>
                     <Bar dataKey="kg" name="kg" radius={[0,4,4,0]}>
                       {ranking.map((_, i) => <Cell key={i} fill={CAT[i % CAT.length]}/>)}
+                      {lbls.ranking && <LabelList dataKey="kg" position="right" formatter={fmtKg} style={{ fill: C.tick, fontSize: 9, fontWeight: 700 }}/>}
                     </Bar>
                   </BarChart>
                 </ResponsiveContainer>
@@ -1041,7 +1172,8 @@ export default function FoodIntelligence() {
             </ChartCard>
 
             {comparativo.length > 0 && (
-              <ChartCard title="Comparativo entre Unidades">
+              <ChartCard title="Comparativo entre Unidades"
+                onExpand={() => setExpand('comparativo')} lblOn={lbls.comparativo} onLbl={() => togLbl('comparativo')}>
                 <ResponsiveContainer width="100%" height={Math.max(180, comparativo.length * 32)}>
                   <BarChart data={comparativo} layout="vertical" barCategoryGap="18%">
                     <CartesianGrid strokeDasharray="3 3" stroke={C.grid} horizontal={false}/>
@@ -1051,6 +1183,7 @@ export default function FoodIntelligence() {
                     <Tooltip content={<CTooltip/>}/>
                     <Bar dataKey="kg" name="kg" radius={[0,4,4,0]}>
                       {comparativo.map((_, i) => <Cell key={i} fill={CAT[i % CAT.length]}/>)}
+                      {lbls.comparativo && <LabelList dataKey="kg" position="right" formatter={fmtKg} style={{ fill: C.tick, fontSize: 9, fontWeight: 700 }}/>}
                     </Bar>
                   </BarChart>
                 </ResponsiveContainer>
@@ -1062,7 +1195,7 @@ export default function FoodIntelligence() {
                 <table className="w-full text-xs" style={{ borderCollapse: 'collapse' }}>
                   <thead className="sticky top-0 bg-bg3 z-10">
                     <tr className="text-muted uppercase tracking-wide text-[9px] border-b border-white/[0.06]">
-                      {['Alimento','Categoria','Tipo','Peso','Valor',''].map(h => (
+                      {['Data','Refeição','Alimento','Categoria','Tipo','Peso','Valor',''].map(h => (
                         <th key={h} className="px-2 py-2 font-bold text-left whitespace-nowrap">{h}</th>
                       ))}
                     </tr>
@@ -1070,18 +1203,56 @@ export default function FoodIntelligence() {
                   <tbody>
                     {registros.slice(0, 100).map(r => (
                       <tr key={r.id} className="border-b border-white/[0.03] hover:bg-white/[0.025]">
-                        <td className="px-2 py-1.5 text-dim">{trunc(r.alimento_ia, 28) || '—'}</td>
-                        <td className="px-2 py-1.5 text-muted">{trunc(r.categoria_nome, 20) || '—'}</td>
+                        <td className="px-2 py-1.5 text-muted whitespace-nowrap">{new Date(r.created_at).toLocaleDateString('pt-BR')}</td>
+                        <td className="px-2 py-1.5 text-muted">{r.refeicao_nome || '—'}</td>
+                        <td className="px-2 py-1.5 text-dim">{trunc(r.alimento_ia, 24) || '—'}</td>
+                        <td className="px-2 py-1.5 text-muted">{trunc(r.categoria_nome, 18) || '—'}</td>
                         <td className="px-2 py-1.5 text-muted">{r.tipo_perda_nome || '—'}</td>
                         <td className="px-2 py-1.5 text-right tabular-nums text-dim">{fmtKg(r.peso_kg)}</td>
                         <td className="px-2 py-1.5 text-right tabular-nums text-dim font-bold">{fmtR(r.valor_perda)}</td>
-                        <td className="px-2 py-1.5 text-right">
-                          <button onClick={() => excluirRegistro(r.id)} className="text-muted hover:text-rose-400 text-[10px]">excluir</button>
+                        <td className="px-2 py-1.5 text-right whitespace-nowrap">
+                          <button onClick={() => setEditRegistro(r)} title="Editar" className="text-muted hover:text-primary px-1">✎</button>
+                          <button onClick={() => excluirRegistro(r.id)} title="Excluir" className="text-muted hover:text-rose-400 px-1">🗑</button>
                         </td>
                       </tr>
                     ))}
                     {registros.length === 0 && (
-                      <tr><td colSpan={6} className="py-6 text-center text-muted/50">Nenhum lançamento no período</td></tr>
+                      <tr><td colSpan={8} className="py-6 text-center text-muted/50">Nenhum lançamento no período</td></tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </ChartCard>
+
+            <ChartCard title="Lançamentos por Dia">
+              {diasSemLancamento.length > 0 && (
+                <div className="mb-2 px-2.5 py-1.5 rounded-lg bg-amber-500/10 border border-amber-500/20 text-[10px] text-amber-400">
+                  ⚠️ {diasSemLancamento.length} dia{diasSemLancamento.length !== 1 ? 's' : ''} sem lançamento no período: {diasSemLancamento.map(fmtDiaBR).join(', ')}
+                </div>
+              )}
+              <div className="overflow-y-auto max-h-72">
+                <table className="w-full text-xs" style={{ borderCollapse: 'collapse' }}>
+                  <thead className="sticky top-0 bg-bg3 z-10">
+                    <tr className="text-muted uppercase tracking-wide text-[9px] border-b border-white/[0.06]">
+                      {['Data','Lanç.','Total (kg)','Valor','Maior Lançamento'].map((h, i) => (
+                        <th key={h} className={`px-2 py-2 font-bold whitespace-nowrap ${i===0?'text-left':'text-right'}`}>{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {[...porDia].reverse().map(r => (
+                      <tr key={r.data} className="border-b border-white/[0.03] hover:bg-white/[0.025]">
+                        <td className="px-2 py-1.5 text-dim">{fmtDiaBR(r.data)}</td>
+                        <td className="px-2 py-1.5 text-right tabular-nums text-muted">{fmtN(r.lancamentos)}</td>
+                        <td className="px-2 py-1.5 text-right tabular-nums text-dim">{fmtKg(r.kg)}</td>
+                        <td className="px-2 py-1.5 text-right tabular-nums text-dim font-bold">{fmtR(r.valor)}</td>
+                        <td className="px-2 py-1.5 text-right text-muted">
+                          {r.maior_lancamento ? `${trunc(r.maior_lancamento.alimento, 18)} (${fmtKg(r.maior_lancamento.kg)})` : '—'}
+                        </td>
+                      </tr>
+                    ))}
+                    {porDia.length === 0 && (
+                      <tr><td colSpan={5} className="py-6 text-center text-muted/50">Nenhum lançamento no período</td></tr>
                     )}
                   </tbody>
                 </table>
@@ -1090,44 +1261,125 @@ export default function FoodIntelligence() {
 
           </div>
         )}
-
-        {!loading && (
-          <ChartCard title="Lançamentos por Dia">
-            {diasSemLancamento.length > 0 && (
-              <div className="mb-2 px-2.5 py-1.5 rounded-lg bg-amber-500/10 border border-amber-500/20 text-[10px] text-amber-400">
-                ⚠️ {diasSemLancamento.length} dia{diasSemLancamento.length !== 1 ? 's' : ''} sem lançamento no período: {diasSemLancamento.map(fmtDiaBR).join(', ')}
-              </div>
-            )}
-            <div className="overflow-y-auto max-h-64">
-              <table className="w-full text-xs" style={{ borderCollapse: 'collapse' }}>
-                <thead className="sticky top-0 bg-bg3 z-10">
-                  <tr className="text-muted uppercase tracking-wide text-[9px] border-b border-white/[0.06]">
-                    {['Data','Lançamentos','Total (kg)','Valor da Perda','Maior Lançamento'].map((h, i) => (
-                      <th key={h} className={`px-2 py-2 font-bold whitespace-nowrap ${i===0?'text-left':'text-right'}`}>{h}</th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {[...porDia].reverse().map(r => (
-                    <tr key={r.data} className="border-b border-white/[0.03] hover:bg-white/[0.025]">
-                      <td className="px-2 py-1.5 text-dim">{fmtDiaBR(r.data)}</td>
-                      <td className="px-2 py-1.5 text-right tabular-nums text-muted">{fmtN(r.lancamentos)}</td>
-                      <td className="px-2 py-1.5 text-right tabular-nums text-dim">{fmtKg(r.kg)}</td>
-                      <td className="px-2 py-1.5 text-right tabular-nums text-dim font-bold">{fmtR(r.valor)}</td>
-                      <td className="px-2 py-1.5 text-right text-muted">
-                        {r.maior_lancamento ? `${trunc(r.maior_lancamento.alimento, 22)} (${fmtKg(r.maior_lancamento.kg)})` : '—'}
-                      </td>
-                    </tr>
-                  ))}
-                  {porDia.length === 0 && (
-                    <tr><td colSpan={5} className="py-6 text-center text-muted/50">Nenhum lançamento no período</td></tr>
-                  )}
-                </tbody>
-              </table>
-            </div>
-          </ChartCard>
-        )}
       </div>
+
+      {editRegistro && (
+        <RegistroEditModal
+          registro={editRegistro}
+          categorias={categoriasOpts}
+          tiposPerda={tiposPerdaOpts}
+          refeicoes={refeicoesOpts}
+          onClose={() => setEditRegistro(null)}
+          onSaved={(atualizado) => {
+            setRegistros(rs => rs.map(r => r.id === atualizado.id ? atualizado : r))
+            setEditRegistro(null)
+            carregar()
+          }}
+        />
+      )}
+
+      {expand === 'evolucao' && (
+        <ExpandModal title="Evolução Diária — Desperdício (kg) e Valor da Perda" onClose={() => setExpand(null)}>
+          <ResponsiveContainer width="100%" height={440}>
+            <ComposedChart data={porDia.map(r => ({ ...r, dia: fmtDiaCurto(r.data) }))}>
+              <CartesianGrid strokeDasharray="3 3" stroke={C.grid} vertical={false}/>
+              <XAxis dataKey="dia" tick={{ fontSize: 12, fill: C.tick }} axisLine={false} tickLine={false}/>
+              <YAxis yAxisId="kg" tickFormatter={fmtKg} tick={{ fontSize: 11, fill: C.tick }} axisLine={false} tickLine={false} width={70}/>
+              <YAxis yAxisId="valor" orientation="right" tickFormatter={fmtK} tick={{ fontSize: 11, fill: '#f43f5e' }} axisLine={false} tickLine={false} width={70}/>
+              <Tooltip content={<EvolucaoTooltip/>}/>
+              <Bar yAxisId="kg" dataKey="kg" name="Desperdício (kg)" fill="#6366f1" radius={[4,4,0,0]}>
+                <LabelList dataKey="kg" position="top" formatter={fmtKg} style={{ fill: C.tick, fontSize: 11, fontWeight: 700 }}/>
+              </Bar>
+              <Line yAxisId="valor" dataKey="valor" name="Valor da Perda" stroke="#f43f5e" strokeWidth={2.5} dot={{ r: 4, fill: '#f43f5e' }} type="monotone"/>
+            </ComposedChart>
+          </ResponsiveContainer>
+        </ExpandModal>
+      )}
+
+      {expand === 'categoria' && (
+        <ExpandModal title="Desperdício por Categoria" onClose={() => setExpand(null)}>
+          <div className="flex items-center justify-center gap-12 flex-1">
+            <ResponsiveContainer width={300} height={300}>
+              <PieChart>
+                <Pie data={porCategoria} cx="50%" cy="50%" innerRadius={70} outerRadius={120} paddingAngle={3} dataKey="kg" nameKey="categoria"
+                  label={({ categoria, percent }) => `${trunc(categoria,15)}: ${(percent*100).toFixed(1)}%`} labelLine>
+                  {porCategoria.map((_, i) => <Cell key={i} fill={CAT[i % CAT.length]}/>)}
+                </Pie>
+                <Tooltip content={<CTooltip/>}/>
+              </PieChart>
+            </ResponsiveContainer>
+            <div className="flex flex-col gap-3">
+              {porCategoria.map((c, i) => (
+                <div key={i} className="flex items-center gap-3">
+                  <div className="w-3 h-3 rounded-full flex-shrink-0" style={{ background: CAT[i % CAT.length] }}/>
+                  <span className="text-sm text-muted">{c.categoria}</span>
+                  <span className="text-sm font-bold text-dim tabular-nums ml-2">{fmtKg(c.kg)}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </ExpandModal>
+      )}
+
+      {expand === 'refeicao' && (
+        <ExpandModal title="Desperdício por Refeição" onClose={() => setExpand(null)}>
+          <div className="flex items-center justify-center gap-12 flex-1">
+            <ResponsiveContainer width={300} height={300}>
+              <PieChart>
+                <Pie data={porRefeicao} cx="50%" cy="50%" innerRadius={70} outerRadius={120} paddingAngle={3} dataKey="kg" nameKey="refeicao"
+                  label={({ refeicao, percent }) => `${trunc(refeicao,15)}: ${(percent*100).toFixed(1)}%`} labelLine>
+                  {porRefeicao.map((_, i) => <Cell key={i} fill={CAT[i % CAT.length]}/>)}
+                </Pie>
+                <Tooltip content={<CTooltip/>}/>
+              </PieChart>
+            </ResponsiveContainer>
+            <div className="flex flex-col gap-3">
+              {porRefeicao.map((r, i) => (
+                <div key={i} className="flex items-center gap-3">
+                  <div className="w-3 h-3 rounded-full flex-shrink-0" style={{ background: CAT[i % CAT.length] }}/>
+                  <span className="text-sm text-muted">{r.refeicao}</span>
+                  <span className="text-sm font-bold text-dim tabular-nums ml-2">{fmtKg(r.kg)}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </ExpandModal>
+      )}
+
+      {expand === 'ranking' && (
+        <ExpandModal title="Ranking de Alimentos (kg)" onClose={() => setExpand(null)}>
+          <ResponsiveContainer width="100%" height={Math.max(400, ranking.length * 44)}>
+            <BarChart data={ranking} layout="vertical" barCategoryGap="20%">
+              <CartesianGrid strokeDasharray="3 3" stroke={C.grid} horizontal={false}/>
+              <XAxis type="number" tick={{ fontSize: 12, fill: C.tick }} axisLine={false} tickLine={false}/>
+              <YAxis type="category" dataKey="alimento" tick={{ fontSize: 12, fill: C.dim }} width={160}
+                tickFormatter={v => trunc(v, 24)} axisLine={false} tickLine={false} interval={0}/>
+              <Tooltip content={<CTooltip/>}/>
+              <Bar dataKey="kg" name="kg" radius={[0,4,4,0]}>
+                {ranking.map((_, i) => <Cell key={i} fill={CAT[i % CAT.length]}/>)}
+                <LabelList dataKey="kg" position="right" formatter={fmtKg} style={{ fill: C.tick, fontSize: 11, fontWeight: 700 }}/>
+              </Bar>
+            </BarChart>
+          </ResponsiveContainer>
+        </ExpandModal>
+      )}
+
+      {expand === 'comparativo' && (
+        <ExpandModal title="Comparativo entre Unidades" onClose={() => setExpand(null)}>
+          <ResponsiveContainer width="100%" height={Math.max(400, comparativo.length * 60)}>
+            <BarChart data={comparativo} layout="vertical" barCategoryGap="20%">
+              <CartesianGrid strokeDasharray="3 3" stroke={C.grid} horizontal={false}/>
+              <XAxis type="number" tick={{ fontSize: 12, fill: C.tick }} axisLine={false} tickLine={false}/>
+              <YAxis type="category" dataKey="unidade" tick={{ fontSize: 12, fill: C.dim }} width={150} axisLine={false} tickLine={false} interval={0}/>
+              <Tooltip content={<CTooltip/>}/>
+              <Bar dataKey="kg" name="kg" radius={[0,4,4,0]}>
+                {comparativo.map((_, i) => <Cell key={i} fill={CAT[i % CAT.length]}/>)}
+                <LabelList dataKey="kg" position="right" formatter={fmtKg} style={{ fill: C.tick, fontSize: 11, fontWeight: 700 }}/>
+              </Bar>
+            </BarChart>
+          </ResponsiveContainer>
+        </ExpandModal>
+      )}
 
       </>}
     </div>

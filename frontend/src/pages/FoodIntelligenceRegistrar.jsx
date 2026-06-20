@@ -103,6 +103,9 @@ function TelaLancamento({ token, dispositivo, onDesparear }) {
   const [pesoKg, setPesoKg]         = useState('')
   const [salvando, setSalvando]     = useState(false)
   const [mensagem, setMensagem]     = useState(null)
+  const [nServidos, setNServidos]   = useState('')
+  const [salvandoContagem, setSalvandoContagem] = useState(false)
+  const [msgContagem, setMsgContagem] = useState('')
   const fileRef = useRef()
 
   useEffect(() => {
@@ -144,6 +147,33 @@ function TelaLancamento({ token, dispositivo, onDesparear }) {
       metas.forEach(m => document.head.removeChild(m))
     }
   }, [])
+
+  // busca a contagem já lançada hoje pra essa refeição (evita sobrescrever às cegas)
+  useEffect(() => {
+    if (!refeicaoId) { setNServidos(''); return }
+    const hoje = new Date().toISOString().slice(0, 10)
+    api.get('/desperdicio/contagem-clientes/', { params: { dispositivo_token: token, data: hoje, refeicao_id: refeicaoId } })
+      .then(({ data }) => setNServidos(data[0] ? String(data[0].n_clientes) : ''))
+      .catch(() => {})
+  }, [refeicaoId, token])
+
+  async function salvarContagem() {
+    if (!refeicaoId) { setMsgContagem('Selecione a refeição acima.'); return }
+    if (!nServidos) { setMsgContagem('Informe a quantidade.'); return }
+    setSalvandoContagem(true); setMsgContagem('')
+    try {
+      const hoje = new Date().toISOString().slice(0, 10)
+      await api.post('/desperdicio/contagem-clientes/', {
+        dispositivo_token: token, data: hoje, refeicao_id: refeicaoId, n_clientes: nServidos,
+      })
+      setMsgContagem('Salvo!')
+      setTimeout(() => setMsgContagem(''), 3000)
+    } catch {
+      setMsgContagem('Erro ao salvar.')
+    } finally {
+      setSalvandoContagem(false)
+    }
+  }
 
   // heartbeat periódico — indica pro painel que o dispositivo está online
   useEffect(() => {
@@ -272,6 +302,19 @@ function TelaLancamento({ token, dispositivo, onDesparear }) {
               <p className="text-[10px] text-muted/50 py-1">Nenhuma refeição cadastrada — use a aba Cadastros no painel.</p>
             )}
           </div>
+        </Section>
+
+        <Section icon="👥" title="Refeições Servidas Hoje">
+          <div className="flex gap-2">
+            <input type="number" inputMode="numeric" min="0" value={nServidos} onChange={e => setNServidos(e.target.value)}
+              placeholder="Qtd. servida" disabled={!refeicaoId}
+              className="flex-1 px-2.5 py-2 bg-bg3 border border-white/[0.08] rounded-lg text-sm text-dim outline-none focus:border-primary/40 disabled:opacity-40"/>
+            <button onClick={salvarContagem} disabled={salvandoContagem || !refeicaoId}
+              className="px-4 py-2 rounded-lg bg-primary/15 border border-primary/40 text-primary text-xs font-semibold disabled:opacity-50">
+              {salvandoContagem ? '...' : 'Salvar'}
+            </button>
+          </div>
+          {msgContagem && <p className={`text-[10px] mt-1.5 ${msgContagem === 'Salvo!' ? 'text-primary' : 'text-rose-400'}`}>{msgContagem}</p>}
         </Section>
 
         <Section icon="⚠️" title="Tipo de Perda">
