@@ -4,8 +4,18 @@ import { useTheme } from '../contexts/ThemeContext'
 
 const TOKEN_KEY = 'fi_dispositivo_token'
 
-// sugere a refeição mais provável pelo horário atual, casando por palavra-chave
-// no nome cadastrado (funciona mesmo com nomes customizados pelo hotel)
+// ordena/sugere por palavra-chave no nome (funciona mesmo com nomes customizados pelo hotel)
+const ORDEM_REFEICAO = ['manh', 'almo', 'jant']
+
+function ordenarRefeicoes(refeicoes) {
+  const rank = nome => {
+    const idx = ORDEM_REFEICAO.findIndex(k => nome.toLowerCase().includes(k))
+    return idx === -1 ? ORDEM_REFEICAO.length : idx
+  }
+  return [...refeicoes].sort((a, b) => rank(a.nome) - rank(b.nome))
+}
+
+// sugere a refeição mais provável pelo horário atual
 function sugerirRefeicao(refeicoes) {
   if (!refeicoes.length) return null
   const hora = new Date().getHours()
@@ -101,7 +111,12 @@ function TelaLancamento({ token, dispositivo, onDesparear }) {
     api.get('/desperdicio/tipos-perda/', { params: { dispositivo_token: token } })
       .then(({ data }) => { setTiposPerda(data); if (data[0]) setTipoPerdaId(String(data[0].id)) }).catch(() => {})
     api.get('/desperdicio/refeicoes/', { params: { dispositivo_token: token } })
-      .then(({ data }) => { setRefeicoes(data); const sugestao = sugerirRefeicao(data); if (sugestao) setRefeicaoId(String(sugestao.id)) }).catch(() => {})
+      .then(({ data }) => {
+        const ordenadas = ordenarRefeicoes(data)
+        setRefeicoes(ordenadas)
+        const sugestao = sugerirRefeicao(ordenadas)
+        if (sugestao) setRefeicaoId(String(sugestao.id))
+      }).catch(() => {})
   }, [token])
 
   // manifest PWA específico — "Adicionar à Tela Inicial" abre direto em tela cheia, sem barra do navegador
