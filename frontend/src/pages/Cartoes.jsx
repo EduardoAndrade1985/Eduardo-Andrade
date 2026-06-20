@@ -680,7 +680,7 @@ export default function Cartoes() {
     }
 
     // 1. Exibe registros imediatamente com IDs temporários (igual ao HTML original)
-    const tempRecs = nw.map(r => ({ ...r, id: `_t_${nId()}` }))
+    const tempRecs = nw.map(r => { const tid = `_t_${nId()}`; return { ...r, id: tid, i: tid } })
     setD(prev => [...prev.filter(r => r.o !== src), ...tempRecs])
     const newCards = { ...cards, [src]: `${fname} • ${nw.length} reg` }
     setCards(newCards); saveCardInfo(newCards)
@@ -799,38 +799,43 @@ export default function Cartoes() {
   const openAdj = (id) => {
     const rec = activeD.find(r => r.i === id)
     if (!rec) return
-    setModals(p => ({ ...p, adj: { id, rec } }))
+    setModals(p => ({ ...p, adj: { id, rec, tipo: 'aceitar_sistema' } }))
   }
   const saveAdj = () => {
-    const { id, tipo, valor, just } = modals.adj
+    const { id, tipo: tipoRaw, valor, just } = modals.adj
+    const tipo = tipoRaw || 'aceitar_sistema'
+    if (id === undefined || id === null) return
     if (!just?.trim()) { toast('Justificativa obrigatória', 'er'); return }
     const update = r => {
-      if (r.i !== id) return r
+      if (r.i === undefined || r.i !== id) return r
       const nr = { ...r }
-      if (tipo === 'aceitar_sistema')   nr.vo = r.vs
+      if (tipo === 'aceitar_sistema')        nr.vo = r.vs
       else if (tipo === 'aceitar_operadora') nr.vs = r.vo
       else if (tipo === 'arredondamento')    nr.vs = r.vo
-      else if (tipo === 'manual')       { nr.vo = valor||r.vo; nr.vs = valor||r.vs }
-      else if (tipo === 'estorno')      { nr.vo = 0; nr.vs = 0 }
-      else nr.vs = nr.vo
+      else if (tipo === 'manual')            { nr.vo = valor||r.vo; nr.vs = valor||r.vs }
+      else if (tipo === 'estorno')           { nr.vo = 0; nr.vs = 0 }
+      else                                   nr.vs = nr.vo
       nr.df = Math.round((nr.vo - nr.vs)*100)/100
       nr.ajuste = { tp:tipo, justificativa:just, dt:new Date().toISOString(), vaj:r.df, ov:r.vo, os:r.vs, stResult:'ajustado' }
       nr.st = 'ajustado'
       return nr
     }
-    pushUndo(`Ajuste ${modals.adj.rec.a}`)
+    const recAuth = modals.adj.rec.a
+    pushUndo(`Ajuste ${recAuth}`)
     if (viewMode === 'sis2op') setDS(p => p.map(update))
-    else setD(p => p.map(update))
-    // Sincroniza com banco
-    const recId = modals.adj.id
-    setD(curr => {
-      const updated = curr.find(r => r.i === recId)
-      if (updated?.id) api.patch(`/cartoes/transacoes/${updated.id}/`, { st: updated.st, ajuste: updated.ajuste, vo: updated.vo, vs: updated.vs, df: updated.df }).catch(() => {})
-      return curr
-    })
+    else {
+      setD(p => p.map(update))
+      // Sincroniza com banco apenas no modo op2sis (registros com ID real)
+      setD(curr => {
+        const updated = curr.find(r => r.i === id)
+        if (updated?.id && !String(updated.id).startsWith('_t_'))
+          api.patch(`/cartoes/transacoes/${updated.id}/`, { st: updated.st, ajuste: updated.ajuste, vo: updated.vo, vs: updated.vs, df: updated.df }).catch(() => {})
+        return curr
+      })
+    }
     setModals(p => ({ ...p, adj: null }))
     toast('Ajuste aplicado', 'ok')
-    lg('⚡', `Ajuste ${modals.adj.rec.a} (${tipo}) ${just}`)
+    lg('⚡', `Ajuste ${recAuth} (${tipo}) ${just}`)
   }
 
   const rnd1 = (id) => {
@@ -852,29 +857,35 @@ export default function Cartoes() {
   }
 
   const autoRound = () => {
+    // Aplica apenas aos registros visíveis no filtro atual (respeita data, operadora, etc.)
+    const toRound = filtered.filter(r =>
+      !isLocked(r) &&
+      (r.st==='divergente'||r.st==='arredondavel') &&
+      Math.abs(r.df)<=RT && Math.abs(r.df)>0
+    )
+    if (!toRound.length) { toast('Nenhuma dentro do limite', 'in'); return }
     pushUndo('Auto arredondamento')
-    let c = 0
-    setD(p => p.map(r => {
-      if ((r.st==='divergente'||r.st==='arredondavel') && Math.abs(r.df)<=RT && Math.abs(r.df)>0) {
-        c++
-        return { ...r, vs:r.vo, df:0,
-          ajuste:{ tp:'arredondamento', justificativa:`Auto (${cur(r.df)})`, dt:new Date().toISOString(), vaj:r.df, ov:r.vo, os:r.vs, stResult:'arredondado' },
-          st:'arredondado' }
-      }
-      return r
-    }))
-    if (c > 0) {
-      toast(`${c} arredondadas`, 'ok')
-      lg('✦', `Auto arred. <strong>${c}</strong>`)
-      // Sync rounded records with DB
-      setD(curr => {
-        const payload = curr
-          .filter(r => r.st === 'arredondado' && r.id && r.ajuste?.tp === 'arredondamento')
-          .map(r => ({ id:r.id, vs:r.vs, df:r.df, st:r.st, ajuste:r.ajuste, locked:r.locked }))
-        if (payload.length) api.post('/cartoes/transacoes/conciliar/', payload).catch(() => {})
-        return curr
-      })
-    } else { toast('Nenhuma dentro do limite', 'in') }
+    const ids = new Set(toRound.map(r => r.i))
+    const now = new Date().toISOString()
+    const update = r => {
+      if (!ids.has(r.i)) return r
+      return { ...r, vs:r.vo, df:0,
+        ajuste:{ tp:'arredondamento', justificativa:`Auto (${cur(r.df)})`, dt:now, vaj:r.df, ov:r.vo, os:r.vs, stResult:'arredondado' },
+        st:'arredondado' }
+    }
+    if (viewMode === 'sis2op') setDS(p => p.map(update))
+    else setD(p => p.map(update))
+    toast(`${toRound.length} arredondadas`, 'ok')
+    lg('✦', `Auto arred. <strong>${toRound.length}</strong>`)
+    // Sync com banco (somente registros com ID real no modo op2sis)
+    if (viewMode !== 'sis2op') {
+      const payload = toRound
+        .filter(r => r.id && !String(r.id).startsWith('_t_'))
+        .map(r => ({ id:r.id, vs:r.vo, df:0, st:'arredondado',
+          ajuste:{ tp:'arredondamento', justificativa:`Auto (${cur(r.df)})`, dt:now, vaj:r.df, ov:r.vo, os:r.vs, stResult:'arredondado' },
+          locked:r.locked }))
+      if (payload.length) api.post('/cartoes/transacoes/conciliar/', payload).catch(() => {})
+    }
   }
 
   const revert = (id) => {
