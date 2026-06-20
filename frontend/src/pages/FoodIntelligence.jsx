@@ -550,13 +550,96 @@ function CadastroCategorias() {
   )
 }
 
+function CadastroContagemRefeicoes({ unidades }) {
+  const [unidadeId, setUnidadeId] = useState('')
+  const [refeicoes, setRefeicoes] = useState([])
+  const [refeicaoId, setRefeicaoId] = useState('')
+  const [data, setData]           = useState(isoDate(new Date()))
+  const [nClientes, setNClientes] = useState('')
+  const [salvando, setSalvando]   = useState(false)
+  const [erro, setErro]           = useState('')
+  const [msg, setMsg]             = useState('')
+  const [registros, setRegistros] = useState([])
+
+  useEffect(() => {
+    if (unidades.length && !unidadeId) setUnidadeId(String(unidades[0].id))
+  }, [unidades, unidadeId])
+
+  useEffect(() => {
+    api.get('/desperdicio/refeicoes/').then(({ data }) => setRefeicoes(data)).catch(() => {})
+  }, [])
+
+  const carregarRegistros = useCallback(() => {
+    if (!unidadeId) { setRegistros([]); return }
+    api.get('/desperdicio/contagem-clientes/', { params: { unidade_id: unidadeId } })
+      .then(({ data }) => setRegistros(data)).catch(() => {})
+  }, [unidadeId])
+
+  useEffect(() => { carregarRegistros() }, [carregarRegistros])
+
+  async function salvar() {
+    if (!unidadeId || !data || !nClientes) { setErro('Preencha unidade, data e quantidade.'); return }
+    setSalvando(true); setErro('')
+    try {
+      await api.post('/desperdicio/contagem-clientes/', {
+        unidade_id: unidadeId, data, refeicao_id: refeicaoId || undefined, n_clientes: nClientes,
+      })
+      setMsg('Salvo!')
+      setNClientes('')
+      carregarRegistros()
+      setTimeout(() => setMsg(''), 3000)
+    } catch { setErro('Erro ao salvar.') }
+    finally { setSalvando(false) }
+  }
+
+  return (
+    <ChartCard title="Contagem de Refeições Servidas">
+      <p className="text-[10px] text-muted mb-2">Alimenta o KPI "Resíduo por Cliente" do dashboard.</p>
+      <div className="grid grid-cols-2 gap-2 mb-2">
+        <select value={unidadeId} onChange={e => setUnidadeId(e.target.value)}
+          className="bg-bg3 border border-white/[0.08] rounded px-2 py-1.5 text-xs text-dim outline-none focus:border-primary/30">
+          {unidades.map(u => <option key={u.id} value={u.id}>{u.nome}</option>)}
+          {unidades.length === 0 && <option value="">Cadastre uma Unidade</option>}
+        </select>
+        <select value={refeicaoId} onChange={e => setRefeicaoId(e.target.value)}
+          className="bg-bg3 border border-white/[0.08] rounded px-2 py-1.5 text-xs text-dim outline-none focus:border-primary/30">
+          <option value="">Total do dia (todas refeições)</option>
+          {refeicoes.map(r => <option key={r.id} value={r.id}>{r.nome}</option>)}
+        </select>
+        <input type="date" value={data} onChange={e => setData(e.target.value)}
+          className="bg-bg3 border border-white/[0.08] rounded px-2 py-1.5 text-xs text-dim outline-none focus:border-primary/30"/>
+        <input type="number" min="0" value={nClientes} onChange={e => setNClientes(e.target.value)} placeholder="Qtd. servida"
+          className="bg-bg3 border border-white/[0.08] rounded px-2 py-1.5 text-xs text-dim outline-none focus:border-primary/30"/>
+      </div>
+      <button onClick={salvar} disabled={salvando}
+        className="w-full py-1.5 rounded bg-primary text-bg text-xs font-semibold disabled:opacity-50 mb-2">
+        {salvando ? '...' : 'Salvar'}
+      </button>
+      {msg && <p className="text-[10px] text-primary mb-2">{msg}</p>}
+      {erro && <p className="text-[10px] text-rose-400 mb-2">{erro}</p>}
+      <div className="space-y-1.5 max-h-48 overflow-y-auto">
+        {registros.map(r => (
+          <div key={r.id} className="flex items-center gap-2 px-2 py-1.5 rounded bg-bg3/50 text-xs">
+            <span className="text-dim flex-shrink-0">{fmtDiaBR(r.data)}</span>
+            <span className="text-muted flex-1 truncate">{r.refeicao_nome || 'Total do dia'}</span>
+            <span className="text-dim font-bold flex-shrink-0">{fmtN(r.n_clientes)}</span>
+          </div>
+        ))}
+        {registros.length === 0 && <p className="text-[10px] text-muted/50 text-center py-3">Nenhuma contagem cadastrada</p>}
+      </div>
+    </ChartCard>
+  )
+}
+
 function PainelCadastros({ unidades, onUnidadesChange }) {
   return (
     <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
       <CadastroSimples titulo="Unidades" endpoint="/desperdicio/unidades/" placeholder="Nova unidade..." onChange={onUnidadesChange}/>
       <CadastroSetores unidades={unidades}/>
       <CadastroSimples titulo="Tipos de Perda" endpoint="/desperdicio/tipos-perda/" placeholder="Novo tipo de perda..."/>
+      <CadastroSimples titulo="Refeições" endpoint="/desperdicio/refeicoes/" placeholder="Nova refeição..."/>
       <CadastroCategorias/>
+      <CadastroContagemRefeicoes unidades={unidades}/>
     </div>
   )
 }
@@ -613,9 +696,11 @@ export default function FoodIntelligence() {
   }
 
   const porCategoria = dash?.por_categoria || []
+  const porRefeicao  = dash?.por_refeicao || []
   const ranking      = dash?.ranking_alimentos || []
   const comparativo  = dash?.comparativo_unidades || []
   const porDia       = dash?.por_dia || []
+  const diasSemLancamento = dash?.dias_sem_lancamento || []
 
   const unidadeNome = unidadeId
     ? (unidades.find(u => String(u.id) === String(unidadeId))?.nome || '')
@@ -635,19 +720,24 @@ export default function FoodIntelligence() {
       ['Valor da Perda (R$)', dash?.valor_total_perda ?? 0],
       ['Perdas Críticas', dash?.perdas_criticas ?? 0],
       ['Cobertura da IA (%)', dash?.cobertura_ia_pct ?? 0],
-      ['Turno que Mais Perde', dash?.turno_concentra?.turno || '—'],
+      ['Refeição que Mais Perde', dash?.refeicao_concentra?.refeicao || '—'],
     ])
     XLSX.utils.book_append_sheet(wb, wsResumo, 'Resumo')
 
     XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([
-      ['Data', 'Lançamentos', 'Total (kg)', 'Valor da Perda'],
-      ...porDia.map(r => [fmtDiaBR(r.data), r.lancamentos, r.kg, r.valor]),
+      ['Data', 'Lançamentos', 'Total (kg)', 'Valor da Perda', 'Maior Lançamento'],
+      ...porDia.map(r => [fmtDiaBR(r.data), r.lancamentos, r.kg, r.valor, r.maior_lancamento ? `${r.maior_lancamento.alimento} (${r.maior_lancamento.kg}kg)` : '']),
     ]), 'Por Dia')
 
     XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([
       ['Categoria', 'kg'],
       ...porCategoria.map(c => [c.categoria, c.kg]),
     ]), 'Por Categoria')
+
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([
+      ['Refeição', 'kg', 'Valor'],
+      ...porRefeicao.map(r => [r.refeicao, r.kg, r.valor]),
+    ]), 'Por Refeição')
 
     XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([
       ['Alimento', 'kg', 'Valor'],
@@ -682,18 +772,18 @@ export default function FoodIntelligence() {
         ['Valor da Perda', fmtR(dash?.valor_total_perda)],
         ['Perdas Críticas', fmtN(dash?.perdas_criticas)],
         ['Cobertura da IA', `${dash?.cobertura_ia_pct ?? 0}%`],
-        ['Turno que Mais Perde', dash?.turno_concentra?.turno || '—'],
+        ['Refeição que Mais Perde', dash?.refeicao_concentra?.refeicao || '—'],
       ],
       styles: { fontSize: 8 }, headStyles: { fillColor: [30, 30, 40], textColor: 255 },
     })
     y = doc.lastAutoTable.finalY + 8
 
-    if (porDia.length) {
-      doc.setFontSize(9); doc.setFont('helvetica', 'bold'); doc.text('LANÇAMENTOS POR DIA', 14, y); y += 4
+    if (porRefeicao.length) {
+      doc.setFontSize(9); doc.setFont('helvetica', 'bold'); doc.text('DESPERDÍCIO POR REFEIÇÃO', 14, y); y += 4
       autoTable(doc, {
-        startY: y, margin: { left: 14, right: 14 },
-        head: [['Data', 'Lançamentos', 'Total (kg)', 'Valor da Perda']],
-        body: porDia.map(r => [fmtDiaBR(r.data), r.lancamentos, fmtKg(r.kg), fmtR(r.valor)]),
+        startY: y, margin: { left: 14, right: 14 }, tableWidth: 120,
+        head: [['Refeição', 'kg', 'Valor']],
+        body: porRefeicao.map(r => [r.refeicao, fmtKg(r.kg), fmtR(r.valor)]),
         styles: { fontSize: 7 }, headStyles: { fillColor: [30, 30, 40], textColor: 255 },
       })
       y = doc.lastAutoTable.finalY + 8
@@ -730,6 +820,21 @@ export default function FoodIntelligence() {
         startY: y, margin: { left: 14, right: 14 },
         head: [['Unidade', 'kg', 'Valor']],
         body: comparativo.map(c => [c.unidade, fmtKg(c.kg), fmtR(c.valor)]),
+        styles: { fontSize: 7 }, headStyles: { fillColor: [30, 30, 40], textColor: 255 },
+      })
+      y = doc.lastAutoTable.finalY + 8
+    }
+
+    if (porDia.length) {
+      if (y > 170) { doc.addPage(); y = 14 }
+      doc.setFontSize(9); doc.setFont('helvetica', 'bold'); doc.text('LANÇAMENTOS POR DIA', 14, y); y += 4
+      autoTable(doc, {
+        startY: y, margin: { left: 14, right: 14 },
+        head: [['Data', 'Lançamentos', 'Total (kg)', 'Valor da Perda', 'Maior Lançamento']],
+        body: porDia.map(r => [
+          fmtDiaBR(r.data), r.lancamentos, fmtKg(r.kg), fmtR(r.valor),
+          r.maior_lancamento ? `${r.maior_lancamento.alimento} (${fmtKg(r.maior_lancamento.kg)})` : '—',
+        ]),
         styles: { fontSize: 7 }, headStyles: { fillColor: [30, 30, 40], textColor: 255 },
       })
     }
@@ -820,7 +925,7 @@ export default function FoodIntelligence() {
           <KpiCard label="Perdas Críticas" value={fmtN(dash?.perdas_criticas)} sub="acima de 2x a média" color="text-amber-400"/>
           <KpiCard label="Resíduo / Cliente" value={dash?.residuo_por_cliente_g != null ? `${dash.residuo_por_cliente_g} g` : '—'} sub={`${fmtN(dash?.n_clientes)} clientes`} color="text-teal-400"/>
           <KpiCard label="Cobertura da IA" value={`${dash?.cobertura_ia_pct ?? 0}%`} sub="lançamentos via foto" color="text-violet-400"/>
-          <KpiCard label="Turno que Mais Perde" value={dash?.turno_concentra?.turno || '—'} sub={dash?.turno_concentra ? `${dash.turno_concentra.pct}% do total` : ''} color="text-blue-400"/>
+          <KpiCard label="Refeição que Mais Perde" value={dash?.refeicao_concentra?.refeicao || '—'} sub={dash?.refeicao_concentra ? `${dash.refeicao_concentra.pct}% do total` : ''} color="text-blue-400"/>
         </div>
 
         {loading && <div className="text-center text-xs text-muted py-6">Carregando...</div>}
@@ -858,35 +963,6 @@ export default function FoodIntelligence() {
         )}
 
         {!loading && (
-          <ChartCard title="Lançamentos por Dia">
-            <div className="overflow-y-auto max-h-64">
-              <table className="w-full text-xs" style={{ borderCollapse: 'collapse' }}>
-                <thead className="sticky top-0 bg-bg3 z-10">
-                  <tr className="text-muted uppercase tracking-wide text-[9px] border-b border-white/[0.06]">
-                    {['Data','Lançamentos','Total (kg)','Valor da Perda'].map((h, i) => (
-                      <th key={h} className={`px-2 py-2 font-bold whitespace-nowrap ${i===0?'text-left':'text-right'}`}>{h}</th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {[...porDia].reverse().map(r => (
-                    <tr key={r.data} className="border-b border-white/[0.03] hover:bg-white/[0.025]">
-                      <td className="px-2 py-1.5 text-dim">{fmtDiaBR(r.data)}</td>
-                      <td className="px-2 py-1.5 text-right tabular-nums text-muted">{fmtN(r.lancamentos)}</td>
-                      <td className="px-2 py-1.5 text-right tabular-nums text-dim">{fmtKg(r.kg)}</td>
-                      <td className="px-2 py-1.5 text-right tabular-nums text-dim font-bold">{fmtR(r.valor)}</td>
-                    </tr>
-                  ))}
-                  {porDia.length === 0 && (
-                    <tr><td colSpan={4} className="py-6 text-center text-muted/50">Nenhum lançamento no período</td></tr>
-                  )}
-                </tbody>
-              </table>
-            </div>
-          </ChartCard>
-        )}
-
-        {!loading && (
           <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
 
             <ChartCard title="Desperdício por Categoria">
@@ -908,6 +984,32 @@ export default function FoodIntelligence() {
                         <div className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ background: CAT[i % CAT.length] }}/>
                         <span className="text-[11px] text-muted truncate flex-1">{trunc(c.categoria, 24)}</span>
                         <span className="text-[11px] font-bold text-dim ml-2">{fmtKg(c.kg)}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </ChartCard>
+
+            <ChartCard title="Desperdício por Refeição">
+              {porRefeicao.length === 0 ? (
+                <div className="flex items-center justify-center h-[180px] text-xs text-muted/50">Sem dados no período</div>
+              ) : (
+                <div className="flex items-center justify-center gap-8">
+                  <ResponsiveContainer width={180} height={180}>
+                    <PieChart>
+                      <Pie data={porRefeicao} cx="50%" cy="50%" innerRadius={52} outerRadius={82} paddingAngle={3} dataKey="kg" nameKey="refeicao">
+                        {porRefeicao.map((_, i) => <Cell key={i} fill={CAT[i % CAT.length]}/>)}
+                      </Pie>
+                      <Tooltip content={<CTooltip/>}/>
+                    </PieChart>
+                  </ResponsiveContainer>
+                  <div className="flex flex-col gap-2 min-w-0">
+                    {porRefeicao.map((r, i) => (
+                      <div key={i} className="flex items-center gap-2 min-w-0">
+                        <div className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ background: CAT[i % CAT.length] }}/>
+                        <span className="text-[11px] text-muted truncate flex-1">{trunc(r.refeicao, 24)}</span>
+                        <span className="text-[11px] font-bold text-dim ml-2">{fmtKg(r.kg)}</span>
                       </div>
                     ))}
                   </div>
@@ -987,6 +1089,43 @@ export default function FoodIntelligence() {
             </ChartCard>
 
           </div>
+        )}
+
+        {!loading && (
+          <ChartCard title="Lançamentos por Dia">
+            {diasSemLancamento.length > 0 && (
+              <div className="mb-2 px-2.5 py-1.5 rounded-lg bg-amber-500/10 border border-amber-500/20 text-[10px] text-amber-400">
+                ⚠️ {diasSemLancamento.length} dia{diasSemLancamento.length !== 1 ? 's' : ''} sem lançamento no período: {diasSemLancamento.map(fmtDiaBR).join(', ')}
+              </div>
+            )}
+            <div className="overflow-y-auto max-h-64">
+              <table className="w-full text-xs" style={{ borderCollapse: 'collapse' }}>
+                <thead className="sticky top-0 bg-bg3 z-10">
+                  <tr className="text-muted uppercase tracking-wide text-[9px] border-b border-white/[0.06]">
+                    {['Data','Lançamentos','Total (kg)','Valor da Perda','Maior Lançamento'].map((h, i) => (
+                      <th key={h} className={`px-2 py-2 font-bold whitespace-nowrap ${i===0?'text-left':'text-right'}`}>{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {[...porDia].reverse().map(r => (
+                    <tr key={r.data} className="border-b border-white/[0.03] hover:bg-white/[0.025]">
+                      <td className="px-2 py-1.5 text-dim">{fmtDiaBR(r.data)}</td>
+                      <td className="px-2 py-1.5 text-right tabular-nums text-muted">{fmtN(r.lancamentos)}</td>
+                      <td className="px-2 py-1.5 text-right tabular-nums text-dim">{fmtKg(r.kg)}</td>
+                      <td className="px-2 py-1.5 text-right tabular-nums text-dim font-bold">{fmtR(r.valor)}</td>
+                      <td className="px-2 py-1.5 text-right text-muted">
+                        {r.maior_lancamento ? `${trunc(r.maior_lancamento.alimento, 22)} (${fmtKg(r.maior_lancamento.kg)})` : '—'}
+                      </td>
+                    </tr>
+                  ))}
+                  {porDia.length === 0 && (
+                    <tr><td colSpan={5} className="py-6 text-center text-muted/50">Nenhum lançamento no período</td></tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </ChartCard>
         )}
       </div>
 

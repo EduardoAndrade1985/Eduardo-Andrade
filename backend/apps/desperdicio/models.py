@@ -91,31 +91,44 @@ class TipoPerda(EmpresaBaseModel):
         return self.nome
 
 
-class ContagemClientes(models.Model):
-    unidade    = models.ForeignKey(Unidade, on_delete=models.CASCADE, related_name='contagens')
-    data       = models.DateField()
-    n_clientes = models.IntegerField(default=0)
+class Refeicao(EmpresaBaseModel):
+    nome  = models.CharField(max_length=100)
+    ativo = models.BooleanField(default=True)
 
     class Meta:
-        unique_together = ['unidade', 'data']
-        ordering = ['-data']
-        verbose_name = 'Contagem de Clientes'
-        verbose_name_plural = 'Contagens de Clientes'
+        ordering = ['nome']
+        verbose_name = 'Refeição'
+        verbose_name_plural = 'Refeições'
+        indexes = [
+            models.Index(fields=['empresa', 'ativo']),
+        ]
 
     def __str__(self):
-        return f'{self.unidade} — {self.data}: {self.n_clientes} clientes'
+        return self.nome
+
+
+class ContagemClientes(models.Model):
+    unidade    = models.ForeignKey(Unidade, on_delete=models.CASCADE, related_name='contagens')
+    refeicao   = models.ForeignKey(Refeicao, on_delete=models.CASCADE, null=True, blank=True, related_name='contagens',
+                                    help_text='Vazio = contagem total do dia, não vinculada a uma refeição específica.')
+    data       = models.DateField()
+    n_clientes = models.IntegerField(default=0, help_text='Quantidade de refeições/hóspedes servidos nesse período.')
+
+    class Meta:
+        unique_together = ['unidade', 'data', 'refeicao']
+        ordering = ['-data']
+        verbose_name = 'Contagem de Refeições Servidas'
+        verbose_name_plural = 'Contagens de Refeições Servidas'
+
+    def __str__(self):
+        return f'{self.unidade} — {self.data} ({self.refeicao or "total"}): {self.n_clientes}'
 
 
 class RegistroDesperdicio(models.Model):
-    TURNO_CHOICES = [
-        ('manha', 'Manhã'),
-        ('tarde', 'Tarde'),
-        ('noite', 'Noite'),
-    ]
-
     unidade     = models.ForeignKey(Unidade, on_delete=models.CASCADE, related_name='registros')
     setor       = models.ForeignKey(Setor, on_delete=models.SET_NULL, null=True, blank=True, related_name='registros')
     tipo_perda  = models.ForeignKey(TipoPerda, on_delete=models.SET_NULL, null=True, blank=True, related_name='registros')
+    refeicao    = models.ForeignKey(Refeicao, on_delete=models.SET_NULL, null=True, blank=True, related_name='registros')
 
     foto        = models.ImageField(upload_to='desperdicio/%Y/%m/', null=True, blank=True)
     alimento_ia = models.CharField(max_length=200, blank=True, default='')
@@ -126,7 +139,6 @@ class RegistroDesperdicio(models.Model):
     custo_kg    = models.DecimalField(max_digits=10, decimal_places=2, default=0)
     valor_perda = models.DecimalField(max_digits=10, decimal_places=2, default=0)
 
-    turno       = models.CharField(max_length=10, choices=TURNO_CHOICES, default='manha')
     criado_por  = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name='registros_desperdicio')
     created_at  = models.DateTimeField(auto_now_add=True)
 

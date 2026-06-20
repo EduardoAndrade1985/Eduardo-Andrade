@@ -1,6 +1,6 @@
 from rest_framework import serializers
 from .models import (
-    Unidade, Setor, CategoriaAlimento, TipoPerda, ContagemClientes, RegistroDesperdicio, Dispositivo,
+    Unidade, Setor, CategoriaAlimento, TipoPerda, Refeicao, ContagemClientes, RegistroDesperdicio, Dispositivo,
 )
 
 
@@ -28,7 +28,15 @@ class TipoPerdaSerializer(serializers.ModelSerializer):
         exclude = ['empresa']
 
 
+class RefeicaoSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Refeicao
+        exclude = ['empresa']
+
+
 class ContagemClientesSerializer(serializers.ModelSerializer):
+    refeicao_nome = serializers.ReadOnlyField(source='refeicao.nome')
+
     class Meta:
         model = ContagemClientes
         fields = '__all__'
@@ -39,7 +47,7 @@ class RegistroDesperdicioSerializer(serializers.ModelSerializer):
     setor_nome       = serializers.ReadOnlyField(source='setor.nome')
     categoria_nome   = serializers.ReadOnlyField(source='categoria.nome')
     tipo_perda_nome  = serializers.ReadOnlyField(source='tipo_perda.nome')
-    turno_label      = serializers.ReadOnlyField(source='get_turno_display')
+    refeicao_nome    = serializers.ReadOnlyField(source='refeicao.nome')
 
     class Meta:
         model = RegistroDesperdicio

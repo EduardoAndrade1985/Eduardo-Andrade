@@ -4,6 +4,16 @@ import { useTheme } from '../contexts/ThemeContext'
 
 const TOKEN_KEY = 'fi_dispositivo_token'
 
+// sugere a refeição mais provável pelo horário atual, casando por palavra-chave
+// no nome cadastrado (funciona mesmo com nomes customizados pelo hotel)
+function sugerirRefeicao(refeicoes) {
+  if (!refeicoes.length) return null
+  const hora = new Date().getHours()
+  const alvo = hora < 11 ? 'manh' : hora < 16 ? 'almo' : 'jant'
+  const match = refeicoes.find(r => r.nome.toLowerCase().includes(alvo))
+  return match || refeicoes[0]
+}
+
 function Section({ icon, title, children }) {
   return (
     <div className="bg-bg2 border border-white/[0.06] rounded-xl p-3">
@@ -72,6 +82,8 @@ function TelaLancamento({ token, dispositivo, onDesparear }) {
   const [categorias, setCategorias] = useState([])
   const [tiposPerda, setTiposPerda] = useState([])
   const [tipoPerdaId, setTipoPerdaId] = useState('')
+  const [refeicoes, setRefeicoes]   = useState([])
+  const [refeicaoId, setRefeicaoId] = useState('')
   const [foto, setFoto]             = useState(null)
   const [fotoPreview, setFotoPreview] = useState(null)
   const [classificando, setClassificando] = useState(false)
@@ -88,6 +100,8 @@ function TelaLancamento({ token, dispositivo, onDesparear }) {
       .then(({ data }) => setCategorias(data)).catch(() => {})
     api.get('/desperdicio/tipos-perda/', { params: { dispositivo_token: token } })
       .then(({ data }) => { setTiposPerda(data); if (data[0]) setTipoPerdaId(String(data[0].id)) }).catch(() => {})
+    api.get('/desperdicio/refeicoes/', { params: { dispositivo_token: token } })
+      .then(({ data }) => { setRefeicoes(data); const sugestao = sugerirRefeicao(data); if (sugestao) setRefeicaoId(String(sugestao.id)) }).catch(() => {})
   }, [token])
 
   // manifest PWA específico — "Adicionar à Tela Inicial" abre direto em tela cheia, sem barra do navegador
@@ -175,6 +189,7 @@ function TelaLancamento({ token, dispositivo, onDesparear }) {
       const form = new FormData()
       form.append('dispositivo_token', token)
       if (tipoPerdaId) form.append('tipo_perda_id', tipoPerdaId)
+      if (refeicaoId) form.append('refeicao_id', refeicaoId)
       form.append('peso_kg', peso)
       form.append('alimento_ia', alimentoIa)
       if (confianca != null) form.append('confianca_ia', confianca)
@@ -191,7 +206,7 @@ function TelaLancamento({ token, dispositivo, onDesparear }) {
     } finally {
       setSalvando(false)
     }
-  }, [token, tipoPerdaId, pesoKg, alimentoIa, confianca, categoriaId, foto])
+  }, [token, tipoPerdaId, refeicaoId, pesoKg, alimentoIa, confianca, categoriaId, foto])
 
   useEffect(() => {
     if (!mensagem) return
@@ -225,6 +240,24 @@ function TelaLancamento({ token, dispositivo, onDesparear }) {
       )}
 
       <div className="flex-1 overflow-auto p-3 max-w-2xl w-full mx-auto flex flex-col gap-2.5">
+
+        <Section icon="🍽️" title="Refeição">
+          <div className="flex flex-wrap gap-1.5">
+            {refeicoes.map(r => (
+              <button key={r.id} onClick={() => setRefeicaoId(String(r.id))}
+                className={`px-3 py-1.5 rounded-full text-xs font-semibold border transition ${
+                  refeicaoId === String(r.id)
+                    ? 'bg-primary/15 border-primary/40 text-primary'
+                    : 'bg-bg3 border-white/[0.08] text-muted hover:border-primary/20'
+                }`}>
+                {r.nome}
+              </button>
+            ))}
+            {refeicoes.length === 0 && (
+              <p className="text-[10px] text-muted/50 py-1">Nenhuma refeição cadastrada — use a aba Cadastros no painel.</p>
+            )}
+          </div>
+        </Section>
 
         <Section icon="⚠️" title="Tipo de Perda">
           <div className="flex flex-wrap gap-1.5">

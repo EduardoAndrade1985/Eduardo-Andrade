@@ -1,3 +1,4 @@
+from datetime import timedelta, date as date_cls
 from decimal import Decimal, InvalidOperation
 
 from django.db.models import Sum, Avg, Count
@@ -8,12 +9,12 @@ from rest_framework.permissions import IsAuthenticated, AllowAny
 from rest_framework.response import Response
 
 from .models import (
-    Unidade, Setor, CategoriaAlimento, TipoPerda, ContagemClientes, RegistroDesperdicio,
+    Unidade, Setor, CategoriaAlimento, TipoPerda, Refeicao, ContagemClientes, RegistroDesperdicio,
     Dispositivo, DispositivoPairingCode,
 )
 from .serializers import (
     UnidadeSerializer, SetorSerializer, CategoriaAlimentoSerializer, TipoPerdaSerializer,
-    ContagemClientesSerializer, RegistroDesperdicioSerializer, DispositivoSerializer,
+    RefeicaoSerializer, ContagemClientesSerializer, RegistroDesperdicioSerializer, DispositivoSerializer,
 )
 from .services.ia_service import classificar_foto
 from .services.calculos import match_categoria, calcular_custo
@@ -37,15 +38,6 @@ def _dispositivo_do_token(request):
     if not token:
         return None
     return Dispositivo.objects.filter(token=token, ativo=True).select_related('unidade', 'unidade__empresa', 'setor').first()
-
-
-def _turno_atual():
-    hora = timezone.localtime().hour
-    if 6 <= hora < 12:
-        return 'manha'
-    if 12 <= hora < 18:
-        return 'tarde'
-    return 'noite'
 
 
 def _dec(v, default='0'):
@@ -197,6 +189,59 @@ class TipoPerdaDetailView(APIView):
     def delete(self, request, pk):
         empresa = _empresa(request)
         TipoPerda.objects.filter(pk=pk, empresa=empresa).delete()
+        return Response({'ok': True})
+
+
+# ── REFEIÇÕES (café da manhã / almoço / jantar) ───────────────────────────────
+class RefeicaoListView(APIView):
+    """GET aceita login OU dispositivo pareado (tablet precisa listar as refeições)."""
+    permission_classes = [AllowAny]
+
+    def get(self, request):
+        dispositivo = _dispositivo_do_token(request)
+        if dispositivo:
+            empresa = dispositivo.unidade.empresa
+        elif request.user.is_authenticated:
+            empresa = _empresa(request)
+        else:
+            return Response({'erro': 'Não autenticado.'}, status=401)
+        if not empresa:
+            return Response([])
+        qs = Refeicao.objects.filter(empresa=empresa, ativo=True)
+        return Response(RefeicaoSerializer(qs, many=True).data)
+
+    def post(self, request):
+        if not request.user.is_authenticated:
+            return Response({'erro': 'Não autenticado.'}, status=401)
+        empresa = _empresa(request)
+        if not empresa:
+            return Response({'erro': 'Nenhuma empresa ativa.'}, status=400)
+        nome = (request.data.get('nome') or '').strip()
+        if not nome:
+            return Response({'erro': 'Nome é obrigatório.'}, status=400)
+        refeicao = Refeicao.objects.create(empresa=empresa, nome=nome)
+        return Response(RefeicaoSerializer(refeicao).data, status=201)
+
+
+class RefeicaoDetailView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def patch(self, request, pk):
+        empresa = _empresa(request)
+        try:
+            refeicao = Refeicao.objects.get(pk=pk, empresa=empresa)
+        except Refeicao.DoesNotExist:
+            return Response({'erro': 'Não encontrada.'}, status=404)
+        if 'nome' in request.data:
+            refeicao.nome = request.data['nome']
+        if 'ativo' in request.data:
+            refeicao.ativo = request.data['ativo']
+        refeicao.save()
+        return Response(RefeicaoSerializer(refeicao).data)
+
+    def delete(self, request, pk):
+        empresa = _empresa(request)
+        Refeicao.objects.filter(pk=pk, empresa=empresa).delete()
         return Response({'ok': True})
 
 
@@ -357,6 +402,11 @@ class RegistroListView(APIView):
         if tipo_perda_id:
             tipo_perda = TipoPerda.objects.filter(pk=tipo_perda_id, empresa=empresa).first()
 
+        refeicao = None
+        refeicao_id = request.data.get('refeicao_id')
+        if refeicao_id:
+            refeicao = Refeicao.objects.filter(pk=refeicao_id, empresa=empresa).first()
+
         peso_kg = _dec(request.data.get('peso_kg', 0))
         if peso_kg <= 0:
             return Response({'erro': 'Peso deve ser maior que zero.'}, status=400)
@@ -368,6 +418,7 @@ class RegistroListView(APIView):
             unidade=unidade,
             setor=setor,
             tipo_perda=tipo_perda,
+            refeicao=refeicao,
             foto=request.FILES.get('foto'),
             alimento_ia=request.data.get('alimento_ia', '')[:200],
             confianca_ia=request.data.get('confianca_ia') or None,
@@ -375,7 +426,6 @@ class RegistroListView(APIView):
             peso_kg=peso_kg,
             custo_kg=custo_kg,
             valor_perda=valor_perda,
-            turno=_turno_atual(),
             criado_por=request.user if request.user.is_authenticated else None,
         )
         if dispositivo:
@@ -406,6 +456,9 @@ class ContagemClientesView(APIView):
         data = request.GET.get('data')
         if data:
             qs = qs.filter(data=data)
+        refeicao_id = request.GET.get('refeicao_id')
+        if refeicao_id:
+            qs = qs.filter(refeicao_id=refeicao_id)
         return Response(ContagemClientesSerializer(qs[:90], many=True).data)
 
     def post(self, request):
@@ -413,6 +466,7 @@ class ContagemClientesView(APIView):
         unidade_id = request.data.get('unidade_id')
         data       = request.data.get('data')
         n_clientes = request.data.get('n_clientes', 0)
+        refeicao_id = request.data.get('refeicao_id') or None
         try:
             unidade = Unidade.objects.get(pk=unidade_id, empresa=empresa)
         except (Unidade.DoesNotExist, TypeError, ValueError):
@@ -420,8 +474,12 @@ class ContagemClientesView(APIView):
         if not data:
             return Response({'erro': 'Data é obrigatória.'}, status=400)
 
+        refeicao = None
+        if refeicao_id:
+            refeicao = Refeicao.objects.filter(pk=refeicao_id, empresa=empresa).first()
+
         obj, _ = ContagemClientes.objects.update_or_create(
-            unidade=unidade, data=data, defaults={'n_clientes': n_clientes},
+            unidade=unidade, data=data, refeicao=refeicao, defaults={'n_clientes': n_clientes},
         )
         return Response(ContagemClientesSerializer(obj).data)
 
@@ -456,14 +514,22 @@ class DashboardView(APIView):
         limiar = media_valor * 2
         perdas_criticas = qs.filter(valor_perda__gt=limiar).count() if limiar > 0 else 0
 
-        por_turno = qs.values('turno').annotate(kg=Sum('peso_kg')).order_by('-kg')
-        turno_concentra = None
-        if por_turno and total_kg > 0:
-            top = por_turno[0]
-            pct = float(top['kg'] or 0) / float(total_kg) * 100
-            turno_concentra = {
-                'turno': dict(RegistroDesperdicio.TURNO_CHOICES).get(top['turno'], top['turno']),
-                'pct': round(pct, 1),
+        por_refeicao_qs = (
+            qs.exclude(refeicao__isnull=True)
+              .values('refeicao__nome')
+              .annotate(kg=Sum('peso_kg'), valor=Sum('valor_perda'))
+              .order_by('-kg')
+        )
+        por_refeicao = [
+            {'refeicao': r['refeicao__nome'], 'kg': float(r['kg']), 'valor': float(r['valor'])}
+            for r in por_refeicao_qs
+        ]
+        refeicao_concentra = None
+        if por_refeicao and total_kg > 0:
+            top = por_refeicao[0]
+            refeicao_concentra = {
+                'refeicao': top['refeicao'],
+                'pct': round(top['kg'] / float(total_kg) * 100, 1),
             }
 
         n_clientes = ContagemClientes.objects.filter(
@@ -500,15 +566,47 @@ class DashboardView(APIView):
               .annotate(kg=Sum('peso_kg'), valor=Sum('valor_perda'), lancamentos=Count('id'))
               .order_by('dia')
         )
+
+        # maior lançamento de cada dia — pra "drill down" rápido sem precisar abrir cada registro
+        maiores_por_dia = {}
+        for r in qs.values('alimento_ia', 'peso_kg', 'valor_perda', 'created_at'):
+            dia = r['created_at'].date().isoformat()
+            atual = maiores_por_dia.get(dia)
+            if atual is None or r['peso_kg'] > atual['peso_kg']:
+                maiores_por_dia[dia] = r
+
         por_dia = [
             {
                 'data': r['dia'].isoformat(),
                 'kg': float(r['kg']),
                 'valor': float(r['valor']),
                 'lancamentos': r['lancamentos'],
+                'maior_lancamento': (
+                    {
+                        'alimento': maiores_por_dia[r['dia'].isoformat()]['alimento_ia'] or '—',
+                        'kg': float(maiores_por_dia[r['dia'].isoformat()]['peso_kg']),
+                    }
+                    if r['dia'].isoformat() in maiores_por_dia else None
+                ),
             }
             for r in por_dia
         ]
+
+        # dias do período sem nenhum lançamento — sinaliza lacuna de cobertura
+        dias_sem_lancamento = []
+        try:
+            d_ini = date_cls.fromisoformat(data_ini)
+            d_fim = date_cls.fromisoformat(data_fim)
+            if d_ini <= d_fim and (d_fim - d_ini).days <= 366:
+                dias_com = {r['data'] for r in por_dia}
+                cursor = d_ini
+                while cursor <= d_fim:
+                    iso = cursor.isoformat()
+                    if iso not in dias_com:
+                        dias_sem_lancamento.append(iso)
+                    cursor += timedelta(days=1)
+        except ValueError:
+            pass
 
         comparativo_unidades = None
         if Unidade.objects.filter(empresa=empresa).count() > 1:
@@ -534,12 +632,14 @@ class DashboardView(APIView):
             'lancamentos': lancamentos,
             'valor_total_perda': float(valor_total),
             'perdas_criticas': perdas_criticas,
-            'turno_concentra': turno_concentra,
+            'refeicao_concentra': refeicao_concentra,
             'residuo_por_cliente_g': residuo_por_cliente_g,
             'n_clientes': n_clientes,
             'cobertura_ia_pct': cobertura_ia_pct,
             'por_dia': por_dia,
+            'dias_sem_lancamento': dias_sem_lancamento,
             'por_categoria': por_categoria,
+            'por_refeicao': por_refeicao,
             'ranking_alimentos': ranking_alimentos,
             'comparativo_unidades': comparativo_unidades,
         })
