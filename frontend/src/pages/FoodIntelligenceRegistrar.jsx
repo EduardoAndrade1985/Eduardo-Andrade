@@ -227,10 +227,10 @@ function TelaLancamento({ token, dispositivo, onDesparear }) {
       <div className="flex-1 overflow-auto p-3 max-w-2xl w-full mx-auto flex flex-col gap-2.5">
 
         <Section icon="⚠️" title="Tipo de Perda">
-          <div className="flex gap-1.5 overflow-x-auto pb-0.5">
+          <div className="flex flex-wrap gap-1.5">
             {tiposPerda.map(t => (
               <button key={t.id} onClick={() => setTipoPerdaId(String(t.id))}
-                className={`flex-shrink-0 whitespace-nowrap px-3 py-1.5 rounded-full text-xs font-semibold border transition ${
+                className={`px-3 py-1.5 rounded-full text-xs font-semibold border transition ${
                   tipoPerdaId === String(t.id)
                     ? 'bg-primary/15 border-primary/40 text-primary'
                     : 'bg-bg3 border-white/[0.08] text-muted hover:border-primary/20'
