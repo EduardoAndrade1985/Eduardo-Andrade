@@ -16,6 +16,8 @@ import DefinirSenha from './pages/DefinirSenha'
 import Estoque from './pages/Estoque'
 import TVManager from './pages/TVManager'
 import TVPlayer from './pages/TVPlayer'
+import FoodIntelligence from './pages/FoodIntelligence'
+import FoodIntelligenceRegistrar from './pages/FoodIntelligenceRegistrar'
 
 export default function App() {
   return (
@@ -50,7 +52,12 @@ export default function App() {
           <Route path="/usuarios"  element={<Usuarios />} />
           <Route path="/empresas"  element={<Empresas />} />
           <Route path="/tv-manager" element={<TVManager />} />
+          <Route path="/desperdicio" element={<FoodIntelligence />} />
         </Route>
+
+        {/* Food Intelligence — tela de lançamento (tablet), pública e sem login: o
+            dispositivo se identifica pelo token de pareamento (igual ao /tv) */}
+        <Route path="/desperdicio/registrar" element={<FoodIntelligenceRegistrar />} />
 
         {/* TV Player — público, sem login */}
         <Route path="/tv"        element={<TVPlayer />} />

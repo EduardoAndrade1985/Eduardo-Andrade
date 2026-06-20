@@ -39,6 +39,7 @@ INSTALLED_APPS = [
     'apps.eventos.apps.EventosConfig',
     'apps.estoque.apps.EstoqueConfig',
     'apps.tv.apps.TvConfig',
+    'apps.desperdicio.apps.DesperdicioConfig',
 ]
 
 MIDDLEWARE = [
@@ -172,3 +173,7 @@ SIMPLE_JWT = {
     'REFRESH_TOKEN_LIFETIME': timedelta(days=7),
     'ROTATE_REFRESH_TOKENS':  True,
 }
+
+# ── Food Intelligence (IA de visão para desperdício) ──────────────────────────
+ANTHROPIC_API_KEY     = os.environ.get('ANTHROPIC_API_KEY', '')
+ANTHROPIC_VISION_MODEL = os.environ.get('ANTHROPIC_VISION_MODEL', 'claude-haiku-4-5-20251001')

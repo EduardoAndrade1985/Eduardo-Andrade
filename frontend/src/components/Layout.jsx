@@ -14,6 +14,7 @@ const TITLES = {
   '/usuarios':  '👥 Usuários',
   '/ocupacao':  '🏨 Ocupação',
   '/eventos':   '📅 Eventos',
+  '/desperdicio': '🍽️ Food Intelligence',
 }
 
 function LayoutInner() {
