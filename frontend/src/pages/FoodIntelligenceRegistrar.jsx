@@ -86,6 +86,32 @@ function TelaLancamento({ token, dispositivo, onDesparear }) {
       .then(({ data }) => { setTiposPerda(data); if (data[0]) setTipoPerdaId(String(data[0].id)) }).catch(() => {})
   }, [token])
 
+  // manifest PWA específico — "Adicionar à Tela Inicial" abre direto em tela cheia, sem barra do navegador
+  useEffect(() => {
+    const link = document.createElement('link')
+    link.rel = 'manifest'
+    link.href = '/manifest-desperdicio.json'
+    document.head.appendChild(link)
+
+    const metas = [
+      ['apple-mobile-web-app-capable', 'yes'],
+      ['mobile-web-app-capable', 'yes'],
+      ['apple-mobile-web-app-status-bar-style', 'black-translucent'],
+      ['apple-mobile-web-app-title', 'Food Intel'],
+    ].map(([name, content]) => {
+      const m = document.createElement('meta')
+      m.name = name
+      m.content = content
+      document.head.appendChild(m)
+      return m
+    })
+
+    return () => {
+      document.head.removeChild(link)
+      metas.forEach(m => document.head.removeChild(m))
+    }
+  }, [])
+
   // heartbeat periódico — indica pro painel que o dispositivo está online
   useEffect(() => {
     const ping = () => api.post('/desperdicio/dispositivos/heartbeat/', { dispositivo_token: token }).catch(() => {})
@@ -117,7 +143,7 @@ function TelaLancamento({ token, dispositivo, onDesparear }) {
       setConfianca(data.confianca)
       if (data.categoria_sugerida_id) setCategoriaId(String(data.categoria_sugerida_id))
       if (!data.alimento_ia) {
-        setMensagem({ tipo: 'erro', texto: 'IA não identificou o prato. Digite o nome manualmente.' })
+        setMensagem({ tipo: 'erro', texto: data.erro ? `IA não identificou: ${data.erro}` : 'IA não identificou o prato. Digite o nome manualmente.' })
       }
     } catch {
       setMensagem({ tipo: 'erro', texto: 'Erro ao classificar a foto. Digite o nome manualmente.' })
@@ -177,7 +203,11 @@ function TelaLancamento({ token, dispositivo, onDesparear }) {
           <p className="text-sm font-bold text-primary">🍽️ Food Intelligence — Lançamento</p>
           <p className="text-[10px] text-muted">{dispositivo?.unidade_nome}{dispositivo?.setor_nome ? ` — ${dispositivo.setor_nome}` : ''}</p>
         </div>
-        <button onClick={onDesparear} className="text-[10px] text-muted/50 hover:text-rose-400">Trocar dispositivo</button>
+        <div className="flex items-center gap-3">
+          <button onClick={() => document.documentElement.requestFullscreen?.().catch(() => {})}
+            className="text-[10px] text-muted/50 hover:text-primary">⛶ Tela cheia</button>
+          <button onClick={onDesparear} className="text-[10px] text-muted/50 hover:text-rose-400">Trocar dispositivo</button>
+        </div>
       </div>
 
       {mensagem && (
