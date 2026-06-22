@@ -1229,9 +1229,9 @@ export default function FoodIntelligence() {
                 <div className="flex items-center justify-center h-[180px] text-xs text-muted/50">Sem dados no período</div>
               ) : (
                 <ResponsiveContainer width="100%" height={Math.max(180, ranking.length * 28)}>
-                  <BarChart data={ranking} layout="vertical" barCategoryGap="18%">
+                  <BarChart data={ranking} layout="vertical" barCategoryGap="18%" margin={{ top: 5, right: 36, left: 5, bottom: 5 }}>
                     <CartesianGrid strokeDasharray="3 3" stroke={C.grid} horizontal={false}/>
-                    <XAxis type="number" tick={{ fontSize: 9, fill: C.tick }} axisLine={false} tickLine={false}/>
+                    <XAxis type="number" domain={[0, dataMax => Math.ceil(dataMax * 1.15)]} tick={{ fontSize: 9, fill: C.tick }} axisLine={false} tickLine={false}/>
                     <YAxis type="category" dataKey="alimento" width={150} axisLine={false} tickLine={false} interval={0}
                       tick={({ x, y, payload }) => (
                         <text x={x} y={y} textAnchor="end" fill={C.dim} fontSize={9} dominantBaseline="central">
@@ -1252,9 +1252,9 @@ export default function FoodIntelligence() {
               <ChartCard title="Comparativo entre Unidades"
                 onExpand={() => setExpand('comparativo')} lblOn={lbls.comparativo} onLbl={() => togLbl('comparativo')}>
                 <ResponsiveContainer width="100%" height={Math.max(180, comparativo.length * 32)}>
-                  <BarChart data={comparativo} layout="vertical" barCategoryGap="18%">
+                  <BarChart data={comparativo} layout="vertical" barCategoryGap="18%" margin={{ top: 5, right: 36, left: 5, bottom: 5 }}>
                     <CartesianGrid strokeDasharray="3 3" stroke={C.grid} horizontal={false}/>
-                    <XAxis type="number" tick={{ fontSize: 9, fill: C.tick }} axisLine={false} tickLine={false}/>
+                    <XAxis type="number" domain={[0, dataMax => Math.ceil(dataMax * 1.15)]} tick={{ fontSize: 9, fill: C.tick }} axisLine={false} tickLine={false}/>
                     <YAxis type="category" dataKey="unidade" width={130} axisLine={false} tickLine={false} interval={0}
                       tick={{ fontSize: 10, fill: C.dim }}/>
                     <Tooltip content={<CTooltip/>}/>
@@ -1497,9 +1497,9 @@ export default function FoodIntelligence() {
       {expand === 'ranking' && (
         <ExpandModal title="Ranking de Alimentos (kg)" onClose={() => setExpand(null)}>
           <ResponsiveContainer width="100%" height={Math.max(400, ranking.length * 44)}>
-            <BarChart data={ranking} layout="vertical" barCategoryGap="20%">
+            <BarChart data={ranking} layout="vertical" barCategoryGap="20%" margin={{ top: 5, right: 50, left: 5, bottom: 5 }}>
               <CartesianGrid strokeDasharray="3 3" stroke={C.grid} horizontal={false}/>
-              <XAxis type="number" tick={{ fontSize: 12, fill: C.tick }} axisLine={false} tickLine={false}/>
+              <XAxis type="number" domain={[0, dataMax => Math.ceil(dataMax * 1.15)]} tick={{ fontSize: 12, fill: C.tick }} axisLine={false} tickLine={false}/>
               <YAxis type="category" dataKey="alimento" tick={{ fontSize: 12, fill: C.dim }} width={160}
                 tickFormatter={v => trunc(v, 24)} axisLine={false} tickLine={false} interval={0}/>
               <Tooltip content={<CTooltip/>}/>
@@ -1515,9 +1515,9 @@ export default function FoodIntelligence() {
       {expand === 'comparativo' && (
         <ExpandModal title="Comparativo entre Unidades" onClose={() => setExpand(null)}>
           <ResponsiveContainer width="100%" height={Math.max(400, comparativo.length * 60)}>
-            <BarChart data={comparativo} layout="vertical" barCategoryGap="20%">
+            <BarChart data={comparativo} layout="vertical" barCategoryGap="20%" margin={{ top: 5, right: 50, left: 5, bottom: 5 }}>
               <CartesianGrid strokeDasharray="3 3" stroke={C.grid} horizontal={false}/>
-              <XAxis type="number" tick={{ fontSize: 12, fill: C.tick }} axisLine={false} tickLine={false}/>
+              <XAxis type="number" domain={[0, dataMax => Math.ceil(dataMax * 1.15)]} tick={{ fontSize: 12, fill: C.tick }} axisLine={false} tickLine={false}/>
               <YAxis type="category" dataKey="unidade" tick={{ fontSize: 12, fill: C.dim }} width={150} axisLine={false} tickLine={false} interval={0}/>
               <Tooltip content={<CTooltip/>}/>
               <Bar dataKey="kg" name="kg" radius={[0,4,4,0]}>
