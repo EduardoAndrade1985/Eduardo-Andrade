@@ -788,7 +788,7 @@ export default function FoodIntelligence() {
   const [registros, setRegistros]   = useState([])
   const [loading, setLoading]       = useState(false)
   const [expand, setExpand]         = useState(null)
-  const [lbls, setLbls]             = useState({ evolucao: false, ranking: false, comparativo: false })
+  const [lbls, setLbls]             = useState({ evolucao: false, hospede: false, ranking: false, comparativo: false })
   const togLbl = k => setLbls(p => ({ ...p, [k]: !p[k] }))
   const [categoriasOpts, setCategoriasOpts] = useState([])
   const [tiposPerdaOpts, setTiposPerdaOpts] = useState([])
@@ -1096,6 +1096,31 @@ export default function FoodIntelligence() {
           </ChartCard>
         )}
 
+        {!loading && porDia.some(r => r.residuo_por_hospede_g != null) && (
+          <ChartCard title="Resíduo por Hóspede ao Longo do Tempo (g)"
+            onExpand={() => setExpand('hospede')} lblOn={lbls.hospede} onLbl={() => togLbl('hospede')}>
+            <ResponsiveContainer width="100%" height={180}>
+              <ComposedChart data={porDia.map(r => ({ dia: fmtDiaCurto(r.data), g: r.residuo_por_hospede_g }))} margin={{ top: lbls.hospede ? 22 : 8, right: 8, bottom: 0, left: 0 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke={C.grid} vertical={false}/>
+                <XAxis dataKey="dia" tick={{ fontSize: 10, fill: C.tick }} axisLine={false} tickLine={false}/>
+                <YAxis tickFormatter={v => `${v}g`} tick={{ fontSize: 9, fill: C.tick }} axisLine={false} tickLine={false} width={48}/>
+                <Tooltip content={({ active, payload, label }) => {
+                  if (!active || !payload?.length) return null
+                  return (
+                    <div className="bg-bg3 border border-white/[0.08] rounded-xl px-3 py-2 shadow-xl text-xs">
+                      <p className="text-muted mb-1">{label}</p>
+                      <p className="text-teal-400 font-semibold">Resíduo/Hóspede: {payload[0].value} g</p>
+                    </div>
+                  )
+                }}/>
+                <Line dataKey="g" name="g/Hóspede" stroke="#2dd4a0" strokeWidth={2.5} dot={{ r: 4, fill: '#2dd4a0' }} type="monotone" connectNulls>
+                  {lbls.hospede && <LabelList dataKey="g" position="top" formatter={v => `${v}g`} style={{ fill: C.tick, fontSize: 9, fontWeight: 700 }}/>}
+                </Line>
+              </ComposedChart>
+            </ResponsiveContainer>
+          </ChartCard>
+        )}
+
         {!loading && (
           <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
 
@@ -1319,6 +1344,30 @@ export default function FoodIntelligence() {
                 <LabelList dataKey="kg" position="top" formatter={fmtKg} style={{ fill: C.tick, fontSize: 11, fontWeight: 700 }}/>
               </Bar>
               <Line yAxisId="valor" dataKey="valor" name="Valor da Perda" stroke="#f43f5e" strokeWidth={2.5} dot={{ r: 4, fill: '#f43f5e' }} type="monotone"/>
+            </ComposedChart>
+          </ResponsiveContainer>
+        </ExpandModal>
+      )}
+
+      {expand === 'hospede' && (
+        <ExpandModal title="Resíduo por Hóspede ao Longo do Tempo (g)" onClose={() => setExpand(null)}>
+          <ResponsiveContainer width="100%" height={440}>
+            <ComposedChart data={porDia.map(r => ({ dia: fmtDiaCurto(r.data), g: r.residuo_por_hospede_g }))}>
+              <CartesianGrid strokeDasharray="3 3" stroke={C.grid} vertical={false}/>
+              <XAxis dataKey="dia" tick={{ fontSize: 12, fill: C.tick }} axisLine={false} tickLine={false}/>
+              <YAxis tickFormatter={v => `${v}g`} tick={{ fontSize: 11, fill: C.tick }} axisLine={false} tickLine={false} width={60}/>
+              <Tooltip content={({ active, payload, label }) => {
+                if (!active || !payload?.length) return null
+                return (
+                  <div className="bg-bg3 border border-white/[0.08] rounded-xl px-3 py-2 shadow-xl text-xs">
+                    <p className="text-muted mb-1">{label}</p>
+                    <p className="text-teal-400 font-semibold">Resíduo/Hóspede: {payload[0].value} g</p>
+                  </div>
+                )
+              }}/>
+              <Line dataKey="g" name="g/Hóspede" stroke="#2dd4a0" strokeWidth={2.5} dot={{ r: 4, fill: '#2dd4a0' }} type="monotone" connectNulls>
+                <LabelList dataKey="g" position="top" formatter={v => `${v}g`} style={{ fill: C.tick, fontSize: 11, fontWeight: 700 }}/>
+              </Line>
             </ComposedChart>
           </ResponsiveContainer>
         </ExpandModal>

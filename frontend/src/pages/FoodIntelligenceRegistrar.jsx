@@ -24,10 +24,22 @@ function sugerirRefeicao(refeicoes) {
   return match || refeicoes[0]
 }
 
+// ordem fixa: Sobra de Buffet, Erro de Produção, Vencido/Validade, (Outro fica de fora dos chips)
+const ORDEM_TIPO_PERDA = ['sobra', 'produ', 'vencido']
+
+function ordenarTiposPerda(tipos) {
+  const visiveis = tipos.filter(t => !t.nome.toLowerCase().includes('outro'))
+  const rank = nome => {
+    const idx = ORDEM_TIPO_PERDA.findIndex(k => nome.toLowerCase().includes(k))
+    return idx === -1 ? ORDEM_TIPO_PERDA.length : idx
+  }
+  return [...visiveis].sort((a, b) => rank(a.nome) - rank(b.nome))
+}
+
 function Section({ icon, title, children }) {
   return (
-    <div className="bg-bg2 border border-white/[0.06] rounded-xl p-3">
-      <p className="text-[10px] font-bold text-muted uppercase tracking-wider mb-2 flex items-center gap-1.5">
+    <div className="bg-bg2 border border-white/[0.06] rounded-xl p-3.5">
+      <p className="text-[11px] font-bold text-muted uppercase tracking-wider mb-2.5 flex items-center gap-1.5">
         <span>{icon}</span>{title}
       </p>
       {children}
@@ -112,7 +124,11 @@ function TelaLancamento({ token, dispositivo, onDesparear }) {
     api.get('/desperdicio/categorias/', { params: { dispositivo_token: token } })
       .then(({ data }) => setCategorias(data)).catch(() => {})
     api.get('/desperdicio/tipos-perda/', { params: { dispositivo_token: token } })
-      .then(({ data }) => { setTiposPerda(data); if (data[0]) setTipoPerdaId(String(data[0].id)) }).catch(() => {})
+      .then(({ data }) => {
+        const ordenados = ordenarTiposPerda(data)
+        setTiposPerda(ordenados)
+        if (ordenados[0]) setTipoPerdaId(String(ordenados[0].id))
+      }).catch(() => {})
     api.get('/desperdicio/refeicoes/', { params: { dispositivo_token: token } })
       .then(({ data }) => {
         const ordenadas = ordenarRefeicoes(data)
@@ -153,20 +169,26 @@ function TelaLancamento({ token, dispositivo, onDesparear }) {
     if (!refeicaoId) { setNServidos(''); return }
     const hoje = new Date().toISOString().slice(0, 10)
     api.get('/desperdicio/contagem-clientes/', { params: { dispositivo_token: token, data: hoje, refeicao_id: refeicaoId } })
-      .then(({ data }) => setNServidos(data[0] ? String(data[0].n_clientes) : ''))
+      .then(({ data }) => {
+        const valor = data[0] ? String(data[0].n_clientes) : ''
+        setNServidos(valor)
+        ultimoSalvoRef.current = valor
+      })
       .catch(() => {})
   }, [refeicaoId, token])
 
+  const ultimoSalvoRef = useRef('')
+
   async function salvarContagem() {
-    if (!refeicaoId) { setMsgContagem('Selecione a refeição acima.'); return }
-    if (!nServidos) { setMsgContagem('Informe a quantidade.'); return }
+    if (!refeicaoId || !nServidos || nServidos === ultimoSalvoRef.current) return
     setSalvandoContagem(true); setMsgContagem('')
     try {
       const hoje = new Date().toISOString().slice(0, 10)
       await api.post('/desperdicio/contagem-clientes/', {
         dispositivo_token: token, data: hoje, refeicao_id: refeicaoId, n_clientes: nServidos,
       })
-      setMsgContagem('Salvo!')
+      ultimoSalvoRef.current = nServidos
+      setMsgContagem('✓ Salvo automaticamente')
       setTimeout(() => setMsgContagem(''), 3000)
     } catch {
       setMsgContagem('Erro ao salvar.')
@@ -284,13 +306,13 @@ function TelaLancamento({ token, dispositivo, onDesparear }) {
         </div>
       )}
 
-      <div className="flex-1 overflow-auto p-3 max-w-2xl w-full mx-auto flex flex-col gap-2.5">
+      <div className="flex-1 overflow-auto p-3.5 max-w-2xl w-full mx-auto flex flex-col gap-3">
 
         <Section icon="🍽️" title="Refeição">
-          <div className="flex flex-wrap gap-1.5">
+          <div className="flex flex-wrap gap-2">
             {refeicoes.map(r => (
               <button key={r.id} onClick={() => setRefeicaoId(String(r.id))}
-                className={`px-3 py-1.5 rounded-full text-xs font-semibold border transition ${
+                className={`px-3.5 py-2 rounded-full text-sm font-semibold border transition ${
                   refeicaoId === String(r.id)
                     ? 'bg-primary/15 border-primary/40 text-primary'
                     : 'bg-bg3 border-white/[0.08] text-muted hover:border-primary/20'
@@ -299,29 +321,28 @@ function TelaLancamento({ token, dispositivo, onDesparear }) {
               </button>
             ))}
             {refeicoes.length === 0 && (
-              <p className="text-[10px] text-muted/50 py-1">Nenhuma refeição cadastrada — use a aba Cadastros no painel.</p>
+              <p className="text-[11px] text-muted/50 py-1">Nenhuma refeição cadastrada — use a aba Cadastros no painel.</p>
             )}
           </div>
         </Section>
 
         <Section icon="👥" title="Refeições Servidas Hoje">
-          <div className="flex gap-2">
-            <input type="number" inputMode="numeric" min="0" value={nServidos} onChange={e => setNServidos(e.target.value)}
-              placeholder="Qtd. servida" disabled={!refeicaoId}
-              className="flex-1 px-2.5 py-2 bg-bg3 border border-white/[0.08] rounded-lg text-sm text-dim outline-none focus:border-primary/40 disabled:opacity-40"/>
-            <button onClick={salvarContagem} disabled={salvandoContagem || !refeicaoId}
-              className="px-4 py-2 rounded-lg bg-primary/15 border border-primary/40 text-primary text-xs font-semibold disabled:opacity-50">
-              {salvandoContagem ? '...' : 'Salvar'}
-            </button>
-          </div>
-          {msgContagem && <p className={`text-[10px] mt-1.5 ${msgContagem === 'Salvo!' ? 'text-primary' : 'text-rose-400'}`}>{msgContagem}</p>}
+          <input type="number" inputMode="numeric" min="0" value={nServidos}
+            onChange={e => setNServidos(e.target.value)} onBlur={salvarContagem}
+            placeholder="Qtd. servida" disabled={!refeicaoId}
+            className="w-full px-3 py-2.5 bg-bg3 border border-white/[0.08] rounded-lg text-base text-dim outline-none focus:border-primary/40 disabled:opacity-40"/>
+          {(salvandoContagem || msgContagem) && (
+            <p className={`text-[11px] mt-1.5 ${msgContagem.startsWith('✓') ? 'text-primary' : msgContagem ? 'text-rose-400' : 'text-muted'}`}>
+              {salvandoContagem ? 'Salvando...' : msgContagem}
+            </p>
+          )}
         </Section>
 
         <Section icon="⚠️" title="Tipo de Perda">
-          <div className="flex flex-wrap gap-1.5">
+          <div className="flex flex-wrap gap-2">
             {tiposPerda.map(t => (
               <button key={t.id} onClick={() => setTipoPerdaId(String(t.id))}
-                className={`px-3 py-1.5 rounded-full text-xs font-semibold border transition ${
+                className={`px-3.5 py-2 rounded-full text-sm font-semibold border transition ${
                   tipoPerdaId === String(t.id)
                     ? 'bg-primary/15 border-primary/40 text-primary'
                     : 'bg-bg3 border-white/[0.08] text-muted hover:border-primary/20'
@@ -330,7 +351,7 @@ function TelaLancamento({ token, dispositivo, onDesparear }) {
               </button>
             ))}
             {tiposPerda.length === 0 && (
-              <p className="text-[10px] text-muted/50 py-1">Nenhum tipo cadastrado — use a aba Cadastros no painel.</p>
+              <p className="text-[11px] text-muted/50 py-1">Nenhum tipo cadastrado — use a aba Cadastros no painel.</p>
             )}
           </div>
         </Section>
@@ -340,20 +361,20 @@ function TelaLancamento({ token, dispositivo, onDesparear }) {
             onChange={e => selecionarFoto(e.target.files[0])}/>
           {!fotoPreview ? (
             <button onClick={() => fileRef.current?.click()}
-              className="w-full py-5 rounded-lg border-2 border-dashed border-white/[0.12] text-muted hover:border-primary/30 hover:text-primary transition flex flex-col items-center gap-1">
-              <span className="text-xl">📷</span>
-              <span className="text-xs font-semibold">Tirar / Escolher Foto</span>
+              className="w-full py-6 rounded-lg border-2 border-dashed border-white/[0.12] text-muted hover:border-primary/30 hover:text-primary transition flex flex-col items-center gap-1.5">
+              <span className="text-2xl">📷</span>
+              <span className="text-sm font-semibold">Tirar / Escolher Foto</span>
             </button>
           ) : (
-            <div className="flex flex-col gap-2">
-              <img src={fotoPreview} alt="Prato" className="w-full max-h-32 object-cover rounded-lg border border-white/[0.08]"/>
+            <div className="flex flex-col gap-2.5">
+              <img src={fotoPreview} alt="Prato" className="w-full max-h-36 object-cover rounded-lg border border-white/[0.08]"/>
               <div className="flex gap-2">
                 <button onClick={() => fileRef.current?.click()}
-                  className="flex-1 py-1.5 rounded-lg border border-white/[0.08] text-muted text-xs hover:border-primary/30">
+                  className="flex-1 py-2 rounded-lg border border-white/[0.08] text-muted text-sm hover:border-primary/30">
                   Trocar Foto
                 </button>
                 <button onClick={classificarComIA} disabled={classificando}
-                  className="flex-1 py-1.5 rounded-lg bg-primary/15 border border-primary/40 text-primary text-xs font-semibold disabled:opacity-50">
+                  className="flex-1 py-2 rounded-lg bg-primary/15 border border-primary/40 text-primary text-sm font-semibold disabled:opacity-50">
                   {classificando ? 'Classificando...' : '✨ Classificar com IA'}
                 </button>
               </div>
@@ -362,19 +383,19 @@ function TelaLancamento({ token, dispositivo, onDesparear }) {
         </Section>
 
         <Section icon="🥘" title="Alimento e Categoria">
-          <div className="flex flex-col gap-2">
-            <div className="flex flex-col gap-0.5">
-              <span className="text-[9px] text-muted">
+          <div className="flex flex-col gap-2.5">
+            <div className="flex flex-col gap-1">
+              <span className="text-[10px] text-muted">
                 Alimento {confianca != null && `(confiança da IA: ${(confianca*100).toFixed(0)}%)`}
               </span>
               <input type="text" value={alimentoIa} onChange={e => setAlimentoIa(e.target.value)}
                 placeholder="Ex: Filé mignon grelhado"
-                className="px-2.5 py-2 bg-bg3 border border-white/[0.08] rounded-lg text-sm text-dim outline-none focus:border-primary/40"/>
+                className="px-3 py-2.5 bg-bg3 border border-white/[0.08] rounded-lg text-base text-dim outline-none focus:border-primary/40"/>
             </div>
-            <div className="flex flex-col gap-0.5">
-              <span className="text-[9px] text-muted">Categoria de Custo</span>
+            <div className="flex flex-col gap-1">
+              <span className="text-[10px] text-muted">Categoria de Custo</span>
               <select value={categoriaId} onChange={e => setCategoriaId(e.target.value)}
-                className="px-2.5 py-2 bg-bg3 border border-white/[0.08] rounded-lg text-sm text-dim outline-none focus:border-primary/40">
+                className="px-3 py-2.5 bg-bg3 border border-white/[0.08] rounded-lg text-base text-dim outline-none focus:border-primary/40">
                 <option value="">Sem categoria (custo zerado)</option>
                 {categorias.map(c => <option key={c.id} value={c.id}>{c.nome}</option>)}
               </select>
@@ -385,11 +406,11 @@ function TelaLancamento({ token, dispositivo, onDesparear }) {
         <Section icon="⚖️" title="Peso (kg)">
           <input type="number" inputMode="decimal" step="0.001" min="0" value={pesoKg}
             onChange={e => setPesoKg(e.target.value)} placeholder="0,000"
-            className="w-full px-3 py-2.5 bg-bg3 border border-white/[0.08] rounded-lg text-xl font-bold text-dim text-center outline-none focus:border-primary/40"/>
+            className="w-full px-3 py-3 bg-bg3 border border-white/[0.08] rounded-lg text-2xl font-bold text-dim text-center outline-none focus:border-primary/40"/>
         </Section>
 
         <button onClick={salvar} disabled={salvando}
-          className="py-3 rounded-xl bg-primary text-bg font-bold text-sm disabled:opacity-50 shadow-xl flex-shrink-0 sticky bottom-2">
+          className="py-3.5 rounded-xl bg-primary text-bg font-bold text-base disabled:opacity-50 shadow-xl flex-shrink-0 sticky bottom-2">
           {salvando ? 'Salvando...' : 'Salvar Lançamento'}
         </button>
 
