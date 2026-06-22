@@ -1,7 +1,7 @@
 from datetime import timedelta, date as date_cls
 from decimal import Decimal, InvalidOperation
 
-from django.db.models import Sum, Avg, Count
+from django.db.models import Sum, Avg, Count, Q
 from django.db.models.functions import TruncDate
 from django.utils import timezone
 from rest_framework.views import APIView
@@ -359,7 +359,9 @@ class RegistroListView(APIView):
         empresa = _empresa(request)
         if not empresa:
             return Response([])
-        qs = RegistroDesperdicio.objects.filter(unidade__empresa=empresa)
+        qs = RegistroDesperdicio.objects.filter(unidade__empresa=empresa).select_related(
+            'unidade', 'setor', 'categoria', 'tipo_perda', 'refeicao'
+        )
 
         unidade_id  = request.GET.get('unidade_id')
         setor_id    = request.GET.get('setor_id')
@@ -540,7 +542,7 @@ class ContagemClientesView(APIView):
         else:
             return Response({'erro': 'Não autenticado.'}, status=401)
         unidade_id = request.GET.get('unidade_id')
-        qs = ContagemClientes.objects.filter(unidade__empresa=empresa) if empresa else ContagemClientes.objects.none()
+        qs = ContagemClientes.objects.filter(unidade__empresa=empresa).select_related('refeicao') if empresa else ContagemClientes.objects.none()
         if unidade_id:
             qs = qs.filter(unidade_id=unidade_id)
         data = request.GET.get('data')
@@ -611,11 +613,20 @@ class DashboardView(APIView):
         if refeicao_id:
             clientes_filtro['refeicao_id'] = refeicao_id
 
-        total_kg    = qs.aggregate(s=Sum('peso_kg'))['s'] or Decimal('0')
-        valor_total = qs.aggregate(s=Sum('valor_perda'))['s'] or Decimal('0')
-        lancamentos = qs.count()
+        # uma única query pros agregados simples, em vez de uma por métrica
+        agg = qs.aggregate(
+            total_kg=Sum('peso_kg'),
+            valor_total=Sum('valor_perda'),
+            lancamentos=Count('id'),
+            media_valor=Avg('valor_perda'),
+            com_ia=Count('id', filter=~Q(alimento_ia='')),
+        )
+        total_kg    = agg['total_kg'] or Decimal('0')
+        valor_total = agg['valor_total'] or Decimal('0')
+        lancamentos = agg['lancamentos']
+        media_valor = agg['media_valor'] or Decimal('0')
+        com_ia      = agg['com_ia']
 
-        media_valor = qs.aggregate(a=Avg('valor_perda'))['a'] or Decimal('0')
         limiar = media_valor * 2
         perdas_criticas = qs.filter(valor_perda__gt=limiar).count() if limiar > 0 else 0
 
@@ -642,7 +653,6 @@ class DashboardView(APIView):
         ).aggregate(s=Sum('n_clientes'))['s'] or 0
         residuo_por_cliente_g = round(float(total_kg) * 1000 / n_clientes, 1) if n_clientes else None
 
-        com_ia = qs.exclude(alimento_ia='').count()
         cobertura_ia_pct = round(com_ia / lancamentos * 100, 1) if lancamentos else 0
 
         por_categoria = list(
@@ -794,7 +804,7 @@ class DispositivoListView(APIView):
         empresa = _empresa(request)
         if not empresa:
             return Response([])
-        qs = Dispositivo.objects.filter(empresa=empresa)
+        qs = Dispositivo.objects.filter(empresa=empresa).select_related('unidade', 'setor')
         return Response(DispositivoSerializer(qs, many=True).data)
 
     def post(self, request):
