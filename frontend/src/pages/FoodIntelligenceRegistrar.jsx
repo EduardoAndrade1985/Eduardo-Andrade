@@ -284,17 +284,17 @@ function TelaLancamento({ token, dispositivo, onDesparear }) {
   return (
     <div className="min-h-screen bg-bg flex flex-col">
 
-      <div className="flex items-center justify-between px-4 py-2 border-b border-white/[0.06] bg-bg2 flex-shrink-0">
+      <div className="flex items-center justify-between px-4 py-3 border-b border-white/[0.06] bg-bg2 flex-shrink-0">
         <div className="min-w-0">
-          <p className="text-xs font-bold text-primary truncate">🍽️ Food Intelligence</p>
-          <p className="text-[9px] text-muted truncate">{dispositivo?.unidade_nome}{dispositivo?.setor_nome ? ` — ${dispositivo.setor_nome}` : ''}</p>
+          <p className="text-base font-bold text-primary truncate">🍽️ Food Intelligence</p>
+          <p className="text-xs text-muted truncate">{dispositivo?.unidade_nome}{dispositivo?.setor_nome ? ` — ${dispositivo.setor_nome}` : ''}</p>
         </div>
-        <div className="flex items-center gap-2.5 flex-shrink-0">
+        <div className="flex items-center gap-3.5 flex-shrink-0">
           <button onClick={toggleTema} title={tema === 'dark' ? 'Modo claro' : 'Modo escuro'}
-            className="text-muted/60 hover:text-primary text-sm">{tema === 'dark' ? '☀️' : '🌙'}</button>
+            className="text-muted/60 hover:text-primary text-xl leading-none">{tema === 'dark' ? '☀️' : '🌙'}</button>
           <button onClick={() => document.documentElement.requestFullscreen?.().catch(() => {})}
-            title="Tela cheia" className="text-muted/60 hover:text-primary text-sm">⛶</button>
-          <button onClick={onDesparear} className="text-[9px] text-muted/50 hover:text-rose-400">Trocar</button>
+            title="Tela cheia" className="text-muted/60 hover:text-primary text-xl leading-none">⛶</button>
+          <button onClick={onDesparear} className="text-xs text-muted/50 hover:text-rose-400">Trocar</button>
         </div>
       </div>
 
@@ -339,21 +339,14 @@ function TelaLancamento({ token, dispositivo, onDesparear }) {
         </Section>
 
         <Section icon="⚠️" title="Tipo de Perda">
-          <div className="flex flex-wrap gap-2">
-            {tiposPerda.map(t => (
-              <button key={t.id} onClick={() => setTipoPerdaId(String(t.id))}
-                className={`px-3.5 py-2 rounded-full text-sm font-semibold border transition ${
-                  tipoPerdaId === String(t.id)
-                    ? 'bg-primary/15 border-primary/40 text-primary'
-                    : 'bg-bg3 border-white/[0.08] text-muted hover:border-primary/20'
-                }`}>
-                {t.nome}
-              </button>
-            ))}
-            {tiposPerda.length === 0 && (
-              <p className="text-[11px] text-muted/50 py-1">Nenhum tipo cadastrado — use a aba Cadastros no painel.</p>
-            )}
-          </div>
+          {tiposPerda.length > 0 ? (
+            <select value={tipoPerdaId} onChange={e => setTipoPerdaId(e.target.value)}
+              className="w-full px-3 py-2.5 bg-bg3 border border-white/[0.08] rounded-lg text-base text-dim outline-none focus:border-primary/40">
+              {tiposPerda.map(t => <option key={t.id} value={t.id}>{t.nome}</option>)}
+            </select>
+          ) : (
+            <p className="text-[11px] text-muted/50 py-1">Nenhum tipo cadastrado — use a aba Cadastros no painel.</p>
+          )}
         </Section>
 
         <Section icon="📷" title="Foto do Prato">
@@ -361,13 +354,13 @@ function TelaLancamento({ token, dispositivo, onDesparear }) {
             onChange={e => selecionarFoto(e.target.files[0])}/>
           {!fotoPreview ? (
             <button onClick={() => fileRef.current?.click()}
-              className="w-full py-6 rounded-lg border-2 border-dashed border-white/[0.12] text-muted hover:border-primary/30 hover:text-primary transition flex flex-col items-center gap-1.5">
-              <span className="text-2xl">📷</span>
+              className="w-full py-3.5 rounded-lg border-2 border-dashed border-white/[0.12] text-muted hover:border-primary/30 hover:text-primary transition flex items-center justify-center gap-2">
+              <span className="text-lg">📷</span>
               <span className="text-sm font-semibold">Tirar / Escolher Foto</span>
             </button>
           ) : (
             <div className="flex flex-col gap-2.5">
-              <img src={fotoPreview} alt="Prato" className="w-full max-h-36 object-cover rounded-lg border border-white/[0.08]"/>
+              <img src={fotoPreview} alt="Prato" className="w-full max-h-24 object-cover rounded-lg border border-white/[0.08]"/>
               <div className="flex gap-2">
                 <button onClick={() => fileRef.current?.click()}
                   className="flex-1 py-2 rounded-lg border border-white/[0.08] text-muted text-sm hover:border-primary/30">
