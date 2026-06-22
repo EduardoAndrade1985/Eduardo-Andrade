@@ -489,6 +489,43 @@ class RegistroDetailView(APIView):
         return Response({'ok': True})
 
 
+class RegistroRecalcularView(APIView):
+    """Varre lançamentos com valor_perda = 0 no período/unidade filtrados e
+    tenta corrigir aplicando o preço atual da categoria (ou achando uma
+    categoria pelo nome do alimento, pra quem nunca teve match). Não mexe
+    em lançamentos que o operador já ajustou manualmente com valor > 0."""
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        empresa = _empresa(request)
+        if not empresa:
+            return Response({'erro': 'Nenhuma empresa ativa.'}, status=400)
+
+        qs = RegistroDesperdicio.objects.filter(unidade__empresa=empresa, valor_perda=0)
+
+        unidade_id = request.data.get('unidade_id')
+        data_ini   = request.data.get('data_ini')
+        data_fim   = request.data.get('data_fim')
+        if unidade_id: qs = qs.filter(unidade_id=unidade_id)
+        if data_ini:    qs = qs.filter(created_at__date__gte=data_ini)
+        if data_fim:    qs = qs.filter(created_at__date__lte=data_fim)
+
+        candidatos = list(qs.select_related('categoria'))
+        atualizados = 0
+        for registro in candidatos:
+            categoria = registro.categoria or match_categoria(registro.alimento_ia, empresa)
+            custo_kg = calcular_custo(categoria)
+            if custo_kg <= 0:
+                continue
+            registro.categoria = categoria
+            registro.custo_kg = custo_kg
+            registro.valor_perda = (registro.peso_kg * custo_kg).quantize(Decimal('0.01'))
+            registro.save(update_fields=['categoria', 'custo_kg', 'valor_perda'])
+            atualizados += 1
+
+        return Response({'ok': True, 'total_zerados': len(candidatos), 'atualizados': atualizados})
+
+
 # ── CONTAGEM DE CLIENTES ─────────────────────────────────────────────────────
 class ContagemClientesView(APIView):
     """GET exige login (dashboard). POST aceita login OU dispositivo pareado (tablet)."""

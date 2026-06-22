@@ -875,6 +875,24 @@ export default function FoodIntelligence() {
     carregar()
   }
 
+  const [recalculando, setRecalculando] = useState(false)
+
+  async function recalcularCustos() {
+    if (!confirm('Isso vai recalcular o valor de todo lançamento com R$ 0,00 no período filtrado, usando o preço atual da categoria. Lançamentos sem categoria identificável continuam zerados. Confirma?')) return
+    setRecalculando(true)
+    try {
+      const params = { data_ini: dataIni, data_fim: dataFim }
+      if (unidadeId) params.unidade_id = unidadeId
+      const { data } = await api.post('/desperdicio/registros/recalcular/', params)
+      alert(`${data.atualizados} de ${data.total_zerados} lançamento(s) zerado(s) foram atualizados.`)
+      carregar()
+    } catch {
+      alert('Erro ao recalcular custos.')
+    } finally {
+      setRecalculando(false)
+    }
+  }
+
   const porCategoria = dash?.por_categoria || []
   const porRefeicao  = dash?.por_refeicao || []
   const ranking      = dash?.ranking_alimentos || []
@@ -1110,6 +1128,11 @@ export default function FoodIntelligence() {
             className="px-1.5 py-1 bg-bg3 border border-white/[0.06] rounded-md text-[11px] text-dim outline-none focus:border-primary/30 w-[130px]"/>
         </div>
         <div className="ml-auto flex items-center gap-2">
+          <button onClick={recalcularCustos} disabled={recalculando}
+            title="Recalcula lançamentos com valor R$ 0,00 usando o preço atual da categoria"
+            className="px-2.5 py-1.5 rounded-md border border-amber-500/25 text-amber-400 text-[11px] font-semibold hover:bg-amber-500/10 transition whitespace-nowrap disabled:opacity-50">
+            {recalculando ? '...' : '🔄 Recalcular Custos'}
+          </button>
           <button onClick={exportarExcel}
             className="px-2.5 py-1.5 rounded-md border border-white/[0.08] text-muted text-[11px] font-semibold hover:text-dim hover:border-white/[0.15] transition whitespace-nowrap">
             📊 Excel

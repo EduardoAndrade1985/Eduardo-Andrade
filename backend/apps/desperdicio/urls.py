@@ -14,6 +14,7 @@ urlpatterns = [
     path('categorias/<int:pk>/',    views.CategoriaDetailView.as_view(),     name='desperdicio-categoria-detail'),
     path('classificar/',            views.ClassificarView.as_view(),         name='desperdicio-classificar'),
     path('registros/',              views.RegistroListView.as_view(),        name='desperdicio-registros'),
+    path('registros/recalcular/',   views.RegistroRecalcularView.as_view(),  name='desperdicio-registros-recalcular'),
     path('registros/<int:pk>/',     views.RegistroDetailView.as_view(),      name='desperdicio-registro-detail'),
     path('contagem-clientes/',      views.ContagemClientesView.as_view(),    name='desperdicio-contagem'),
     path('dashboard/',              views.DashboardView.as_view(),           name='desperdicio-dashboard'),
