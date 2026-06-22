@@ -394,10 +394,15 @@ class RegistroListView(APIView):
         else:
             return Response({'erro': 'Não autenticado.'}, status=401)
 
+        alimento_ia = request.data.get('alimento_ia', '')[:200]
+
         categoria = None
         categoria_id = request.data.get('categoria_id')
         if categoria_id:
             categoria = CategoriaAlimento.objects.filter(pk=categoria_id, empresa=empresa).first()
+        else:
+            # operação não escolhe categoria manualmente — tenta casar pelo nome do alimento
+            categoria = match_categoria(alimento_ia, empresa)
 
         tipo_perda = None
         tipo_perda_id = request.data.get('tipo_perda_id')
@@ -422,7 +427,7 @@ class RegistroListView(APIView):
             tipo_perda=tipo_perda,
             refeicao=refeicao,
             foto=request.FILES.get('foto'),
-            alimento_ia=request.data.get('alimento_ia', '')[:200],
+            alimento_ia=alimento_ia,
             confianca_ia=request.data.get('confianca_ia') or None,
             categoria=categoria,
             peso_kg=peso_kg,

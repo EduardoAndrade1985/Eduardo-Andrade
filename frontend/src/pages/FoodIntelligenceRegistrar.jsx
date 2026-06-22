@@ -101,7 +101,6 @@ function TelaPareamento({ onPareado }) {
 // ── Tela de lançamento (dispositivo já pareado) ──────────────────────────────
 function TelaLancamento({ token, dispositivo, onDesparear }) {
   const { tema, toggleTema } = useTheme()
-  const [categorias, setCategorias] = useState([])
   const [tiposPerda, setTiposPerda] = useState([])
   const [tipoPerdaId, setTipoPerdaId] = useState('')
   const [refeicoes, setRefeicoes]   = useState([])
@@ -111,7 +110,8 @@ function TelaLancamento({ token, dispositivo, onDesparear }) {
   const [classificando, setClassificando] = useState(false)
   const [alimentoIa, setAlimentoIa] = useState('')
   const [confianca, setConfianca]   = useState(null)
-  const [categoriaId, setCategoriaId] = useState('')
+  const [categoriaId, setCategoriaId]     = useState('')
+  const [categoriaNome, setCategoriaNome] = useState('')
   const [pesoKg, setPesoKg]         = useState('')
   const [salvando, setSalvando]     = useState(false)
   const [mensagem, setMensagem]     = useState(null)
@@ -121,8 +121,6 @@ function TelaLancamento({ token, dispositivo, onDesparear }) {
   const fileRef = useRef()
 
   useEffect(() => {
-    api.get('/desperdicio/categorias/', { params: { dispositivo_token: token } })
-      .then(({ data }) => setCategorias(data)).catch(() => {})
     api.get('/desperdicio/tipos-perda/', { params: { dispositivo_token: token } })
       .then(({ data }) => {
         const ordenados = ordenarTiposPerda(data)
@@ -232,6 +230,7 @@ function TelaLancamento({ token, dispositivo, onDesparear }) {
     setAlimentoIa('')
     setConfianca(null)
     setCategoriaId('')
+    setCategoriaNome('')
   }
 
   async function classificarComIA() {
@@ -246,7 +245,8 @@ function TelaLancamento({ token, dispositivo, onDesparear }) {
       })
       setAlimentoIa(data.alimento_ia || '')
       setConfianca(data.confianca)
-      if (data.categoria_sugerida_id) setCategoriaId(String(data.categoria_sugerida_id))
+      setCategoriaId(data.categoria_sugerida_id ? String(data.categoria_sugerida_id) : '')
+      setCategoriaNome(data.categoria_sugerida_nome || '')
       if (!data.alimento_ia) {
         setMensagem({ tipo: 'erro', texto: data.erro ? `IA não identificou: ${data.erro}` : 'IA não identificou o prato. Digite o nome manualmente.' })
       }
@@ -263,6 +263,7 @@ function TelaLancamento({ token, dispositivo, onDesparear }) {
     setAlimentoIa('')
     setConfianca(null)
     setCategoriaId('')
+    setCategoriaNome('')
     setPesoKg('')
     if (fileRef.current) fileRef.current.value = ''
   }
@@ -326,7 +327,7 @@ function TelaLancamento({ token, dispositivo, onDesparear }) {
         </div>
       )}
 
-      <div className="flex-1 overflow-auto p-3.5 max-w-2xl w-full mx-auto flex flex-col gap-3">
+      <div className="flex-1 overflow-auto p-3.5 max-w-2xl md:max-w-3xl w-full mx-auto flex flex-col gap-3">
 
         <Section icon="🍽️" title="Refeição">
           <div className="flex flex-wrap gap-2">
@@ -346,28 +347,30 @@ function TelaLancamento({ token, dispositivo, onDesparear }) {
           </div>
         </Section>
 
-        <Section icon="👥" title="Refeições Servidas Hoje">
-          <input type="number" inputMode="numeric" min="0" value={nServidos}
-            onChange={e => setNServidos(e.target.value)} onBlur={salvarContagem} onFocus={scrollCampoVisivel}
-            placeholder="Qtd. servida" disabled={!refeicaoId}
-            className="w-full px-3 py-2.5 bg-bg3 border border-white/[0.08] rounded-lg text-base text-dim outline-none focus:border-primary/40 disabled:opacity-40"/>
-          {(salvandoContagem || msgContagem) && (
-            <p className={`text-[11px] mt-1.5 ${msgContagem.startsWith('✓') ? 'text-primary' : msgContagem ? 'text-rose-400' : 'text-muted'}`}>
-              {salvandoContagem ? 'Salvando...' : msgContagem}
-            </p>
-          )}
-        </Section>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <Section icon="👥" title="Refeições Servidas Hoje">
+            <input type="number" inputMode="numeric" min="0" value={nServidos}
+              onChange={e => setNServidos(e.target.value)} onBlur={salvarContagem} onFocus={scrollCampoVisivel}
+              placeholder="Qtd. servida" disabled={!refeicaoId}
+              className="w-full px-3 py-2.5 bg-bg3 border border-white/[0.08] rounded-lg text-base text-dim outline-none focus:border-primary/40 disabled:opacity-40"/>
+            {(salvandoContagem || msgContagem) && (
+              <p className={`text-[11px] mt-1.5 ${msgContagem.startsWith('✓') ? 'text-primary' : msgContagem ? 'text-rose-400' : 'text-muted'}`}>
+                {salvandoContagem ? 'Salvando...' : msgContagem}
+              </p>
+            )}
+          </Section>
 
-        <Section icon="⚠️" title="Tipo de Perda">
-          {tiposPerda.length > 0 ? (
-            <select value={tipoPerdaId} onChange={e => setTipoPerdaId(e.target.value)}
-              className="w-full px-3 py-2.5 bg-bg3 border border-white/[0.08] rounded-lg text-base text-dim outline-none focus:border-primary/40">
-              {tiposPerda.map(t => <option key={t.id} value={t.id}>{t.nome}</option>)}
-            </select>
-          ) : (
-            <p className="text-[11px] text-muted/50 py-1">Nenhum tipo cadastrado — use a aba Cadastros no painel.</p>
-          )}
-        </Section>
+          <Section icon="⚠️" title="Tipo de Perda">
+            {tiposPerda.length > 0 ? (
+              <select value={tipoPerdaId} onChange={e => setTipoPerdaId(e.target.value)}
+                className="w-full px-3 py-2.5 bg-bg3 border border-white/[0.08] rounded-lg text-base text-dim outline-none focus:border-primary/40">
+                {tiposPerda.map(t => <option key={t.id} value={t.id}>{t.nome}</option>)}
+              </select>
+            ) : (
+              <p className="text-[11px] text-muted/50 py-1">Nenhum tipo cadastrado — use a aba Cadastros no painel.</p>
+            )}
+          </Section>
+        </div>
 
         <Section icon="📷" title="Foto do Prato">
           <input ref={fileRef} type="file" accept="image/*" capture="environment" className="hidden"
@@ -395,25 +398,19 @@ function TelaLancamento({ token, dispositivo, onDesparear }) {
           )}
         </Section>
 
-        <Section icon="🥘" title="Alimento e Categoria">
-          <div className="flex flex-col gap-2.5">
-            <div className="flex flex-col gap-1">
-              <span className="text-[10px] text-muted">
-                Alimento {confianca != null && `(confiança da IA: ${(confianca*100).toFixed(0)}%)`}
-              </span>
-              <input type="text" value={alimentoIa} onChange={e => setAlimentoIa(e.target.value)} onFocus={scrollCampoVisivel}
-                placeholder="Ex: Filé mignon grelhado"
-                className="px-3 py-2.5 bg-bg3 border border-white/[0.08] rounded-lg text-base text-dim outline-none focus:border-primary/40"/>
-            </div>
-            <div className="flex flex-col gap-1">
-              <span className="text-[10px] text-muted">Categoria de Custo</span>
-              <select value={categoriaId} onChange={e => setCategoriaId(e.target.value)}
-                className="px-3 py-2.5 bg-bg3 border border-white/[0.08] rounded-lg text-base text-dim outline-none focus:border-primary/40">
-                <option value="">Sem categoria (custo zerado)</option>
-                {categorias.map(c => <option key={c.id} value={c.id}>{c.nome}</option>)}
-              </select>
-            </div>
+        <Section icon="🥘" title="Alimento">
+          <div className="flex flex-col gap-1">
+            <span className="text-[10px] text-muted">
+              Nome do prato {confianca != null && `(confiança da IA: ${(confianca*100).toFixed(0)}%)`}
+            </span>
+            <input type="text" value={alimentoIa}
+              onChange={e => { setAlimentoIa(e.target.value); setCategoriaId(''); setCategoriaNome('') }}
+              onFocus={scrollCampoVisivel} placeholder="Ex: Filé mignon grelhado"
+              className="px-3 py-2.5 bg-bg3 border border-white/[0.08] rounded-lg text-base text-dim outline-none focus:border-primary/40"/>
           </div>
+          {categoriaNome && (
+            <p className="text-[11px] text-primary/80 mt-1.5">💰 Custo: {categoriaNome} (identificado automaticamente)</p>
+          )}
         </Section>
 
         <Section icon="⚖️" title="Peso (kg)">
