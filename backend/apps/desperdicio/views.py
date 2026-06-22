@@ -277,6 +277,7 @@ class CategoriaListView(APIView):
             custo_kg_medio=_dec(request.data.get('custo_kg_medio', 0)),
             modo_custo=request.data.get('modo_custo', 'manual'),
             estoque_classe=(request.data.get('estoque_classe') or '').strip(),
+            estoque_palavra_chave=(request.data.get('estoque_palavra_chave') or '').strip(),
         )
         return Response(CategoriaAlimentoSerializer(cat).data, status=201)
 
@@ -298,6 +299,8 @@ class CategoriaDetailView(APIView):
             cat.modo_custo = request.data['modo_custo']
         if 'estoque_classe' in request.data:
             cat.estoque_classe = (request.data['estoque_classe'] or '').strip()
+        if 'estoque_palavra_chave' in request.data:
+            cat.estoque_palavra_chave = (request.data['estoque_palavra_chave'] or '').strip()
         if 'ativo' in request.data:
             cat.ativo = request.data['ativo']
         cat.save()

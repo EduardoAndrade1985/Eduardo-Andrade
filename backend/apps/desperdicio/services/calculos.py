@@ -29,20 +29,28 @@ def match_categoria(alimento_texto: str, empresa) -> CategoriaAlimento | None:
 
 
 def _custo_do_estoque(categoria: CategoriaAlimento) -> Decimal | None:
-    """Busca o custo por kg a partir do arquivo de Estoque ativo da empresa,
-    filtrando pela classe vinculada na categoria. Assume que a unidade dos
-    itens da classe é compatível com kg — categorias vinculadas a itens
-    vendidos em outra unidade (caixa, litro etc.) não devem usar este modo."""
+    """Busca o custo por kg a partir do arquivo de Estoque ativo da empresa.
+    A 'classe' do Estoque costuma ser uma classificação contábil ampla (ex:
+    'Mercearia' pode misturar arroz a R$6/kg com azeite a R$300/L) — quando
+    isso acontece, a palavra-chave filtra pelo nome do item (ex: 'arroz'),
+    pegando só os itens correlatos (parboilizado, integral etc.) e tornando
+    a média bem mais assertiva. Os dois filtros podem ser usados juntos.
+    Assume que a unidade dos itens é compatível com kg — categorias
+    vinculadas a itens vendidos em outra unidade (caixa, litro etc.) não
+    devem usar este modo."""
     from apps.estoque.models import EntradaNota
 
-    if not categoria.estoque_classe:
+    if not categoria.estoque_classe and not categoria.estoque_palavra_chave:
         return None
 
     qs = EntradaNota.objects.filter(
         arquivo__empresa=categoria.empresa,
         arquivo__ativo=True,
-        classe__iexact=categoria.estoque_classe,
     )
+    if categoria.estoque_classe:
+        qs = qs.filter(classe__iexact=categoria.estoque_classe)
+    if categoria.estoque_palavra_chave:
+        qs = qs.filter(item__icontains=categoria.estoque_palavra_chave)
 
     if categoria.modo_custo == 'estoque_ultimo':
         ultima = qs.order_by('-data').first()

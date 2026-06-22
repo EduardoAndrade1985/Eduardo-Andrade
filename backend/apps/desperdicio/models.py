@@ -61,6 +61,8 @@ class CategoriaAlimento(EmpresaBaseModel):
     modo_custo     = models.CharField(max_length=20, choices=MODO_CUSTO_CHOICES, default='manual')
     estoque_classe = models.CharField(max_length=200, blank=True, default='',
                                        help_text='Classe do item no módulo Estoque (Entrada de Notas) usada para buscar o custo. Ex: "Carnes Bovinas".')
+    estoque_palavra_chave = models.CharField(max_length=200, blank=True, default='',
+                                       help_text='Filtra pelo nome do item (ex: "arroz") em vez da classe inteira — evita média com itens muito diferentes de preço dentro da mesma classe.')
     ativo          = models.BooleanField(default=True)
 
     class Meta:

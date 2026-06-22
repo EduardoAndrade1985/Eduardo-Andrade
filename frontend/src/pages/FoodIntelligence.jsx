@@ -537,7 +537,7 @@ const MODO_CUSTO_LABEL = {
   estoque_ultimo: 'Estoque (último preço)',
 }
 
-function CategoriaCamposForm({ nome, setNome, modo, setModo, custo, setCusto, classe, setClasse }) {
+function CategoriaCamposForm({ nome, setNome, modo, setModo, custo, setCusto, classe, setClasse, palavraChave, setPalavraChave }) {
   return (
     <div className="space-y-2">
       <input value={nome} onChange={e => setNome(e.target.value)} placeholder="Nome (ex: Carnes)"
@@ -552,8 +552,16 @@ function CategoriaCamposForm({ nome, setNome, modo, setModo, custo, setCusto, cl
         <input value={custo} onChange={e => setCusto(e.target.value)} type="number" step="0.01" placeholder="Custo por kg (R$)"
           className="w-full bg-bg2 border border-white/[0.08] rounded px-2 py-1.5 text-xs text-dim outline-none focus:border-primary/30"/>
       ) : (
-        <input value={classe} onChange={e => setClasse(e.target.value)} placeholder="Classe no Estoque (Entrada de Notas)"
-          className="w-full bg-bg2 border border-white/[0.08] rounded px-2 py-1.5 text-xs text-dim outline-none focus:border-primary/30"/>
+        <>
+          <input value={classe} onChange={e => setClasse(e.target.value)} placeholder="Classe no Estoque (opcional)"
+            className="w-full bg-bg2 border border-white/[0.08] rounded px-2 py-1.5 text-xs text-dim outline-none focus:border-primary/30"/>
+          <input value={palavraChave} onChange={e => setPalavraChave(e.target.value)} placeholder='Palavra-chave no nome do item (ex: "arroz")'
+            className="w-full bg-bg2 border border-white/[0.08] rounded px-2 py-1.5 text-xs text-dim outline-none focus:border-primary/30"/>
+          <p className="text-[9px] text-muted/50 -mt-1">
+            A classe sozinha pode misturar itens muito diferentes de preço (ex: "Mercearia" = arroz + azeite). Preencher a
+            palavra-chave filtra só os itens com esse termo no nome, deixando a média mais assertiva. Pode usar os dois juntos.
+          </p>
+        </>
       )}
     </div>
   )
@@ -566,6 +574,7 @@ function CadastroCategorias() {
   const [novoCusto, setNovoCusto]   = useState('')
   const [novoModo, setNovoModo]     = useState('manual')
   const [novaClasse, setNovaClasse] = useState('')
+  const [novaPalavraChave, setNovaPalavraChave] = useState('')
   const [criando, setCriando]       = useState(false)
   const [erro, setErro]             = useState('')
   const [editId, setEditId]         = useState(null)
@@ -573,6 +582,7 @@ function CadastroCategorias() {
   const [editCusto, setEditCusto]   = useState('')
   const [editModo, setEditModo]     = useState('manual')
   const [editClasse, setEditClasse] = useState('')
+  const [editPalavraChave, setEditPalavraChave] = useState('')
   const [salvandoEdit, setSalvandoEdit] = useState(false)
 
   const carregar = useCallback(async () => {
@@ -587,11 +597,12 @@ function CadastroCategorias() {
     setCriando(true); setErro('')
     try {
       const { data } = await api.post('/desperdicio/categorias/', {
-        nome: novoNome.trim(), custo_kg_medio: novoCusto || 0, modo_custo: novoModo, estoque_classe: novaClasse.trim(),
+        nome: novoNome.trim(), custo_kg_medio: novoCusto || 0, modo_custo: novoModo,
+        estoque_classe: novaClasse.trim(), estoque_palavra_chave: novaPalavraChave.trim(),
       })
       setCategorias(c => [...c, data])
       setShowForm(false)
-      setNovoNome(''); setNovoCusto(''); setNovoModo('manual'); setNovaClasse('')
+      setNovoNome(''); setNovoCusto(''); setNovoModo('manual'); setNovaClasse(''); setNovaPalavraChave('')
     } catch { setErro('Erro ao criar.') }
     finally { setCriando(false) }
   }
@@ -607,6 +618,7 @@ function CadastroCategorias() {
     setEditCusto(item.custo_kg_medio)
     setEditModo(item.modo_custo)
     setEditClasse(item.estoque_classe || '')
+    setEditPalavraChave(item.estoque_palavra_chave || '')
   }
 
   async function salvarEdicao(id) {
@@ -614,7 +626,8 @@ function CadastroCategorias() {
     setSalvandoEdit(true); setErro('')
     try {
       const { data } = await api.patch(`/desperdicio/categorias/${id}/`, {
-        nome: editNome.trim(), custo_kg_medio: editCusto || 0, modo_custo: editModo, estoque_classe: editClasse.trim(),
+        nome: editNome.trim(), custo_kg_medio: editCusto || 0, modo_custo: editModo,
+        estoque_classe: editClasse.trim(), estoque_palavra_chave: editPalavraChave.trim(),
       })
       setCategorias(c => c.map(x => x.id === id ? data : x))
       setEditId(null)
@@ -645,6 +658,7 @@ function CadastroCategorias() {
             modo={novoModo} setModo={setNovoModo}
             custo={novoCusto} setCusto={setNovoCusto}
             classe={novaClasse} setClasse={setNovaClasse}
+            palavraChave={novaPalavraChave} setPalavraChave={setNovaPalavraChave}
           />
           <button onClick={criar} disabled={criando}
             className="w-full py-1.5 rounded bg-primary text-bg text-xs font-semibold disabled:opacity-50">
@@ -661,6 +675,7 @@ function CadastroCategorias() {
               modo={editModo} setModo={setEditModo}
               custo={editCusto} setCusto={setEditCusto}
               classe={editClasse} setClasse={setEditClasse}
+              palavraChave={editPalavraChave} setPalavraChave={setEditPalavraChave}
             />
             <div className="flex gap-2">
               <button onClick={() => setEditId(null)} className="flex-1 py-1.5 rounded border border-white/[0.08] text-muted text-xs hover:text-dim">cancelar</button>
@@ -674,7 +689,11 @@ function CadastroCategorias() {
           <div key={c.id} className="flex items-center gap-2 px-2 py-1.5 rounded bg-bg3/50 text-xs">
             <span className={`flex-1 truncate ${!c.ativo ? 'text-muted/40 line-through' : 'text-dim'}`}>
               {c.nome} — {MODO_CUSTO_LABEL[c.modo_custo]}
-              {c.modo_custo === 'manual' ? ` (R$${(+c.custo_kg_medio).toFixed(2)}/kg)` : c.estoque_classe ? ` (${c.estoque_classe})` : ''}
+              {c.modo_custo === 'manual'
+                ? ` (R$${(+c.custo_kg_medio).toFixed(2)}/kg)`
+                : [c.estoque_classe, c.estoque_palavra_chave && `"${c.estoque_palavra_chave}"`].filter(Boolean).join(' + ')
+                  ? ` (${[c.estoque_classe, c.estoque_palavra_chave && `"${c.estoque_palavra_chave}"`].filter(Boolean).join(' + ')})`
+                  : ''}
             </span>
             <button onClick={() => iniciarEdicao(c)} className="text-muted hover:text-primary flex-shrink-0">editar</button>
             <button onClick={() => toggleAtivo(c)} className="text-muted hover:text-primary flex-shrink-0">{c.ativo ? 'desativar' : 'ativar'}</button>
