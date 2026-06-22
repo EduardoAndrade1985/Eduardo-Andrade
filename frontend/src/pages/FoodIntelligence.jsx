@@ -792,11 +792,12 @@ export default function FoodIntelligence() {
   }), [tema])
 
   const hoje = isoDate(new Date())
+  const inicioMes = (() => { const d = new Date(); return isoDate(new Date(d.getFullYear(), d.getMonth(), 1)) })()
   const [aba, setAba]               = useState('dashboard')
   const [unidades, setUnidades]     = useState([])
   const [unidadeId, setUnidadeId]   = useState('')
   const [refeicaoFiltro, setRefeicaoFiltro] = useState('')
-  const [dataIni, setDataIni]       = useState(hoje)
+  const [dataIni, setDataIni]       = useState(inicioMes)
   const [dataFim, setDataFim]       = useState(hoje)
   const [dash, setDash]             = useState(null)
   const [registros, setRegistros]   = useState([])
@@ -809,8 +810,11 @@ export default function FoodIntelligence() {
   const [refeicoesOpts, setRefeicoesOpts]   = useState([])
   const [editRegistro, setEditRegistro]     = useState(null)
   const [diaExpandido, setDiaExpandido]     = useState(null)
-  const [filtroDataRecentes, setFiltroDataRecentes] = useState('')
-  const [filtroDataPorDia, setFiltroDataPorDia]     = useState('')
+  const [filtroRecentesIni, setFiltroRecentesIni] = useState('')
+  const [filtroRecentesFim, setFiltroRecentesFim] = useState('')
+  const [filtroPorDiaIni, setFiltroPorDiaIni]     = useState('')
+  const [filtroPorDiaFim, setFiltroPorDiaFim]     = useState('')
+  const [avisoDiasSemLancamento, setAvisoDiasSemLancamento] = useState(true)
 
   const carregarUnidades = useCallback(() => {
     api.get('/desperdicio/unidades/').then(({ data }) => setUnidades(data)).catch(() => {})
@@ -836,6 +840,7 @@ export default function FoodIntelligence() {
       ])
       setDash(dashRes.data)
       setRegistros(regRes.data)
+      setAvisoDiasSemLancamento(true)
     } catch {
       setDash(null)
     } finally {
@@ -859,12 +864,17 @@ export default function FoodIntelligence() {
   const diasSemLancamento = dash?.dias_sem_lancamento || []
 
   // filtros locais de data — só restringem o que já foi carregado, sem nova chamada à API
-  const registrosFiltrados = filtroDataRecentes
-    ? registros.filter(r => r.created_at.slice(0, 10) === filtroDataRecentes)
-    : registros
-  const porDiaFiltrado = filtroDataPorDia
-    ? porDia.filter(r => r.data === filtroDataPorDia)
-    : porDia
+  const registrosFiltrados = registros.filter(r => {
+    const d = r.created_at.slice(0, 10)
+    if (filtroRecentesIni && d < filtroRecentesIni) return false
+    if (filtroRecentesFim && d > filtroRecentesFim) return false
+    return true
+  })
+  const porDiaFiltrado = porDia.filter(r => {
+    if (filtroPorDiaIni && r.data < filtroPorDiaIni) return false
+    if (filtroPorDiaFim && r.data > filtroPorDiaFim) return false
+    return true
+  })
 
   const unidadeNome = unidadeId
     ? (unidades.find(u => String(u.id) === String(unidadeId))?.nome || '')
@@ -1258,11 +1268,14 @@ export default function FoodIntelligence() {
             )}
 
             <ChartCard title="Lançamentos Recentes">
-              <div className="flex items-center gap-2 mb-2">
-                <input type="date" value={filtroDataRecentes} onChange={e => setFiltroDataRecentes(e.target.value)}
+              <div className="flex items-center gap-2 mb-2 flex-wrap">
+                <input type="date" value={filtroRecentesIni} onChange={e => setFiltroRecentesIni(e.target.value)} title="Data inicial"
                   className="px-2 py-1 bg-bg3 border border-white/[0.06] rounded-md text-[11px] text-dim outline-none focus:border-primary/30"/>
-                {filtroDataRecentes && (
-                  <button onClick={() => setFiltroDataRecentes('')} className="text-[10px] text-muted hover:text-rose-400">limpar</button>
+                <span className="text-[10px] text-muted/50">até</span>
+                <input type="date" value={filtroRecentesFim} onChange={e => setFiltroRecentesFim(e.target.value)} title="Data final"
+                  className="px-2 py-1 bg-bg3 border border-white/[0.06] rounded-md text-[11px] text-dim outline-none focus:border-primary/30"/>
+                {(filtroRecentesIni || filtroRecentesFim) && (
+                  <button onClick={() => { setFiltroRecentesIni(''); setFiltroRecentesFim('') }} className="text-[10px] text-muted hover:text-rose-400">limpar</button>
                 )}
                 <span className="text-[10px] text-muted/50 ml-auto">{registrosFiltrados.length} de {registros.length}</span>
               </div>
@@ -1292,7 +1305,7 @@ export default function FoodIntelligence() {
                       </tr>
                     ))}
                     {registrosFiltrados.length === 0 && (
-                      <tr><td colSpan={8} className="py-6 text-center text-muted/50">Nenhum lançamento {filtroDataRecentes ? 'nessa data' : 'no período'}</td></tr>
+                      <tr><td colSpan={8} className="py-6 text-center text-muted/50">Nenhum lançamento {(filtroRecentesIni || filtroRecentesFim) ? 'nesse período' : 'no período'}</td></tr>
                     )}
                   </tbody>
                 </table>
@@ -1300,17 +1313,21 @@ export default function FoodIntelligence() {
             </ChartCard>
 
             <ChartCard title="Lançamentos por Dia">
-              {diasSemLancamento.length > 0 && (
-                <div className="mb-2 px-2.5 py-1.5 rounded-lg bg-amber-500/10 border border-amber-500/20 text-[10px] text-amber-400">
-                  ⚠️ {diasSemLancamento.length} dia{diasSemLancamento.length !== 1 ? 's' : ''} sem lançamento no período: {diasSemLancamento.map(fmtDiaBR).join(', ')}
+              {diasSemLancamento.length > 0 && avisoDiasSemLancamento && (
+                <div className="mb-2 px-2.5 py-1.5 rounded-lg bg-amber-500/10 border border-amber-500/20 text-[10px] text-amber-400 flex items-start gap-2">
+                  <span className="flex-1">⚠️ {diasSemLancamento.length} dia{diasSemLancamento.length !== 1 ? 's' : ''} sem lançamento no período: {diasSemLancamento.map(fmtDiaBR).join(', ')}</span>
+                  <button onClick={() => setAvisoDiasSemLancamento(false)} title="Fechar" className="text-amber-400/70 hover:text-amber-300 leading-none flex-shrink-0">✕</button>
                 </div>
               )}
-              <div className="flex items-center gap-2 mb-1.5">
+              <div className="flex items-center gap-2 mb-1.5 flex-wrap">
                 <p className="text-[9px] text-muted/50">Clique numa linha pra ver o detalhe por refeição</p>
-                <input type="date" value={filtroDataPorDia} onChange={e => setFiltroDataPorDia(e.target.value)}
+                <input type="date" value={filtroPorDiaIni} onChange={e => setFiltroPorDiaIni(e.target.value)} title="Data inicial"
                   className="ml-auto px-2 py-1 bg-bg3 border border-white/[0.06] rounded-md text-[11px] text-dim outline-none focus:border-primary/30"/>
-                {filtroDataPorDia && (
-                  <button onClick={() => setFiltroDataPorDia('')} className="text-[10px] text-muted hover:text-rose-400">limpar</button>
+                <span className="text-[10px] text-muted/50">até</span>
+                <input type="date" value={filtroPorDiaFim} onChange={e => setFiltroPorDiaFim(e.target.value)} title="Data final"
+                  className="px-2 py-1 bg-bg3 border border-white/[0.06] rounded-md text-[11px] text-dim outline-none focus:border-primary/30"/>
+                {(filtroPorDiaIni || filtroPorDiaFim) && (
+                  <button onClick={() => { setFiltroPorDiaIni(''); setFiltroPorDiaFim('') }} className="text-[10px] text-muted hover:text-rose-400">limpar</button>
                 )}
               </div>
               <div className="overflow-auto max-h-72">
@@ -1359,7 +1376,7 @@ export default function FoodIntelligence() {
                       </>
                     ))}
                     {porDiaFiltrado.length === 0 && (
-                      <tr><td colSpan={7} className="py-6 text-center text-muted/50">Nenhum lançamento {filtroDataPorDia ? 'nessa data' : 'no período'}</td></tr>
+                      <tr><td colSpan={7} className="py-6 text-center text-muted/50">Nenhum lançamento {(filtroPorDiaIni || filtroPorDiaFim) ? 'nesse período' : 'no período'}</td></tr>
                     )}
                   </tbody>
                 </table>
