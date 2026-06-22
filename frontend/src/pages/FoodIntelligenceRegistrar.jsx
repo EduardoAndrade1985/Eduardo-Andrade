@@ -197,6 +197,20 @@ function TelaLancamento({ token, dispositivo, onDesparear }) {
     }
   }
 
+  // mantém o campo focado visível quando o teclado do celular abre/fecha
+  // (em telas pequenas o teclado cobre boa parte da tela e o campo some)
+  useEffect(() => {
+    if (!window.visualViewport) return
+    const ajustar = () => {
+      const el = document.activeElement
+      if (el && ['INPUT', 'SELECT', 'TEXTAREA'].includes(el.tagName)) {
+        el.scrollIntoView({ behavior: 'smooth', block: 'center' })
+      }
+    }
+    window.visualViewport.addEventListener('resize', ajustar)
+    return () => window.visualViewport.removeEventListener('resize', ajustar)
+  }, [])
+
   // heartbeat periódico — indica pro painel que o dispositivo está online
   useEffect(() => {
     const ping = () => api.post('/desperdicio/dispositivos/heartbeat/', { dispositivo_token: token }).catch(() => {})
@@ -204,6 +218,12 @@ function TelaLancamento({ token, dispositivo, onDesparear }) {
     const id = setInterval(ping, 60000)
     return () => clearInterval(id)
   }, [token])
+
+  // reforço pro onFocus — espera o teclado abrir antes de rolar (visualViewport pode demorar)
+  function scrollCampoVisivel(e) {
+    const el = e.target
+    setTimeout(() => el.scrollIntoView({ behavior: 'smooth', block: 'center' }), 300)
+  }
 
   function selecionarFoto(file) {
     if (!file) return
@@ -328,7 +348,7 @@ function TelaLancamento({ token, dispositivo, onDesparear }) {
 
         <Section icon="👥" title="Refeições Servidas Hoje">
           <input type="number" inputMode="numeric" min="0" value={nServidos}
-            onChange={e => setNServidos(e.target.value)} onBlur={salvarContagem}
+            onChange={e => setNServidos(e.target.value)} onBlur={salvarContagem} onFocus={scrollCampoVisivel}
             placeholder="Qtd. servida" disabled={!refeicaoId}
             className="w-full px-3 py-2.5 bg-bg3 border border-white/[0.08] rounded-lg text-base text-dim outline-none focus:border-primary/40 disabled:opacity-40"/>
           {(salvandoContagem || msgContagem) && (
@@ -381,7 +401,7 @@ function TelaLancamento({ token, dispositivo, onDesparear }) {
               <span className="text-[10px] text-muted">
                 Alimento {confianca != null && `(confiança da IA: ${(confianca*100).toFixed(0)}%)`}
               </span>
-              <input type="text" value={alimentoIa} onChange={e => setAlimentoIa(e.target.value)}
+              <input type="text" value={alimentoIa} onChange={e => setAlimentoIa(e.target.value)} onFocus={scrollCampoVisivel}
                 placeholder="Ex: Filé mignon grelhado"
                 className="px-3 py-2.5 bg-bg3 border border-white/[0.08] rounded-lg text-base text-dim outline-none focus:border-primary/40"/>
             </div>
@@ -398,7 +418,7 @@ function TelaLancamento({ token, dispositivo, onDesparear }) {
 
         <Section icon="⚖️" title="Peso (kg)">
           <input type="number" inputMode="decimal" step="0.001" min="0" value={pesoKg}
-            onChange={e => setPesoKg(e.target.value)} placeholder="0,000"
+            onChange={e => setPesoKg(e.target.value)} onFocus={scrollCampoVisivel} placeholder="0,000"
             className="w-full px-3 py-3 bg-bg3 border border-white/[0.08] rounded-lg text-2xl font-bold text-dim text-center outline-none focus:border-primary/40"/>
         </Section>
 
