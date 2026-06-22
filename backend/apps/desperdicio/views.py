@@ -620,6 +620,27 @@ class DashboardView(APIView):
             if atual is None or r['peso_kg'] > atual['peso_kg']:
                 maiores_por_dia[dia] = r
 
+        # quebra por refeição dentro de cada dia — drill-down (café/almoço/jantar)
+        detalhe_refeicao_por_dia = {}
+        for r in (
+            qs.exclude(refeicao__isnull=True)
+              .annotate(dia=TruncDate('created_at'))
+              .values('dia', 'refeicao__nome')
+              .annotate(kg=Sum('peso_kg'), valor=Sum('valor_perda'), lancamentos=Count('id'))
+              .order_by('dia', '-kg')
+        ):
+            detalhe_refeicao_por_dia.setdefault(r['dia'].isoformat(), []).append({
+                'refeicao': r['refeicao__nome'], 'kg': float(r['kg']), 'valor': float(r['valor']), 'lancamentos': r['lancamentos'],
+            })
+
+        # hóspedes/refeições servidas por dia — pra residuo por hóspede diário
+        clientes_por_dia = dict(
+            ContagemClientes.objects.filter(
+                unidade__empresa=empresa, data__gte=data_ini, data__lte=data_fim,
+                **({'unidade_id': unidade_id} if unidade_id else {}),
+            ).values('data').annotate(s=Sum('n_clientes')).values_list('data', 's')
+        )
+
         por_dia = [
             {
                 'data': r['dia'].isoformat(),
@@ -633,6 +654,12 @@ class DashboardView(APIView):
                     }
                     if r['dia'].isoformat() in maiores_por_dia else None
                 ),
+                'n_clientes': clientes_por_dia.get(r['dia']) or 0,
+                'residuo_por_hospede_g': (
+                    round(float(r['kg']) * 1000 / clientes_por_dia[r['dia']], 1)
+                    if clientes_por_dia.get(r['dia']) else None
+                ),
+                'por_refeicao': detalhe_refeicao_por_dia.get(r['dia'].isoformat(), []),
             }
             for r in por_dia
         ]

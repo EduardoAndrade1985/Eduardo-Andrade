@@ -794,6 +794,7 @@ export default function FoodIntelligence() {
   const [tiposPerdaOpts, setTiposPerdaOpts] = useState([])
   const [refeicoesOpts, setRefeicoesOpts]   = useState([])
   const [editRegistro, setEditRegistro]     = useState(null)
+  const [diaExpandido, setDiaExpandido]     = useState(null)
 
   const carregarUnidades = useCallback(() => {
     api.get('/desperdicio/unidades/').then(({ data }) => setUnidades(data)).catch(() => {})
@@ -863,8 +864,11 @@ export default function FoodIntelligence() {
     XLSX.utils.book_append_sheet(wb, wsResumo, 'Resumo')
 
     XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([
-      ['Data', 'Lançamentos', 'Total (kg)', 'Valor da Perda', 'Maior Lançamento'],
-      ...porDia.map(r => [fmtDiaBR(r.data), r.lancamentos, r.kg, r.valor, r.maior_lancamento ? `${r.maior_lancamento.alimento} (${r.maior_lancamento.kg}kg)` : '']),
+      ['Data', 'Lançamentos', 'Total (kg)', 'Valor da Perda', 'Hóspedes', 'g/Hóspede', 'Maior Lançamento'],
+      ...porDia.map(r => [
+        fmtDiaBR(r.data), r.lancamentos, r.kg, r.valor, r.n_clientes || '', r.residuo_por_hospede_g ?? '',
+        r.maior_lancamento ? `${r.maior_lancamento.alimento} (${r.maior_lancamento.kg}kg)` : '',
+      ]),
     ]), 'Por Dia')
 
     XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([
@@ -968,9 +972,10 @@ export default function FoodIntelligence() {
       doc.setFontSize(9); doc.setFont('helvetica', 'bold'); doc.text('LANÇAMENTOS POR DIA', 14, y); y += 4
       autoTable(doc, {
         startY: y, margin: { left: 14, right: 14 },
-        head: [['Data', 'Lançamentos', 'Total (kg)', 'Valor da Perda', 'Maior Lançamento']],
+        head: [['Data', 'Lançamentos', 'Total (kg)', 'Valor da Perda', 'g/Hóspede', 'Maior Lançamento']],
         body: porDia.map(r => [
           fmtDiaBR(r.data), r.lancamentos, fmtKg(r.kg), fmtR(r.valor),
+          r.residuo_por_hospede_g != null ? `${r.residuo_por_hospede_g} g` : '—',
           r.maior_lancamento ? `${r.maior_lancamento.alimento} (${fmtKg(r.maior_lancamento.kg)})` : '—',
         ]),
         styles: { fontSize: 7 }, headStyles: { fillColor: [30, 30, 40], textColor: 255 },
@@ -1191,26 +1196,26 @@ export default function FoodIntelligence() {
             )}
 
             <ChartCard title="Lançamentos Recentes">
-              <div className="overflow-y-auto max-h-72">
+              <div className="overflow-auto max-h-72">
                 <table className="w-full text-xs" style={{ borderCollapse: 'collapse' }}>
                   <thead className="sticky top-0 bg-bg3 z-10">
                     <tr className="text-muted uppercase tracking-wide text-[9px] border-b border-white/[0.06]">
                       {['Data','Refeição','Alimento','Categoria','Tipo','Peso','Valor',''].map(h => (
-                        <th key={h} className="px-2 py-2 font-bold text-left whitespace-nowrap">{h}</th>
+                        <th key={h} className="px-1.5 py-1.5 font-bold text-left whitespace-nowrap">{h}</th>
                       ))}
                     </tr>
                   </thead>
                   <tbody>
                     {registros.slice(0, 100).map(r => (
                       <tr key={r.id} className="border-b border-white/[0.03] hover:bg-white/[0.025]">
-                        <td className="px-2 py-1.5 text-muted whitespace-nowrap">{new Date(r.created_at).toLocaleDateString('pt-BR')}</td>
-                        <td className="px-2 py-1.5 text-muted">{r.refeicao_nome || '—'}</td>
-                        <td className="px-2 py-1.5 text-dim">{trunc(r.alimento_ia, 24) || '—'}</td>
-                        <td className="px-2 py-1.5 text-muted">{trunc(r.categoria_nome, 18) || '—'}</td>
-                        <td className="px-2 py-1.5 text-muted">{r.tipo_perda_nome || '—'}</td>
-                        <td className="px-2 py-1.5 text-right tabular-nums text-dim">{fmtKg(r.peso_kg)}</td>
-                        <td className="px-2 py-1.5 text-right tabular-nums text-dim font-bold">{fmtR(r.valor_perda)}</td>
-                        <td className="px-2 py-1.5 text-right whitespace-nowrap">
+                        <td className="px-1.5 py-1 text-muted whitespace-nowrap">{new Date(r.created_at).toLocaleDateString('pt-BR')}</td>
+                        <td className="px-1.5 py-1 text-muted whitespace-nowrap">{r.refeicao_nome || '—'}</td>
+                        <td className="px-1.5 py-1 text-dim whitespace-nowrap" title={r.alimento_ia}>{trunc(r.alimento_ia, 20) || '—'}</td>
+                        <td className="px-1.5 py-1 text-muted whitespace-nowrap" title={r.categoria_nome}>{trunc(r.categoria_nome, 14) || '—'}</td>
+                        <td className="px-1.5 py-1 text-muted whitespace-nowrap">{r.tipo_perda_nome || '—'}</td>
+                        <td className="px-1.5 py-1 text-right tabular-nums text-dim whitespace-nowrap">{fmtKg(r.peso_kg)}</td>
+                        <td className="px-1.5 py-1 text-right tabular-nums text-dim font-bold whitespace-nowrap">{fmtR(r.valor_perda)}</td>
+                        <td className="px-1.5 py-1 text-right whitespace-nowrap">
                           <button onClick={() => setEditRegistro(r)} title="Editar" className="text-muted hover:text-primary px-1">✎</button>
                           <button onClick={() => excluirRegistro(r.id)} title="Excluir" className="text-muted hover:text-rose-400 px-1">🗑</button>
                         </td>
@@ -1230,29 +1235,52 @@ export default function FoodIntelligence() {
                   ⚠️ {diasSemLancamento.length} dia{diasSemLancamento.length !== 1 ? 's' : ''} sem lançamento no período: {diasSemLancamento.map(fmtDiaBR).join(', ')}
                 </div>
               )}
-              <div className="overflow-y-auto max-h-72">
+              <p className="text-[9px] text-muted/50 mb-1.5">Clique numa linha pra ver o detalhe por refeição</p>
+              <div className="overflow-auto max-h-72">
                 <table className="w-full text-xs" style={{ borderCollapse: 'collapse' }}>
                   <thead className="sticky top-0 bg-bg3 z-10">
                     <tr className="text-muted uppercase tracking-wide text-[9px] border-b border-white/[0.06]">
-                      {['Data','Lanç.','Total (kg)','Valor','Maior Lançamento'].map((h, i) => (
-                        <th key={h} className={`px-2 py-2 font-bold whitespace-nowrap ${i===0?'text-left':'text-right'}`}>{h}</th>
+                      {['Data','Lanç.','Kg','Valor','g/Hóspede','Maior Lançamento'].map((h, i) => (
+                        <th key={h} className={`px-1.5 py-1.5 font-bold whitespace-nowrap ${i===0?'text-left':'text-right'}`}>{h}</th>
                       ))}
                     </tr>
                   </thead>
                   <tbody>
                     {[...porDia].reverse().map(r => (
-                      <tr key={r.data} className="border-b border-white/[0.03] hover:bg-white/[0.025]">
-                        <td className="px-2 py-1.5 text-dim">{fmtDiaBR(r.data)}</td>
-                        <td className="px-2 py-1.5 text-right tabular-nums text-muted">{fmtN(r.lancamentos)}</td>
-                        <td className="px-2 py-1.5 text-right tabular-nums text-dim">{fmtKg(r.kg)}</td>
-                        <td className="px-2 py-1.5 text-right tabular-nums text-dim font-bold">{fmtR(r.valor)}</td>
-                        <td className="px-2 py-1.5 text-right text-muted">
-                          {r.maior_lancamento ? `${trunc(r.maior_lancamento.alimento, 18)} (${fmtKg(r.maior_lancamento.kg)})` : '—'}
-                        </td>
-                      </tr>
+                      <>
+                        <tr key={r.data} onClick={() => setDiaExpandido(d => d === r.data ? null : r.data)}
+                          className="border-b border-white/[0.03] hover:bg-white/[0.025] cursor-pointer">
+                          <td className="px-1.5 py-1 text-dim whitespace-nowrap">{diaExpandido === r.data ? '▾' : '▸'} {fmtDiaBR(r.data)}</td>
+                          <td className="px-1.5 py-1 text-right tabular-nums text-muted">{fmtN(r.lancamentos)}</td>
+                          <td className="px-1.5 py-1 text-right tabular-nums text-dim">{fmtKg(r.kg)}</td>
+                          <td className="px-1.5 py-1 text-right tabular-nums text-dim font-bold">{fmtR(r.valor)}</td>
+                          <td className="px-1.5 py-1 text-right tabular-nums text-teal-400">{r.residuo_por_hospede_g != null ? `${r.residuo_por_hospede_g} g` : '—'}</td>
+                          <td className="px-1.5 py-1 text-right text-muted whitespace-nowrap" title={r.maior_lancamento?.alimento}>
+                            {r.maior_lancamento ? `${trunc(r.maior_lancamento.alimento, 16)} (${fmtKg(r.maior_lancamento.kg)})` : '—'}
+                          </td>
+                        </tr>
+                        {diaExpandido === r.data && (
+                          <tr>
+                            <td colSpan={6} className="px-3 py-2 bg-bg3/40">
+                              {r.por_refeicao.length === 0 ? (
+                                <span className="text-[10px] text-muted/50">Sem detalhe por refeição nesse dia.</span>
+                              ) : (
+                                <div className="flex flex-wrap gap-2">
+                                  {r.por_refeicao.map((rf, i) => (
+                                    <div key={i} className="px-2.5 py-1.5 rounded-lg bg-bg2 border border-white/[0.06] text-[10px]">
+                                      <span className="text-primary font-semibold">{rf.refeicao}</span>
+                                      <span className="text-muted ml-1.5">{fmtN(rf.lancamentos)} lanç. · {fmtKg(rf.kg)} · {fmtR(rf.valor)}</span>
+                                    </div>
+                                  ))}
+                                </div>
+                              )}
+                            </td>
+                          </tr>
+                        )}
+                      </>
                     ))}
                     {porDia.length === 0 && (
-                      <tr><td colSpan={5} className="py-6 text-center text-muted/50">Nenhum lançamento no período</td></tr>
+                      <tr><td colSpan={6} className="py-6 text-center text-muted/50">Nenhum lançamento no período</td></tr>
                     )}
                   </tbody>
                 </table>
