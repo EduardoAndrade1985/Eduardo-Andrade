@@ -82,6 +82,8 @@ function ExpandModal({ title, onClose, children }) {
 function RegistroEditModal({ registro, categorias, tiposPerda, refeicoes, onClose, onSaved }) {
   const [alimento, setAlimento] = useState(registro.alimento_ia || '')
   const [peso, setPeso]         = useState(registro.peso_kg)
+  const [valor, setValor]       = useState(registro.valor_perda)
+  const [valorEditado, setValorEditado] = useState(false)
   const [categoriaId, setCategoriaId] = useState(registro.categoria || '')
   const [tipoPerdaId, setTipoPerdaId] = useState(registro.tipo_perda || '')
   const [refeicaoId, setRefeicaoId]   = useState(registro.refeicao || '')
@@ -91,10 +93,14 @@ function RegistroEditModal({ registro, categorias, tiposPerda, refeicoes, onClos
   async function salvar() {
     setSalvando(true); setErro('')
     try {
-      const { data } = await api.patch(`/desperdicio/registros/${registro.id}/`, {
+      const payload = {
         alimento_ia: alimento, peso_kg: peso,
         categoria_id: categoriaId || '', tipo_perda_id: tipoPerdaId || '', refeicao_id: refeicaoId || '',
-      })
+      }
+      // só manda valor_perda se o operador editou manualmente — senão deixa
+      // o backend recalcular pela categoria (ex: quando só a categoria muda)
+      if (valorEditado) payload.valor_perda = valor
+      const { data } = await api.patch(`/desperdicio/registros/${registro.id}/`, payload)
       onSaved(data)
     } catch {
       setErro('Erro ao salvar.')
@@ -115,6 +121,12 @@ function RegistroEditModal({ registro, categorias, tiposPerda, refeicoes, onClos
         <div className="flex flex-col gap-1">
           <span className="text-[10px] text-muted">Peso (kg)</span>
           <input type="number" step="0.001" min="0" value={peso} onChange={e => setPeso(e.target.value)}
+            className="bg-bg3 border border-white/[0.08] rounded-lg px-2.5 py-2 text-sm text-dim outline-none focus:border-primary/40"/>
+        </div>
+        <div className="flex flex-col gap-1">
+          <span className="text-[10px] text-muted">Valor da Perda (R$) {!valorEditado && <span className="text-muted/50">— recalculado pela categoria ao salvar</span>}</span>
+          <input type="number" step="0.01" min="0" value={valor}
+            onChange={e => { setValor(e.target.value); setValorEditado(true) }}
             className="bg-bg3 border border-white/[0.08] rounded-lg px-2.5 py-2 text-sm text-dim outline-none focus:border-primary/40"/>
         </div>
         <div className="flex flex-col gap-1">
@@ -797,6 +809,8 @@ export default function FoodIntelligence() {
   const [refeicoesOpts, setRefeicoesOpts]   = useState([])
   const [editRegistro, setEditRegistro]     = useState(null)
   const [diaExpandido, setDiaExpandido]     = useState(null)
+  const [filtroDataRecentes, setFiltroDataRecentes] = useState('')
+  const [filtroDataPorDia, setFiltroDataPorDia]     = useState('')
 
   const carregarUnidades = useCallback(() => {
     api.get('/desperdicio/unidades/').then(({ data }) => setUnidades(data)).catch(() => {})
@@ -843,6 +857,14 @@ export default function FoodIntelligence() {
   const comparativo  = dash?.comparativo_unidades || []
   const porDia       = dash?.por_dia || []
   const diasSemLancamento = dash?.dias_sem_lancamento || []
+
+  // filtros locais de data — só restringem o que já foi carregado, sem nova chamada à API
+  const registrosFiltrados = filtroDataRecentes
+    ? registros.filter(r => r.created_at.slice(0, 10) === filtroDataRecentes)
+    : registros
+  const porDiaFiltrado = filtroDataPorDia
+    ? porDia.filter(r => r.data === filtroDataPorDia)
+    : porDia
 
   const unidadeNome = unidadeId
     ? (unidades.find(u => String(u.id) === String(unidadeId))?.nome || '')
@@ -1236,6 +1258,14 @@ export default function FoodIntelligence() {
             )}
 
             <ChartCard title="Lançamentos Recentes">
+              <div className="flex items-center gap-2 mb-2">
+                <input type="date" value={filtroDataRecentes} onChange={e => setFiltroDataRecentes(e.target.value)}
+                  className="px-2 py-1 bg-bg3 border border-white/[0.06] rounded-md text-[11px] text-dim outline-none focus:border-primary/30"/>
+                {filtroDataRecentes && (
+                  <button onClick={() => setFiltroDataRecentes('')} className="text-[10px] text-muted hover:text-rose-400">limpar</button>
+                )}
+                <span className="text-[10px] text-muted/50 ml-auto">{registrosFiltrados.length} de {registros.length}</span>
+              </div>
               <div className="overflow-auto max-h-72">
                 <table className="w-full text-xs" style={{ borderCollapse: 'collapse' }}>
                   <thead className="sticky top-0 bg-bg3 z-10">
@@ -1246,7 +1276,7 @@ export default function FoodIntelligence() {
                     </tr>
                   </thead>
                   <tbody>
-                    {registros.slice(0, 100).map(r => (
+                    {registrosFiltrados.slice(0, 100).map(r => (
                       <tr key={r.id} className="border-b border-white/[0.03] hover:bg-white/[0.025]">
                         <td className="px-1.5 py-1 text-muted whitespace-nowrap">{new Date(r.created_at).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: '2-digit' })}</td>
                         <td className="px-1.5 py-1 text-muted whitespace-nowrap">{r.refeicao_nome || '—'}</td>
@@ -1261,8 +1291,8 @@ export default function FoodIntelligence() {
                         </td>
                       </tr>
                     ))}
-                    {registros.length === 0 && (
-                      <tr><td colSpan={8} className="py-6 text-center text-muted/50">Nenhum lançamento no período</td></tr>
+                    {registrosFiltrados.length === 0 && (
+                      <tr><td colSpan={8} className="py-6 text-center text-muted/50">Nenhum lançamento {filtroDataRecentes ? 'nessa data' : 'no período'}</td></tr>
                     )}
                   </tbody>
                 </table>
@@ -1275,7 +1305,14 @@ export default function FoodIntelligence() {
                   ⚠️ {diasSemLancamento.length} dia{diasSemLancamento.length !== 1 ? 's' : ''} sem lançamento no período: {diasSemLancamento.map(fmtDiaBR).join(', ')}
                 </div>
               )}
-              <p className="text-[9px] text-muted/50 mb-1.5">Clique numa linha pra ver o detalhe por refeição</p>
+              <div className="flex items-center gap-2 mb-1.5">
+                <p className="text-[9px] text-muted/50">Clique numa linha pra ver o detalhe por refeição</p>
+                <input type="date" value={filtroDataPorDia} onChange={e => setFiltroDataPorDia(e.target.value)}
+                  className="ml-auto px-2 py-1 bg-bg3 border border-white/[0.06] rounded-md text-[11px] text-dim outline-none focus:border-primary/30"/>
+                {filtroDataPorDia && (
+                  <button onClick={() => setFiltroDataPorDia('')} className="text-[10px] text-muted hover:text-rose-400">limpar</button>
+                )}
+              </div>
               <div className="overflow-auto max-h-72">
                 <table className="w-full text-xs" style={{ borderCollapse: 'collapse' }}>
                   <thead className="sticky top-0 bg-bg3 z-10">
@@ -1286,7 +1323,7 @@ export default function FoodIntelligence() {
                     </tr>
                   </thead>
                   <tbody>
-                    {[...porDia].reverse().map(r => (
+                    {[...porDiaFiltrado].reverse().map(r => (
                       <>
                         <tr key={r.data} onClick={() => setDiaExpandido(d => d === r.data ? null : r.data)}
                           className="border-b border-white/[0.03] hover:bg-white/[0.025] cursor-pointer">
@@ -1321,8 +1358,8 @@ export default function FoodIntelligence() {
                         )}
                       </>
                     ))}
-                    {porDia.length === 0 && (
-                      <tr><td colSpan={7} className="py-6 text-center text-muted/50">Nenhum lançamento no período</td></tr>
+                    {porDiaFiltrado.length === 0 && (
+                      <tr><td colSpan={7} className="py-6 text-center text-muted/50">Nenhum lançamento {filtroDataPorDia ? 'nessa data' : 'no período'}</td></tr>
                     )}
                   </tbody>
                 </table>

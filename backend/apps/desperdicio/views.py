@@ -463,9 +463,15 @@ class RegistroDetailView(APIView):
             refeicao_id = request.data['refeicao_id']
             registro.refeicao = Refeicao.objects.filter(pk=refeicao_id, empresa=empresa).first() if refeicao_id else None
 
-        # recalcula custo sempre que peso ou categoria puderem ter mudado
-        registro.custo_kg = calcular_custo(registro.categoria)
-        registro.valor_perda = (registro.peso_kg * registro.custo_kg).quantize(Decimal('0.01'))
+        if 'valor_perda' in request.data:
+            # ajuste manual do operador tem prioridade sobre o cálculo automático
+            registro.valor_perda = _dec(request.data['valor_perda']).quantize(Decimal('0.01'))
+            if registro.peso_kg > 0:
+                registro.custo_kg = (registro.valor_perda / registro.peso_kg).quantize(Decimal('0.01'))
+        else:
+            # recalcula custo sempre que peso ou categoria puderem ter mudado
+            registro.custo_kg = calcular_custo(registro.categoria)
+            registro.valor_perda = (registro.peso_kg * registro.custo_kg).quantize(Decimal('0.01'))
         registro.save()
         return Response(RegistroDesperdicioSerializer(registro).data)
 
