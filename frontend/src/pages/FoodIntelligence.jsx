@@ -19,6 +19,7 @@ function trunc(s, n) { return s && s.length > n ? s.slice(0,n-1)+'…' : (s||'�
 function isoDate(d) { return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}` }
 function fmtDiaCurto(iso) { const [, m, d] = iso.split('-'); return `${d}/${m}` }
 function fmtDiaBR(iso) { const [y, m, d] = iso.split('-'); return `${d}/${m}/${y}` }
+function fmtDiaBR2(iso) { const [y, m, d] = iso.split('-'); return `${d}/${m}/${y.slice(2)}` }
 
 const CAT = ['#6366f1','#06b6d4','#f59e0b','#ec4899','#10b981','#f97316','#8b5cf6','#14b8a6','#ef4444','#64748b']
 
@@ -782,6 +783,7 @@ export default function FoodIntelligence() {
   const [aba, setAba]               = useState('dashboard')
   const [unidades, setUnidades]     = useState([])
   const [unidadeId, setUnidadeId]   = useState('')
+  const [refeicaoFiltro, setRefeicaoFiltro] = useState('')
   const [dataIni, setDataIni]       = useState(hoje)
   const [dataFim, setDataFim]       = useState(hoje)
   const [dash, setDash]             = useState(null)
@@ -813,6 +815,7 @@ export default function FoodIntelligence() {
     try {
       const params = { data_ini: dataIni, data_fim: dataFim }
       if (unidadeId) params.unidade_id = unidadeId
+      if (refeicaoFiltro) params.refeicao_id = refeicaoFiltro
       const [dashRes, regRes] = await Promise.all([
         api.get('/desperdicio/dashboard/', { params }),
         api.get('/desperdicio/registros/', { params }),
@@ -824,7 +827,7 @@ export default function FoodIntelligence() {
     } finally {
       setLoading(false)
     }
-  }, [dataIni, dataFim, unidadeId])
+  }, [dataIni, dataFim, unidadeId, refeicaoFiltro])
 
   useEffect(() => { carregar() }, [carregar, empresaAtiva?.id])
 
@@ -844,6 +847,9 @@ export default function FoodIntelligence() {
   const unidadeNome = unidadeId
     ? (unidades.find(u => String(u.id) === String(unidadeId))?.nome || '')
     : 'Todas as Unidades'
+  const refeicaoNome = refeicaoFiltro
+    ? (refeicoesOpts.find(r => String(r.id) === String(refeicaoFiltro))?.nome || '')
+    : 'Todas as Refeições'
 
   function exportarExcel() {
     const wb = XLSX.utils.book_new()
@@ -852,6 +858,7 @@ export default function FoodIntelligence() {
       ['Food Intelligence — Resumo'],
       [`Período: ${fmtDiaBR(dataIni)} a ${fmtDiaBR(dataFim)}`],
       [`Unidade: ${unidadeNome}`],
+      [`Refeição: ${refeicaoNome}`],
       [],
       ['Indicador', 'Valor'],
       ['Total Desperdiçado (kg)', dash?.total_kg ?? 0],
@@ -902,7 +909,7 @@ export default function FoodIntelligence() {
     doc.setFontSize(13); doc.setFont('helvetica', 'bold')
     doc.text('FOOD INTELLIGENCE — RELATÓRIO DE DESPERDÍCIO', 14, 14)
     doc.setFontSize(8); doc.setFont('helvetica', 'normal')
-    doc.text(`Período: ${fmtDiaBR(dataIni)} a ${fmtDiaBR(dataFim)} · ${unidadeNome} · Gerado: ${new Date().toLocaleString('pt-BR')}`, 14, 20)
+    doc.text(`Período: ${fmtDiaBR(dataIni)} a ${fmtDiaBR(dataFim)} · ${unidadeNome} · ${refeicaoNome} · Gerado: ${new Date().toLocaleString('pt-BR')}`, 14, 20)
 
     let y = 26
     autoTable(doc, {
@@ -1031,6 +1038,14 @@ export default function FoodIntelligence() {
             className="px-1.5 py-1 bg-bg3 border border-white/[0.06] rounded-md text-[11px] text-dim outline-none focus:border-primary/30 min-w-[140px]">
             <option value="">Todas</option>
             {unidades.map(u => <option key={u.id} value={u.id}>{u.nome}</option>)}
+          </select>
+        </div>
+        <div className="flex flex-col gap-0.5">
+          <span className="text-[8px] font-bold text-muted uppercase tracking-wider">Refeição</span>
+          <select value={refeicaoFiltro} onChange={e => setRefeicaoFiltro(e.target.value)}
+            className="px-1.5 py-1 bg-bg3 border border-white/[0.06] rounded-md text-[11px] text-dim outline-none focus:border-primary/30 min-w-[120px]">
+            <option value="">Todas</option>
+            {refeicoesOpts.map(r => <option key={r.id} value={r.id}>{r.nome}</option>)}
           </select>
         </div>
         <div className="flex flex-col gap-0.5">
@@ -1233,7 +1248,7 @@ export default function FoodIntelligence() {
                   <tbody>
                     {registros.slice(0, 100).map(r => (
                       <tr key={r.id} className="border-b border-white/[0.03] hover:bg-white/[0.025]">
-                        <td className="px-1.5 py-1 text-muted whitespace-nowrap">{new Date(r.created_at).toLocaleDateString('pt-BR')}</td>
+                        <td className="px-1.5 py-1 text-muted whitespace-nowrap">{new Date(r.created_at).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: '2-digit' })}</td>
                         <td className="px-1.5 py-1 text-muted whitespace-nowrap">{r.refeicao_nome || '—'}</td>
                         <td className="px-1.5 py-1 text-dim whitespace-nowrap" title={r.alimento_ia}>{trunc(r.alimento_ia, 20) || '—'}</td>
                         <td className="px-1.5 py-1 text-muted whitespace-nowrap" title={r.categoria_nome}>{trunc(r.categoria_nome, 14) || '—'}</td>
@@ -1265,7 +1280,7 @@ export default function FoodIntelligence() {
                 <table className="w-full text-xs" style={{ borderCollapse: 'collapse' }}>
                   <thead className="sticky top-0 bg-bg3 z-10">
                     <tr className="text-muted uppercase tracking-wide text-[9px] border-b border-white/[0.06]">
-                      {['Data','Lanç.','Kg','Valor','g/Hóspede','Maior Lançamento'].map((h, i) => (
+                      {['Data','Lanç.','Kg','Valor','Hóspedes','g/Hóspede','Maior Lançamento'].map((h, i) => (
                         <th key={h} className={`px-1.5 py-1.5 font-bold whitespace-nowrap ${i===0?'text-left':'text-right'}`}>{h}</th>
                       ))}
                     </tr>
@@ -1275,10 +1290,11 @@ export default function FoodIntelligence() {
                       <>
                         <tr key={r.data} onClick={() => setDiaExpandido(d => d === r.data ? null : r.data)}
                           className="border-b border-white/[0.03] hover:bg-white/[0.025] cursor-pointer">
-                          <td className="px-1.5 py-1 text-dim whitespace-nowrap">{diaExpandido === r.data ? '▾' : '▸'} {fmtDiaBR(r.data)}</td>
+                          <td className="px-1.5 py-1 text-dim whitespace-nowrap">{diaExpandido === r.data ? '▾' : '▸'} {fmtDiaBR2(r.data)}</td>
                           <td className="px-1.5 py-1 text-right tabular-nums text-muted">{fmtN(r.lancamentos)}</td>
                           <td className="px-1.5 py-1 text-right tabular-nums text-dim">{fmtKg(r.kg)}</td>
                           <td className="px-1.5 py-1 text-right tabular-nums text-dim font-bold">{fmtR(r.valor)}</td>
+                          <td className="px-1.5 py-1 text-right tabular-nums text-muted">{r.n_clientes || '—'}</td>
                           <td className="px-1.5 py-1 text-right tabular-nums text-teal-400">{r.residuo_por_hospede_g != null ? `${r.residuo_por_hospede_g} g` : '—'}</td>
                           <td className="px-1.5 py-1 text-right text-muted whitespace-nowrap" title={r.maior_lancamento?.alimento}>
                             {r.maior_lancamento ? `${trunc(r.maior_lancamento.alimento, 16)} (${fmtKg(r.maior_lancamento.kg)})` : '—'}
@@ -1286,7 +1302,7 @@ export default function FoodIntelligence() {
                         </tr>
                         {diaExpandido === r.data && (
                           <tr>
-                            <td colSpan={6} className="px-3 py-2 bg-bg3/40">
+                            <td colSpan={7} className="px-3 py-2 bg-bg3/40">
                               {r.por_refeicao.length === 0 ? (
                                 <span className="text-[10px] text-muted/50">Sem detalhe por refeição nesse dia.</span>
                               ) : (
@@ -1295,6 +1311,7 @@ export default function FoodIntelligence() {
                                     <div key={i} className="px-2.5 py-1.5 rounded-lg bg-bg2 border border-white/[0.06] text-[10px]">
                                       <span className="text-primary font-semibold">{rf.refeicao}</span>
                                       <span className="text-muted ml-1.5">{fmtN(rf.lancamentos)} lanç. · {fmtKg(rf.kg)} · {fmtR(rf.valor)}</span>
+                                      {rf.n_clientes > 0 && <span className="text-teal-400 ml-1.5">· 👥 {fmtN(rf.n_clientes)}</span>}
                                     </div>
                                   ))}
                                 </div>
@@ -1305,7 +1322,7 @@ export default function FoodIntelligence() {
                       </>
                     ))}
                     {porDia.length === 0 && (
-                      <tr><td colSpan={6} className="py-6 text-center text-muted/50">Nenhum lançamento no período</td></tr>
+                      <tr><td colSpan={7} className="py-6 text-center text-muted/50">Nenhum lançamento no período</td></tr>
                     )}
                   </tbody>
                 </table>

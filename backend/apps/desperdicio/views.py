@@ -358,15 +358,17 @@ class RegistroListView(APIView):
             return Response([])
         qs = RegistroDesperdicio.objects.filter(unidade__empresa=empresa)
 
-        unidade_id = request.GET.get('unidade_id')
-        setor_id   = request.GET.get('setor_id')
-        data_ini   = request.GET.get('data_ini')
-        data_fim   = request.GET.get('data_fim')
+        unidade_id  = request.GET.get('unidade_id')
+        setor_id    = request.GET.get('setor_id')
+        refeicao_id = request.GET.get('refeicao_id')
+        data_ini    = request.GET.get('data_ini')
+        data_fim    = request.GET.get('data_fim')
 
-        if unidade_id: qs = qs.filter(unidade_id=unidade_id)
-        if setor_id:   qs = qs.filter(setor_id=setor_id)
-        if data_ini:   qs = qs.filter(created_at__date__gte=data_ini)
-        if data_fim:   qs = qs.filter(created_at__date__lte=data_fim)
+        if unidade_id:  qs = qs.filter(unidade_id=unidade_id)
+        if setor_id:    qs = qs.filter(setor_id=setor_id)
+        if refeicao_id: qs = qs.filter(refeicao_id=refeicao_id)
+        if data_ini:    qs = qs.filter(created_at__date__gte=data_ini)
+        if data_fim:    qs = qs.filter(created_at__date__lte=data_fim)
 
         return Response(RegistroDesperdicioSerializer(qs[:500], many=True).data)
 
@@ -541,7 +543,8 @@ class DashboardView(APIView):
         hoje = timezone.localdate()
         data_ini = request.GET.get('data_ini') or hoje.isoformat()
         data_fim = request.GET.get('data_fim') or hoje.isoformat()
-        unidade_id = request.GET.get('unidade_id')
+        unidade_id  = request.GET.get('unidade_id')
+        refeicao_id = request.GET.get('refeicao_id')
 
         qs = RegistroDesperdicio.objects.filter(
             unidade__empresa=empresa,
@@ -550,6 +553,12 @@ class DashboardView(APIView):
         )
         if unidade_id:
             qs = qs.filter(unidade_id=unidade_id)
+        if refeicao_id:
+            qs = qs.filter(refeicao_id=refeicao_id)
+
+        clientes_filtro = {'unidade_id': unidade_id} if unidade_id else {}
+        if refeicao_id:
+            clientes_filtro['refeicao_id'] = refeicao_id
 
         total_kg    = qs.aggregate(s=Sum('peso_kg'))['s'] or Decimal('0')
         valor_total = qs.aggregate(s=Sum('valor_perda'))['s'] or Decimal('0')
@@ -578,8 +587,7 @@ class DashboardView(APIView):
             }
 
         n_clientes = ContagemClientes.objects.filter(
-            unidade__empresa=empresa, data__gte=data_ini, data__lte=data_fim,
-            **({'unidade_id': unidade_id} if unidade_id else {}),
+            unidade__empresa=empresa, data__gte=data_ini, data__lte=data_fim, **clientes_filtro,
         ).aggregate(s=Sum('n_clientes'))['s'] or 0
         residuo_por_cliente_g = round(float(total_kg) * 1000 / n_clientes, 1) if n_clientes else None
 
@@ -620,6 +628,16 @@ class DashboardView(APIView):
             if atual is None or r['peso_kg'] > atual['peso_kg']:
                 maiores_por_dia[dia] = r
 
+        # hóspedes/refeições servidas por (dia, refeição) — pro drill-down dentro de cada dia
+        clientes_por_dia_refeicao = {}
+        for r in (
+            ContagemClientes.objects.filter(
+                unidade__empresa=empresa, data__gte=data_ini, data__lte=data_fim, refeicao__isnull=False,
+                **clientes_filtro,
+            ).values('data', 'refeicao__nome').annotate(s=Sum('n_clientes'))
+        ):
+            clientes_por_dia_refeicao[(r['data'], r['refeicao__nome'])] = r['s']
+
         # quebra por refeição dentro de cada dia — drill-down (café/almoço/jantar)
         detalhe_refeicao_por_dia = {}
         for r in (
@@ -631,13 +649,13 @@ class DashboardView(APIView):
         ):
             detalhe_refeicao_por_dia.setdefault(r['dia'].isoformat(), []).append({
                 'refeicao': r['refeicao__nome'], 'kg': float(r['kg']), 'valor': float(r['valor']), 'lancamentos': r['lancamentos'],
+                'n_clientes': clientes_por_dia_refeicao.get((r['dia'], r['refeicao__nome']), 0),
             })
 
         # hóspedes/refeições servidas por dia — pra residuo por hóspede diário
         clientes_por_dia = dict(
             ContagemClientes.objects.filter(
-                unidade__empresa=empresa, data__gte=data_ini, data__lte=data_fim,
-                **({'unidade_id': unidade_id} if unidade_id else {}),
+                unidade__empresa=empresa, data__gte=data_ini, data__lte=data_fim, **clientes_filtro,
             ).values('data').annotate(s=Sum('n_clientes')).values_list('data', 's')
         )
 
