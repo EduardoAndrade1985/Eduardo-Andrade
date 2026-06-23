@@ -5,7 +5,7 @@ import { SkeletonReceitas } from '../components/Skeleton'
 import { getCached, setCached, invalidateCache } from '../services/dataCache'
 import {
   BarChart, Bar, LineChart, Line, ComposedChart, XAxis, YAxis,
-  CartesianGrid, Tooltip, ResponsiveContainer, Cell, ReferenceLine, LabelList,
+  CartesianGrid, Tooltip, ResponsiveContainer, Cell, LabelList,
 } from 'recharts'
 import api from '../services/api'
 
@@ -28,6 +28,19 @@ const compact = v => {
 const mesLblCurto = m => m ? `${MES_NOME[+m.slice(5,7)-1]}/${m.slice(2,4)}` : ''
 const mesLblLongo = m => m ? `${MES_NOME_FULL[+m.slice(5,7)-1]} ${m.slice(0,4)}` : ''
 const zoneColor = p => p>=0.9 ? COR.gGreen : p>=0.7 ? COR.gYel : COR.gRed
+const labelStep = n => Math.max(1, Math.ceil(n/10))
+
+// só desenha 1 a cada `step` rótulos, com `offset` para intercalar séries
+function thinnedLabel({color, fontSize=9, dy=-6, step=1, offset=0}) {
+  return ({x, y, value, index}) => {
+    if (value==null || (index - offset) % step !== 0) return null
+    return (
+      <text x={x} y={y+dy} textAnchor="middle" fontSize={fontSize} fontWeight={700} fill={color}>
+        {compact(value)}
+      </text>
+    )
+  }
+}
 
 function diasNoMes(mes) {
   const [y,m] = mes.split('-').map(Number)
@@ -90,15 +103,17 @@ function DiarioTip({active, payload, label}) {
   )
 }
 
-function ComparativoTip({active, payload, label, orcado, forecast}) {
+function ComparativoTip({active, payload, label}) {
   if (!active || !payload?.length) return null
   const acumulado = payload.find(p=>p.dataKey==='acumulado')?.value
+  const orcAcum   = payload.find(p=>p.dataKey==='orcAcum')?.value
+  const fcstAcum  = payload.find(p=>p.dataKey==='fcstAcum')?.value
   return (
     <div className="bg-bg border border-border rounded-lg px-3 py-2 text-xs shadow-xl">
       <p className="text-dim font-semibold mb-1">Dia {label}</p>
       <p style={{color:COR.real}}>Realizado: <b>{acumulado==null?'—':fmtBRL2(acumulado)}</b></p>
-      <p style={{color:COR.orc}}>Orçado: <b>{fmtBRL2(orcado)}</b></p>
-      <p style={{color:COR.fcst}}>Forecast: <b>{fmtBRL2(forecast)}</b></p>
+      {orcAcum!=null  && <p style={{color:COR.orc}}>Orçado acum.: <b>{fmtBRL2(orcAcum)}</b></p>}
+      {fcstAcum!=null && <p style={{color:COR.fcst}}>Forecast acum.: <b>{fmtBRL2(fcstAcum)}</b></p>}
     </div>
   )
 }
@@ -151,19 +166,20 @@ function BulletChart({rows, orcado, C}) {
 }
 
 function DiarioChart({data, C, labels, expanded}) {
+  const step = labelStep(data.length)
   return (
-    <ResponsiveContainer width="100%" height={expanded?'100%':360} minHeight={expanded?400:undefined}>
-      <ComposedChart data={data} margin={{top:8,right:30,left:0,bottom:0}}>
+    <ResponsiveContainer width="100%" height={expanded?'100%':440} minHeight={expanded?420:undefined}>
+      <ComposedChart data={data} margin={{top:28,right:30,left:0,bottom:0}}>
         <CartesianGrid strokeDasharray="3 3" stroke={C.grid} vertical={false}/>
         <XAxis dataKey="dia" tick={{fill:C.muted, fontSize:11}} axisLine={{stroke:C.grid}} tickLine={false}/>
         <YAxis yAxisId="left" tickFormatter={compact} tick={{fill:COR.real, fontSize:11}} axisLine={false} tickLine={false} width={60}/>
         <YAxis yAxisId="right" orientation="right" tickFormatter={compact} tick={{fill:COR.bar, fontSize:11}} axisLine={false} tickLine={false} width={60}/>
         <Tooltip content={<DiarioTip/>}/>
         <Bar yAxisId="right" dataKey="diario" fill={COR.bar} radius={[2,2,0,0]} maxBarSize={20}>
-          {labels && <LabelList dataKey="diario" position="top" formatter={compact} style={{fill:C.muted,fontSize:9,fontWeight:700}}/>}
+          {labels && <LabelList dataKey="diario" content={thinnedLabel({color:C.muted, dy:-6, step:step*2, offset:0})}/>}
         </Bar>
         <Line yAxisId="left" dataKey="acumulado" stroke={COR.real} strokeWidth={2.6} dot={false} connectNulls={false}>
-          {labels && <LabelList dataKey="acumulado" position="top" formatter={compact} style={{fill:COR.real,fontSize:9,fontWeight:700}}/>}
+          {labels && <LabelList dataKey="acumulado" content={thinnedLabel({color:COR.real, dy:-14, step:step*2, offset:step})}/>}
         </Line>
       </ComposedChart>
     </ResponsiveContainer>
@@ -171,17 +187,28 @@ function DiarioChart({data, C, labels, expanded}) {
 }
 
 function ComparativoChart({data, C, orcado, forecast, labels, expanded}) {
+  const step = labelStep(data.length)
+  const dim  = data.length
+  const enriched = data.map((d, i) => ({
+    ...d,
+    orcAcum:  orcado   > 0 ? Math.round((i + 1) / dim * orcado)   : null,
+    fcstAcum: forecast > 0 ? Math.round((i + 1) / dim * forecast) : null,
+  }))
   return (
-    <ResponsiveContainer width="100%" height={expanded?'100%':340} minHeight={expanded?400:undefined}>
-      <LineChart data={data} margin={{top:8,right:16,left:0,bottom:0}}>
+    <ResponsiveContainer width="100%" height={expanded?'100%':400} minHeight={expanded?420:undefined}>
+      <LineChart data={enriched} margin={{top:28,right:16,left:0,bottom:0}}>
         <CartesianGrid strokeDasharray="3 3" stroke={C.grid} vertical={false}/>
         <XAxis dataKey="dia" tick={{fill:C.muted, fontSize:11}} axisLine={{stroke:C.grid}} tickLine={false}/>
         <YAxis tickFormatter={compact} tick={{fill:C.muted, fontSize:11}} axisLine={false} tickLine={false} width={60}/>
-        <Tooltip content={<ComparativoTip orcado={orcado} forecast={forecast}/>}/>
-        {forecast>0 && <ReferenceLine y={forecast} stroke={COR.fcst} strokeDasharray="6 4" strokeWidth={1.6}/>}
-        {orcado>0   && <ReferenceLine y={orcado}   stroke={COR.orc}  strokeDasharray="6 4" strokeWidth={1.6}/>}
+        <Tooltip content={<ComparativoTip/>}/>
+        <Line dataKey="orcAcum" stroke={COR.orc} strokeWidth={2} dot={false} strokeDasharray="6 4" connectNulls>
+          {labels && <LabelList dataKey="orcAcum" content={thinnedLabel({color:COR.orc, dy:-10, step:step*3, offset:0})}/>}
+        </Line>
+        <Line dataKey="fcstAcum" stroke={COR.fcst} strokeWidth={2} dot={false} strokeDasharray="6 4" connectNulls>
+          {labels && <LabelList dataKey="fcstAcum" content={thinnedLabel({color:COR.fcst, dy:-10, step:step*3, offset:step})}/>}
+        </Line>
         <Line dataKey="acumulado" stroke={COR.real} strokeWidth={2.8} dot={false} connectNulls={false}>
-          {labels && <LabelList dataKey="acumulado" position="top" formatter={compact} style={{fill:COR.real,fontSize:9,fontWeight:700}}/>}
+          {labels && <LabelList dataKey="acumulado" content={thinnedLabel({color:COR.real, dy:-10, step:step*3, offset:step*2})}/>}
         </Line>
       </LineChart>
     </ResponsiveContainer>
@@ -190,15 +217,15 @@ function ComparativoChart({data, C, orcado, forecast, labels, expanded}) {
 
 function WeekdayChart({data, C, labels, expanded}) {
   return (
-    <ResponsiveContainer width="100%" height={expanded?'100%':340} minHeight={expanded?400:undefined}>
-      <BarChart data={data} margin={{top:8,right:16,left:0,bottom:0}}>
+    <ResponsiveContainer width="100%" height={expanded?'100%':380} minHeight={expanded?400:undefined}>
+      <BarChart data={data} margin={{top:24,right:16,left:0,bottom:0}}>
         <CartesianGrid strokeDasharray="3 3" stroke={C.grid} vertical={false}/>
         <XAxis dataKey="dia" tick={{fill:C.muted, fontSize:11}} axisLine={{stroke:C.grid}} tickLine={false}/>
         <YAxis tickFormatter={compact} tick={{fill:C.muted, fontSize:11}} axisLine={false} tickLine={false} width={60}/>
         <Tooltip content={<WeekdayTip/>} cursor={{fill:'transparent'}}/>
         <Bar dataKey="media" radius={[3,3,0,0]} maxBarSize={44}>
           {data.map((d,i)=><Cell key={i} fill={d.fds?COR.bar:COR.real}/>)}
-          {labels && <LabelList dataKey="media" position="top" formatter={compact} style={{fill:C.muted,fontSize:9,fontWeight:700}}/>}
+          {labels && <LabelList dataKey="media" content={thinnedLabel({color:C.muted, dy:-6, step:1})}/>}
         </Bar>
       </BarChart>
     </ResponsiveContainer>
