@@ -53,6 +53,9 @@ urlpatterns = [
     # Custos (dashboard + upload + movimentações)
     path('', include('apps.custos.urls')),
 
+    # Receitas (upload + lançamentos diários + metas)
+    path('api/receitas/', include('apps.receitas.urls')),
+
     # Cartões (conciliação)
     path('api/cartoes/', include('apps.cartoes.urls')),
 

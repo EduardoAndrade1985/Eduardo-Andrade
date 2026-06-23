@@ -5,6 +5,7 @@ import ProtectedRoute from './components/ProtectedRoute'
 import Layout from './components/Layout'
 import Login from './pages/Login'
 import Custos from './pages/Custos'
+import Receitas from './pages/Receitas'
 import Cartoes from './pages/Cartoes'
 import Usuarios from './pages/Usuarios'
 import Empresas from './pages/Empresas'
@@ -43,6 +44,7 @@ export default function App() {
         >
           <Route index element={<Navigate to="/custos" replace />} />
           <Route path="/custos"    element={<Custos />} />
+          <Route path="/receitas"  element={<Receitas />} />
           <Route path="/cartoes"   element={<Cartoes />} />
           <Route path="/ocupacao"  element={<Ocupacao />} />
           <Route path="/eventos"   element={<Eventos />} />

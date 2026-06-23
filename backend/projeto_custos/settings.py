@@ -34,6 +34,7 @@ INSTALLED_APPS = [
     'rest_framework_simplejwt',
     'apps.empresas.apps.EmpresasConfig',
     'apps.custos.apps.CustosConfig',
+    'apps.receitas.apps.ReceitasConfig',
     'apps.cartoes.apps.CartoesConfig',
     'apps.ocupacao.apps.OcupacaoConfig',
     'apps.eventos.apps.EventosConfig',

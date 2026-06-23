@@ -80,6 +80,29 @@ export function SkeletonCustos() {
   )
 }
 
+export function SkeletonReceitas() {
+  return (
+    <div className="flex flex-col h-full overflow-hidden">
+      <SkFilterBar pills={4} />
+      <div className="flex-1 overflow-y-auto p-4 space-y-4">
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
+          {[1, 2, 3].map(i => <SkKpiCard key={i} />)}
+        </div>
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+          {[1, 2, 3, 4].map(i => <SkKpiCard key={i} />)}
+        </div>
+        <SkChartCard height={150} titleWidth="w-56" />
+        <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
+          <SkChartCard height={340} titleWidth="w-44" />
+          <SkChartCard height={340} titleWidth="w-36" />
+        </div>
+        <SkChartCard height={260} titleWidth="w-48" />
+        <SkTableCard rows={7} />
+      </div>
+    </div>
+  )
+}
+
 export function SkeletonOcupacao() {
   return (
     <>

@@ -62,7 +62,7 @@ const SECOES = [
     secIcon: 'sec_fin',
     itens: [
       { label: 'Custos',   icon: 'custos',   path: '/custos',   ativo: true,  key: 'custos'   },
-      { label: 'Receitas', icon: 'receitas', path: '/receitas', ativo: false, key: 'receitas' },
+      { label: 'Receitas', icon: 'receitas', path: '/receitas', ativo: true,  key: 'receitas' },
       { label: 'Cartões',  icon: 'cartoes',  path: '/cartoes',  ativo: true,  key: 'cartoes'  },
     ],
   },
