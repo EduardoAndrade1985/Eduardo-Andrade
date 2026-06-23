@@ -5,7 +5,7 @@ import { SkeletonReceitas } from '../components/Skeleton'
 import { getCached, setCached, invalidateCache } from '../services/dataCache'
 import {
   BarChart, Bar, LineChart, Line, ComposedChart, XAxis, YAxis,
-  CartesianGrid, Tooltip, ResponsiveContainer, Cell, ReferenceLine, ReferenceArea,
+  CartesianGrid, Tooltip, ResponsiveContainer, Cell, ReferenceLine,
 } from 'recharts'
 import api from '../services/api'
 
@@ -92,15 +92,40 @@ function WeekdayTip({active, payload, label}) {
   )
 }
 
-function BulletTip({active, payload}) {
-  if (!active || !payload?.length) return null
-  const d = payload[0].payload
+function BulletChart({rows, orcado, C}) {
+  const W=960, H=150, L=14, R=150, T=8, B=28
+  const trackW=W-L-R, rowH=46, gap=24
+  const scaleMax = orcado>0 ? orcado/0.88 : Math.max(...rows.map(r=>r.val), 1)*1.15
+  const x = v => L + Math.max(0, Math.min(1, v/scaleMax))*trackW
+
   return (
-    <div className="bg-bg border border-border rounded-lg px-3 py-2 text-xs shadow-xl">
-      <p className="text-dim font-semibold mb-1">{d.nome}</p>
-      <p className="text-dim"><b>{fmtBRL(d.val)}</b></p>
-      {d.orcado>0 && <p className="text-muted">{fmtPct(d.pct)} da meta</p>}
-    </div>
+    <svg viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="xMidYMid meet" style={{width:'100%', height:'auto', display:'block'}}>
+      {rows.map((row,i)=>{
+        const y=T+i*(rowH+gap), trackY=y+20, th=18
+        const fR = orcado>0 ? L+0.7*orcado/scaleMax*trackW : L+0.55*trackW
+        const fY = orcado>0 ? L+0.9*orcado/scaleMax*trackW : L+0.78*trackW
+        const zone = zoneColor(row.pct)
+        return (
+          <g key={row.nome}>
+            <rect x={L} y={trackY} width={Math.max(fR-L,0)} height={th} fill={COR.gRed} opacity={0.30} rx={3}/>
+            <rect x={fR} y={trackY} width={Math.max(fY-fR,0)} height={th} fill={COR.gYel} opacity={0.32}/>
+            <rect x={fY} y={trackY} width={Math.max(L+trackW-fY,0)} height={th} fill={COR.gGreen} opacity={0.30} rx={3}/>
+            <rect x={L} y={trackY+4} width={Math.max(x(row.val)-L,0)} height={th-8} fill={zone} rx={2}/>
+            {orcado>0 && (
+              <line x1={x(orcado)} y1={trackY-4} x2={x(orcado)} y2={trackY+th+4} stroke={C.dim} strokeWidth={2.5}/>
+            )}
+            <text x={L} y={y+12} fontSize={13} fill={C.muted} fontFamily="Inter, sans-serif">{row.nome} · {row.sub}</text>
+            <text x={W-R+12} y={trackY+13} fontSize={14} fontWeight={600} fill={C.dim} fontFamily="'JetBrains Mono', monospace">{fmtBRL(row.val)}</text>
+            <text x={W-R+12} y={trackY+29} fontSize={10.5} fill={zone} fontFamily="'JetBrains Mono', monospace">{orcado?fmtPct(row.pct)+' da meta':''}</text>
+          </g>
+        )
+      })}
+      <text x={L} y={H-6} fontSize={10.5} fill={C.muted} fontFamily="'JetBrains Mono', monospace">0</text>
+      {orcado>0 && (
+        <text x={x(orcado)} y={H-6} fontSize={10.5} fill={C.muted} textAnchor="middle" fontFamily="'JetBrains Mono', monospace">meta {fmtBRL(orcado)}</text>
+      )}
+      <text x={L+trackW} y={H-6} fontSize={10.5} fill={C.muted} textAnchor="end" fontFamily="'JetBrains Mono', monospace">{compact(scaleMax)}</text>
+    </svg>
   )
 }
 
@@ -248,11 +273,10 @@ export default function Receitas() {
     return order.map(w=>({dia:dows[w], media: cnt[w]?sum[w]/cnt[w]:0, fds: w===0||w===6}))
   },[lancamentos, mesAtual])
 
-  const bulletData = useMemo(()=>([
-    {nome:'Consolidado', sub:'realizado + adicional',     val: realAjustado,  pct: pctRealOrc, orcado: meta.orcado},
-    {nome:'Forecast',    sub:'projeção do fechamento',     val: meta.forecast, pct: pctFcstOrc, orcado: meta.orcado},
-  ]),[realAjustado, pctRealOrc, meta.forecast, pctFcstOrc, meta.orcado])
-  const bulletMax = meta.orcado>0 ? meta.orcado/0.88 : Math.max(realAjustado, meta.forecast, 1)*1.15
+  const bulletRows = useMemo(()=>([
+    {nome:'Consolidado', sub:'realizado + adicional', val: realAjustado,  pct: pctRealOrc},
+    {nome:'Forecast',    sub:'projeção do fechamento', val: meta.forecast, pct: pctFcstOrc},
+  ]),[realAjustado, pctRealOrc, meta.forecast, pctFcstOrc])
 
   const mixTotal = dadosMes ? (dadosMes.mix.hosp+dadosMes.mix.ab+dadosMes.mix.outros)||1 : 1
   const mixRows = dadosMes ? [
@@ -480,22 +504,7 @@ export default function Receitas() {
           <Card title="Realizado e forecast vs meta" legend={<>
             <Lg color={COR.gRed} label="<70%"/><Lg color={COR.gYel} label="70–90%"/><Lg color={COR.gGreen} label="≥90%"/><Lg color={C.dim} label="meta" dash/>
           </>}>
-            <ResponsiveContainer width="100%" height={150}>
-              <BarChart data={bulletData} layout="vertical" margin={{top:10,right:100,left:10,bottom:10}}>
-                <XAxis type="number" domain={[0, bulletMax]} hide/>
-                <YAxis type="category" dataKey="nome" width={110} tick={{fill:C.dim, fontSize:12}} axisLine={false} tickLine={false}/>
-                <Tooltip content={<BulletTip/>} cursor={{fill:'transparent'}}/>
-                {meta.orcado>0 && <>
-                  <ReferenceArea x1={0} x2={0.7*meta.orcado} fill={COR.gRed} fillOpacity={0.12}/>
-                  <ReferenceArea x1={0.7*meta.orcado} x2={0.9*meta.orcado} fill={COR.gYel} fillOpacity={0.14}/>
-                  <ReferenceArea x1={0.9*meta.orcado} x2={bulletMax} fill={COR.gGreen} fillOpacity={0.12}/>
-                  <ReferenceLine x={meta.orcado} stroke={C.dim} strokeWidth={2}/>
-                </>}
-                <Bar dataKey="val" radius={[0,4,4,0]} barSize={26}>
-                  {bulletData.map((d,i)=><Cell key={i} fill={zoneColor(d.pct)}/>)}
-                </Bar>
-              </BarChart>
-            </ResponsiveContainer>
+            <BulletChart rows={bulletRows} orcado={meta.orcado} C={C}/>
           </Card>
 
           {/* ── metas mensais & lançamentos adicionais ── */}
