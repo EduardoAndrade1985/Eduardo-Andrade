@@ -5,7 +5,7 @@ import { SkeletonReceitas } from '../components/Skeleton'
 import { getCached, setCached, invalidateCache } from '../services/dataCache'
 import {
   BarChart, Bar, LineChart, Line, ComposedChart, XAxis, YAxis,
-  CartesianGrid, Tooltip, ResponsiveContainer, Cell, ReferenceLine,
+  CartesianGrid, Tooltip, ResponsiveContainer, Cell, ReferenceLine, LabelList,
 } from 'recharts'
 import api from '../services/api'
 
@@ -35,14 +35,35 @@ function diasNoMes(mes) {
 }
 
 // ── small chart sub-components ──────────────────────────────────
-function Card({title, legend, children}) {
+function Card({title, legend, onExpand, lblOn, onLbl, children}) {
   return (
     <div className="bg-bg2 rounded-xl border border-border p-4">
       <div className="flex items-center justify-between mb-3 gap-2 flex-wrap">
         <p className="text-[10px] font-bold text-muted uppercase tracking-widest">{title}</p>
-        {legend && <div className="flex items-center gap-3 flex-wrap text-[11px] text-muted">{legend}</div>}
+        <div className="flex items-center gap-1.5 flex-wrap">
+          {legend && <div className="flex items-center gap-3 flex-wrap text-[11px] text-muted">{legend}</div>}
+          {onLbl && <button onClick={onLbl} className={`text-[10px] px-2 py-1 border rounded transition ${lblOn?'border-primary text-primary bg-primary/10':'border-border text-muted hover:border-primary hover:text-primary'}`}>🏷 Rótulos</button>}
+          {onExpand && <button onClick={onExpand} className="text-[10px] px-2 py-1 border border-border rounded text-muted hover:border-primary hover:text-primary transition">⛶</button>}
+        </div>
       </div>
       {children}
+    </div>
+  )
+}
+
+function ExpandModal({title, onClose, children}) {
+  useEffect(()=>{
+    const fn = e => e.key==='Escape' && onClose()
+    window.addEventListener('keydown', fn)
+    return ()=>window.removeEventListener('keydown', fn)
+  },[onClose])
+  return (
+    <div className="fixed inset-0 z-[9000] bg-black/95 backdrop-blur-sm flex flex-col p-5 fade-up">
+      <div className="flex items-center justify-between mb-3 flex-shrink-0">
+        <span className="font-bold text-dim">{title}</span>
+        <button onClick={onClose} className="text-xs px-4 py-1.5 border border-border rounded text-muted hover:border-danger hover:text-danger transition">✕ Fechar</button>
+      </div>
+      <div className="flex-1 bg-bg2 border border-border rounded-xl p-5 overflow-auto flex flex-col">{children}</div>
     </div>
   )
 }
@@ -129,6 +150,115 @@ function BulletChart({rows, orcado, C}) {
   )
 }
 
+function DiarioChart({data, C, labels, expanded}) {
+  return (
+    <ResponsiveContainer width="100%" height={expanded?'100%':360} minHeight={expanded?400:undefined}>
+      <ComposedChart data={data} margin={{top:8,right:30,left:0,bottom:0}}>
+        <CartesianGrid strokeDasharray="3 3" stroke={C.grid} vertical={false}/>
+        <XAxis dataKey="dia" tick={{fill:C.muted, fontSize:11}} axisLine={{stroke:C.grid}} tickLine={false}/>
+        <YAxis yAxisId="left" tickFormatter={compact} tick={{fill:COR.real, fontSize:11}} axisLine={false} tickLine={false} width={60}/>
+        <YAxis yAxisId="right" orientation="right" tickFormatter={compact} tick={{fill:COR.bar, fontSize:11}} axisLine={false} tickLine={false} width={60}/>
+        <Tooltip content={<DiarioTip/>}/>
+        <Bar yAxisId="right" dataKey="diario" fill={COR.bar} radius={[2,2,0,0]} maxBarSize={20}>
+          {labels && <LabelList dataKey="diario" position="top" formatter={compact} style={{fill:C.muted,fontSize:9,fontWeight:700}}/>}
+        </Bar>
+        <Line yAxisId="left" dataKey="acumulado" stroke={COR.real} strokeWidth={2.6} dot={false} connectNulls={false}>
+          {labels && <LabelList dataKey="acumulado" position="top" formatter={compact} style={{fill:COR.real,fontSize:9,fontWeight:700}}/>}
+        </Line>
+      </ComposedChart>
+    </ResponsiveContainer>
+  )
+}
+
+function ComparativoChart({data, C, orcado, forecast, labels, expanded}) {
+  return (
+    <ResponsiveContainer width="100%" height={expanded?'100%':340} minHeight={expanded?400:undefined}>
+      <LineChart data={data} margin={{top:8,right:16,left:0,bottom:0}}>
+        <CartesianGrid strokeDasharray="3 3" stroke={C.grid} vertical={false}/>
+        <XAxis dataKey="dia" tick={{fill:C.muted, fontSize:11}} axisLine={{stroke:C.grid}} tickLine={false}/>
+        <YAxis tickFormatter={compact} tick={{fill:C.muted, fontSize:11}} axisLine={false} tickLine={false} width={60}/>
+        <Tooltip content={<ComparativoTip orcado={orcado} forecast={forecast}/>}/>
+        {forecast>0 && <ReferenceLine y={forecast} stroke={COR.fcst} strokeDasharray="6 4" strokeWidth={1.6}/>}
+        {orcado>0   && <ReferenceLine y={orcado}   stroke={COR.orc}  strokeDasharray="6 4" strokeWidth={1.6}/>}
+        <Line dataKey="acumulado" stroke={COR.real} strokeWidth={2.8} dot={false} connectNulls={false}>
+          {labels && <LabelList dataKey="acumulado" position="top" formatter={compact} style={{fill:COR.real,fontSize:9,fontWeight:700}}/>}
+        </Line>
+      </LineChart>
+    </ResponsiveContainer>
+  )
+}
+
+function WeekdayChart({data, C, labels, expanded}) {
+  return (
+    <ResponsiveContainer width="100%" height={expanded?'100%':340} minHeight={expanded?400:undefined}>
+      <BarChart data={data} margin={{top:8,right:16,left:0,bottom:0}}>
+        <CartesianGrid strokeDasharray="3 3" stroke={C.grid} vertical={false}/>
+        <XAxis dataKey="dia" tick={{fill:C.muted, fontSize:11}} axisLine={{stroke:C.grid}} tickLine={false}/>
+        <YAxis tickFormatter={compact} tick={{fill:C.muted, fontSize:11}} axisLine={false} tickLine={false} width={60}/>
+        <Tooltip content={<WeekdayTip/>} cursor={{fill:'transparent'}}/>
+        <Bar dataKey="media" radius={[3,3,0,0]} maxBarSize={44}>
+          {data.map((d,i)=><Cell key={i} fill={d.fds?COR.bar:COR.real}/>)}
+          {labels && <LabelList dataKey="media" position="top" formatter={compact} style={{fill:C.muted,fontSize:9,fontWeight:700}}/>}
+        </Bar>
+      </BarChart>
+    </ResponsiveContainer>
+  )
+}
+
+function MixRows({rows, total}) {
+  return (
+    <div className="space-y-3.5 mt-1">
+      {rows.map(g=>{
+        const p = g.valor/total
+        return (
+          <div key={g.nome} className="flex items-center gap-3">
+            <div className="w-24 text-xs text-dim">{g.nome}</div>
+            <div className="flex-1 h-2.5 rounded-full bg-bg3 overflow-hidden">
+              <div style={{width:`${(p*100).toFixed(1)}%`, background:g.cor}} className="h-full rounded-full"/>
+            </div>
+            <div className="w-28 text-right font-mono text-xs text-dim">{fmtBRL(g.valor)}</div>
+            <div className="w-10 text-right font-mono text-[11px] text-muted">{(p*100).toFixed(0)}%</div>
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
+function DetalheTable({rows, diasDecorridos, orcado}) {
+  return (
+    <div className="max-h-[344px] overflow-auto mt-1">
+      <table className="w-full border-collapse">
+        <thead>
+          <tr className="text-[10px] uppercase tracking-wide text-muted">
+            <th className="text-left py-1.5 px-2 sticky top-0 bg-bg2 border-b border-border">Dia</th>
+            <th className="text-right py-1.5 px-2 sticky top-0 bg-bg2 border-b border-border">Receita</th>
+            <th className="text-right py-1.5 px-2 sticky top-0 bg-bg2 border-b border-border">Acumulado</th>
+            <th className="text-right py-1.5 px-2 sticky top-0 bg-bg2 border-b border-border">% do orçado</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map(r=>(
+            <tr key={r.dia} className={`border-b border-border/50 ${r.dia===diasDecorridos?'bg-primary/5':''}`}>
+              <td className="py-1.5 px-2 text-left font-mono text-[12px] text-dim">{r.dia2}</td>
+              <td className="py-1.5 px-2 text-right font-mono text-[12px] text-dim">{fmtBRL(r.receita)}</td>
+              <td className="py-1.5 px-2 text-right font-mono text-[12px] text-dim">{fmtBRL(r.acumulado)}</td>
+              <td className="py-1.5 px-2 text-right">
+                <div className="flex items-center justify-end gap-2">
+                  <div className="w-14 h-1.5 rounded-full bg-bg3 overflow-hidden">
+                    <div style={{width:`${Math.min(r.rel*100,100).toFixed(1)}%`, background:COR.orc}} className="h-full rounded-full"/>
+                  </div>
+                  <span className="font-mono text-[11px] text-dim">{orcado?fmtPct(r.rel):'—'}</span>
+                </div>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  )
+}
+
 // ── main component ───────────────────────────────────────────────
 export default function Receitas() {
   const { empresaAtiva } = useEmpresa()
@@ -152,6 +282,10 @@ export default function Receitas() {
   const [anoMetas,    setAnoMetas]    = useState('')
   const [addDesc,     setAddDesc]     = useState('')
   const [addVal,      setAddVal]      = useState('')
+
+  const [lbls,       setLbls]       = useState({diario:false, comparativo:false, weekday:false})
+  const [expandInfo, setExpandInfo] = useState(null)
+  const togLbl = key => setLbls(p=>({...p, [key]: !p[key]}))
 
   const fileRef   = useRef(null)
   const timersRef = useRef({})
@@ -503,7 +637,7 @@ export default function Receitas() {
           {/* ── bullets: realizado/forecast vs meta ── */}
           <Card title="Realizado e forecast vs meta" legend={<>
             <Lg color={COR.gRed} label="<70%"/><Lg color={COR.gYel} label="70–90%"/><Lg color={COR.gGreen} label="≥90%"/><Lg color={C.dim} label="meta" dash/>
-          </>}>
+          </>} onExpand={()=>setExpandInfo({title:'Realizado e forecast vs meta', key:'bullets'})}>
             <BulletChart rows={bulletRows} orcado={meta.orcado} C={C}/>
           </Card>
 
@@ -628,101 +762,32 @@ export default function Receitas() {
           {/* ── receita diária e acumulada ── */}
           <Card title={`Receita diária e acumulada · ${mesLblLongo(mesAtual)}`} legend={<>
             <Lg color={COR.bar} label="Receita do dia"/><Lg color={COR.real} label="Acumulado no mês" dash/>
-          </>}>
-            <ResponsiveContainer width="100%" height={360}>
-              <ComposedChart data={diasData} margin={{top:8,right:30,left:0,bottom:0}}>
-                <CartesianGrid strokeDasharray="3 3" stroke={C.grid} vertical={false}/>
-                <XAxis dataKey="dia" tick={{fill:C.muted, fontSize:11}} axisLine={{stroke:C.grid}} tickLine={false}/>
-                <YAxis yAxisId="left" tickFormatter={compact} tick={{fill:COR.real, fontSize:11}} axisLine={false} tickLine={false} width={60}/>
-                <YAxis yAxisId="right" orientation="right" tickFormatter={compact} tick={{fill:COR.bar, fontSize:11}} axisLine={false} tickLine={false} width={60}/>
-                <Tooltip content={<DiarioTip/>}/>
-                <Bar yAxisId="right" dataKey="diario" fill={COR.bar} radius={[2,2,0,0]} maxBarSize={20}/>
-                <Line yAxisId="left" dataKey="acumulado" stroke={COR.real} strokeWidth={2.6} dot={false} connectNulls={false}/>
-              </ComposedChart>
-            </ResponsiveContainer>
+          </>} lblOn={lbls.diario} onLbl={()=>togLbl('diario')}
+             onExpand={()=>setExpandInfo({title:'Receita diária e acumulada', key:'diario'})}>
+            <DiarioChart data={diasData} C={C} labels={lbls.diario}/>
           </Card>
 
           {/* ── comparativo + dia da semana ── */}
           <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
             <Card title="Comparativo do mês · orçado × realizado × forecast" legend={<>
               <Lg color={COR.real} label="Realizado"/><Lg color={COR.orc} label="Orçado" dash/><Lg color={COR.fcst} label="Forecast" dash/>
-            </>}>
-              <ResponsiveContainer width="100%" height={340}>
-                <LineChart data={diasData} margin={{top:8,right:16,left:0,bottom:0}}>
-                  <CartesianGrid strokeDasharray="3 3" stroke={C.grid} vertical={false}/>
-                  <XAxis dataKey="dia" tick={{fill:C.muted, fontSize:11}} axisLine={{stroke:C.grid}} tickLine={false}/>
-                  <YAxis tickFormatter={compact} tick={{fill:C.muted, fontSize:11}} axisLine={false} tickLine={false} width={60}/>
-                  <Tooltip content={<ComparativoTip orcado={meta.orcado} forecast={meta.forecast}/>}/>
-                  {meta.forecast>0 && <ReferenceLine y={meta.forecast} stroke={COR.fcst} strokeDasharray="6 4" strokeWidth={1.6}/>}
-                  {meta.orcado>0   && <ReferenceLine y={meta.orcado}   stroke={COR.orc}  strokeDasharray="6 4" strokeWidth={1.6}/>}
-                  <Line dataKey="acumulado" stroke={COR.real} strokeWidth={2.8} dot={false} connectNulls={false}/>
-                </LineChart>
-              </ResponsiveContainer>
+            </>} lblOn={lbls.comparativo} onLbl={()=>togLbl('comparativo')}
+               onExpand={()=>setExpandInfo({title:'Comparativo do mês', key:'comparativo'})}>
+              <ComparativoChart data={diasData} C={C} orcado={meta.orcado} forecast={meta.forecast} labels={lbls.comparativo}/>
             </Card>
-            <Card title="Receita média por dia da semana">
-              <ResponsiveContainer width="100%" height={340}>
-                <BarChart data={weekdayData} margin={{top:8,right:16,left:0,bottom:0}}>
-                  <CartesianGrid strokeDasharray="3 3" stroke={C.grid} vertical={false}/>
-                  <XAxis dataKey="dia" tick={{fill:C.muted, fontSize:11}} axisLine={{stroke:C.grid}} tickLine={false}/>
-                  <YAxis tickFormatter={compact} tick={{fill:C.muted, fontSize:11}} axisLine={false} tickLine={false} width={60}/>
-                  <Tooltip content={<WeekdayTip/>} cursor={{fill:'transparent'}}/>
-                  <Bar dataKey="media" radius={[3,3,0,0]} maxBarSize={44}>
-                    {weekdayData.map((d,i)=><Cell key={i} fill={d.fds?COR.bar:COR.real}/>)}
-                  </Bar>
-                </BarChart>
-              </ResponsiveContainer>
+            <Card title="Receita média por dia da semana" lblOn={lbls.weekday} onLbl={()=>togLbl('weekday')}
+               onExpand={()=>setExpandInfo({title:'Receita média por dia da semana', key:'weekday'})}>
+              <WeekdayChart data={weekdayData} C={C} labels={lbls.weekday}/>
             </Card>
           </div>
 
           {/* ── composição + detalhe diário ── */}
           <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
-            <Card title="Composição da receita">
-              <div className="space-y-3.5 mt-1">
-                {mixRows.map(g=>{
-                  const p = g.valor/mixTotal
-                  return (
-                    <div key={g.nome} className="flex items-center gap-3">
-                      <div className="w-24 text-xs text-dim">{g.nome}</div>
-                      <div className="flex-1 h-2.5 rounded-full bg-bg3 overflow-hidden">
-                        <div style={{width:`${(p*100).toFixed(1)}%`, background:g.cor}} className="h-full rounded-full"/>
-                      </div>
-                      <div className="w-28 text-right font-mono text-xs text-dim">{fmtBRL(g.valor)}</div>
-                      <div className="w-10 text-right font-mono text-[11px] text-muted">{(p*100).toFixed(0)}%</div>
-                    </div>
-                  )
-                })}
-              </div>
+            <Card title="Composição da receita" onExpand={()=>setExpandInfo({title:'Composição da receita', key:'mix'})}>
+              <MixRows rows={mixRows} total={mixTotal}/>
             </Card>
-            <Card title="Detalhe diário">
-              <div className="max-h-[344px] overflow-auto mt-1">
-                <table className="w-full border-collapse">
-                  <thead>
-                    <tr className="text-[10px] uppercase tracking-wide text-muted">
-                      <th className="text-left py-1.5 px-2 sticky top-0 bg-bg2 border-b border-border">Dia</th>
-                      <th className="text-right py-1.5 px-2 sticky top-0 bg-bg2 border-b border-border">Receita</th>
-                      <th className="text-right py-1.5 px-2 sticky top-0 bg-bg2 border-b border-border">Acumulado</th>
-                      <th className="text-right py-1.5 px-2 sticky top-0 bg-bg2 border-b border-border">% do orçado</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {detalheRows.map(r=>(
-                      <tr key={r.dia} className={`border-b border-border/50 ${r.dia===dadosMes?.diasDecorridos?'bg-primary/5':''}`}>
-                        <td className="py-1.5 px-2 text-left font-mono text-[12px] text-dim">{r.dia2}</td>
-                        <td className="py-1.5 px-2 text-right font-mono text-[12px] text-dim">{fmtBRL(r.receita)}</td>
-                        <td className="py-1.5 px-2 text-right font-mono text-[12px] text-dim">{fmtBRL(r.acumulado)}</td>
-                        <td className="py-1.5 px-2 text-right">
-                          <div className="flex items-center justify-end gap-2">
-                            <div className="w-14 h-1.5 rounded-full bg-bg3 overflow-hidden">
-                              <div style={{width:`${Math.min(r.rel*100,100).toFixed(1)}%`, background:COR.orc}} className="h-full rounded-full"/>
-                            </div>
-                            <span className="font-mono text-[11px] text-dim">{meta.orcado?fmtPct(r.rel):'—'}</span>
-                          </div>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+            <Card title="Detalhe diário" onExpand={()=>setExpandInfo({title:'Detalhe diário', key:'detalhe'})}>
+              <DetalheTable rows={detalheRows} diasDecorridos={dadosMes?.diasDecorridos} orcado={meta.orcado}/>
             </Card>
           </div>
 
@@ -731,6 +796,18 @@ export default function Receitas() {
             <b className="text-dim">% realizado do orçado</b> = realizado acumulado (com adicional) ÷ orçado do mês.
           </p>
         </div>
+      )}
+
+      {/* ── Expand Modal ── */}
+      {expandInfo && (
+        <ExpandModal title={expandInfo.title} onClose={()=>setExpandInfo(null)}>
+          {expandInfo.key==='bullets'      && <BulletChart rows={bulletRows} orcado={meta.orcado} C={C}/>}
+          {expandInfo.key==='diario'       && <DiarioChart data={diasData} C={C} labels={lbls.diario} expanded/>}
+          {expandInfo.key==='comparativo'  && <ComparativoChart data={diasData} C={C} orcado={meta.orcado} forecast={meta.forecast} labels={lbls.comparativo} expanded/>}
+          {expandInfo.key==='weekday'      && <WeekdayChart data={weekdayData} C={C} labels={lbls.weekday} expanded/>}
+          {expandInfo.key==='mix'          && <MixRows rows={mixRows} total={mixTotal}/>}
+          {expandInfo.key==='detalhe'      && <DetalheTable rows={detalheRows} diasDecorridos={dadosMes?.diasDecorridos} orcado={meta.orcado}/>}
+        </ExpandModal>
       )}
 
       {/* ── Import Modal ── */}
