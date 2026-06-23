@@ -106,14 +106,14 @@ function DiarioTip({active, payload, label}) {
 function ComparativoTip({active, payload, label}) {
   if (!active || !payload?.length) return null
   const acumulado = payload.find(p=>p.dataKey==='acumulado')?.value
-  const orcAcum   = payload.find(p=>p.dataKey==='orcAcum')?.value
-  const fcstAcum  = payload.find(p=>p.dataKey==='fcstAcum')?.value
+  const orcVal    = payload.find(p=>p.dataKey==='orcAcum')?.value
+  const fcstVal   = payload.find(p=>p.dataKey==='fcstAcum')?.value
   return (
     <div className="bg-bg border border-border rounded-lg px-3 py-2 text-xs shadow-xl">
       <p className="text-dim font-semibold mb-1">Dia {label}</p>
       <p style={{color:COR.real}}>Realizado: <b>{acumulado==null?'—':fmtBRL2(acumulado)}</b></p>
-      {orcAcum!=null  && <p style={{color:COR.orc}}>Orçado acum.: <b>{fmtBRL2(orcAcum)}</b></p>}
-      {fcstAcum!=null && <p style={{color:COR.fcst}}>Forecast acum.: <b>{fmtBRL2(fcstAcum)}</b></p>}
+      {orcVal!=null  && <p style={{color:COR.orc}}>Orçado: <b>{fmtBRL2(orcVal)}</b></p>}
+      {fcstVal!=null && <p style={{color:COR.fcst}}>Forecast: <b>{fmtBRL2(fcstVal)}</b></p>}
     </div>
   )
 }
@@ -187,13 +187,17 @@ function DiarioChart({data, C, labels, expanded}) {
 }
 
 function ComparativoChart({data, C, orcado, forecast, labels, expanded}) {
-  const step = labelStep(data.length)
-  const dim  = data.length
-  const enriched = data.map((d, i) => ({
+  const step    = labelStep(data.length)
+  const lastIdx = data.length - 1
+  const enriched = data.map((d) => ({
     ...d,
-    orcAcum:  orcado   > 0 ? Math.round((i + 1) / dim * orcado)   : null,
-    fcstAcum: forecast > 0 ? Math.round((i + 1) / dim * forecast) : null,
+    orcAcum:  orcado   > 0 ? orcado   : null,
+    fcstAcum: forecast > 0 ? forecast : null,
   }))
+  // rótulo único no ponto final da linha (para linhas horizontais fixas)
+  const endLbl = (color, dy) => ({x, y, value, index}) =>
+    index !== lastIdx || value == null ? null :
+    <text x={x} y={y+dy} textAnchor="end" fontSize={9} fontWeight={700} fill={color}>{compact(value)}</text>
   return (
     <ResponsiveContainer width="100%" height={expanded?'100%':400} minHeight={expanded?420:undefined}>
       <LineChart data={enriched} margin={{top:28,right:16,left:0,bottom:0}}>
@@ -202,13 +206,13 @@ function ComparativoChart({data, C, orcado, forecast, labels, expanded}) {
         <YAxis tickFormatter={compact} tick={{fill:C.muted, fontSize:11}} axisLine={false} tickLine={false} width={60}/>
         <Tooltip content={<ComparativoTip/>}/>
         <Line dataKey="orcAcum" stroke={COR.orc} strokeWidth={2} dot={false} strokeDasharray="6 4" connectNulls>
-          {labels && <LabelList dataKey="orcAcum" content={thinnedLabel({color:COR.orc, dy:-10, step:step*3, offset:0})}/>}
+          {labels && <LabelList dataKey="orcAcum" content={endLbl(COR.orc, -8)}/>}
         </Line>
         <Line dataKey="fcstAcum" stroke={COR.fcst} strokeWidth={2} dot={false} strokeDasharray="6 4" connectNulls>
-          {labels && <LabelList dataKey="fcstAcum" content={thinnedLabel({color:COR.fcst, dy:-10, step:step*3, offset:step})}/>}
+          {labels && <LabelList dataKey="fcstAcum" content={endLbl(COR.fcst, 14)}/>}
         </Line>
         <Line dataKey="acumulado" stroke={COR.real} strokeWidth={2.8} dot={false} connectNulls={false}>
-          {labels && <LabelList dataKey="acumulado" content={thinnedLabel({color:COR.real, dy:-10, step:step*3, offset:step*2})}/>}
+          {labels && <LabelList dataKey="acumulado" content={thinnedLabel({color:COR.real, dy:-10, step:step, offset:0})}/>}
         </Line>
       </LineChart>
     </ResponsiveContainer>
