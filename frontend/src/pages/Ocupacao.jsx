@@ -555,9 +555,9 @@ export default function Ocupacao() {
               const taxaCls =taxa>=80?'text-teal-400':taxa>=60?'text-amber-400':'text-rose-400'
               return (
                 <div key={r.id??i}
-                  className={`flex items-center px-2 py-1 border-b border-white/[0.03] hover:bg-white/[0.025] transition-colors text-[11px] ${isHoje?'bg-primary/5':''}`}>
-                  <span className="w-10 text-amber-400 font-semibold tabular-nums whitespace-nowrap">{fmtDtShort(r.data)}</span>
-                  <span className="w-8 text-muted">{diaSemana(r.data)}</span>
+                  className={`flex items-center px-2 py-1 border-b border-white/[0.03] hover:bg-white/[0.025] transition-colors text-[11px] ${isHoje?'bg-primary/15 border-l-2 border-l-primary -ml-px':''}`}>
+                  <span className={`w-10 font-semibold tabular-nums whitespace-nowrap ${isHoje?'text-primary':'text-amber-400'}`}>{fmtDtShort(r.data)}</span>
+                  <span className={`w-8 ${isHoje?'text-primary font-semibold':'text-muted'}`}>{diaSemana(r.data)}</span>
                   <span className="flex-1 flex items-center gap-1">
                     <span className={`font-bold tabular-nums text-[10px] w-9 text-right ${taxaCls}`}>{taxa.toFixed(1)}%</span>
                     <div className="h-[3px] rounded-full bg-bg3 overflow-hidden flex-1">
