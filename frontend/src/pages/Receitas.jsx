@@ -178,7 +178,7 @@ function DiarioChart({data, C, labels, expanded}) {
         <YAxis yAxisId="right" orientation="right" tickFormatter={compact} tick={{fill:COR.bar, fontSize:11}} axisLine={false} tickLine={false} width={60}/>
         <Tooltip content={<DiarioTip/>}/>
         <Bar yAxisId="right" dataKey="diario" fill={COR.bar} radius={[2,2,0,0]} maxBarSize={20}>
-          {labels && <LabelList dataKey="diario" content={thinnedLabel({color:C.muted, dy:-6, step:step*2, offset:0})}/>}
+          {labels && <LabelList dataKey="diario" content={thinnedLabel({color:C.muted, dy:-6, step:1})}/>}
         </Bar>
         <Line yAxisId="left" dataKey="acumulado" stroke={COR.real} strokeWidth={2.6} dot={false} connectNulls={false}>
           {labels && <LabelList dataKey="acumulado" content={thinnedLabel({color:COR.real, dy:-14, step:step*2, offset:step})}/>}
