@@ -129,9 +129,10 @@ function WeekdayTip({active, payload, label}) {
 }
 
 function BulletChart({rows, orcado, C}) {
-  const W=960, H=150, L=14, R=150, T=8, B=28
-  const trackW=W-L-R, rowH=46, gap=24
-  const scaleMax = orcado>0 ? orcado/0.88 : Math.max(...rows.map(r=>r.val), 1)*1.15
+  const W=960, H=175, L=14, R=165, T=8, B=30
+  const trackW=W-L-R, rowH=46, gap=38
+  const maxVal = Math.max(...rows.map(r=>r.val), 1)
+  const scaleMax = Math.max(orcado>0 ? orcado/0.88 : 0, maxVal*1.12)
   const x = v => L + Math.max(0, Math.min(1, v/scaleMax))*trackW
 
   return (
@@ -152,13 +153,14 @@ function BulletChart({rows, orcado, C}) {
             )}
             <text x={L} y={y+12} fontSize={13} fill={C.muted} fontFamily="Inter, sans-serif">{row.nome} · {row.sub}</text>
             <text x={W-R+12} y={trackY+13} fontSize={14} fontWeight={600} fill={C.dim} fontFamily="'JetBrains Mono', monospace">{fmtBRL(row.val)}</text>
-            <text x={W-R+12} y={trackY+29} fontSize={10.5} fill={zone} fontFamily="'JetBrains Mono', monospace">{orcado?fmtPct(row.pct)+' da meta':''}</text>
+            <text x={W-R+12} y={trackY+28} fontSize={10.5} fill={zone} fontFamily="'JetBrains Mono', monospace">{orcado?fmtPct(row.pct)+' da meta':''}</text>
+            {orcado>0 && <text x={W-R+12} y={trackY+42} fontSize={10} fill={C.muted} fontFamily="'JetBrains Mono', monospace">meta {fmtBRL(orcado)}</text>}
           </g>
         )
       })}
       <text x={L} y={H-6} fontSize={10.5} fill={C.muted} fontFamily="'JetBrains Mono', monospace">0</text>
       {orcado>0 && (
-        <text x={x(orcado)} y={H-6} fontSize={10.5} fill={C.muted} textAnchor="middle" fontFamily="'JetBrains Mono', monospace">meta {fmtBRL(orcado)}</text>
+        <text x={x(orcado)} y={H-6} fontSize={10.5} fill={C.muted} textAnchor="middle" fontFamily="'JetBrains Mono', monospace">meta</text>
       )}
       <text x={L+trackW} y={H-6} fontSize={10.5} fill={C.muted} textAnchor="end" fontFamily="'JetBrains Mono', monospace">{compact(scaleMax)}</text>
     </svg>
