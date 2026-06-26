@@ -194,8 +194,22 @@ function BulletChart({rows, orcado, C}) {
   )
 }
 
-function DiarioChart({data, C, labels, expanded}) {
+function DiarioChart({data, C, labels, expanded, ajTotal=0}) {
   const step = labelStep(data.length)
+  const lastDataIdx = data.reduce((acc, d, i) => d.acumulado != null ? i : acc, -1)
+
+  const acumLbl = labels ? ({x, y, value, index}) => {
+    if (value == null) return null
+    const isLast = index === lastDataIdx
+    if (!isLast && index % step !== 0) return null
+    const hasAdj = isLast && ajTotal !== 0
+    return (
+      <text x={x} y={y-9} textAnchor="middle" fontSize={9} fontWeight={700} fill={COR.real}>
+        {compact(value)}{hasAdj ? ' ✦' : ''}
+      </text>
+    )
+  } : false
+
   return (
     <ResponsiveContainer width="100%" height={expanded?'100%':440} minHeight={expanded?420:undefined}>
       <ComposedChart data={data} margin={{top:28,right:30,left:0,bottom:0}}>
@@ -207,9 +221,7 @@ function DiarioChart({data, C, labels, expanded}) {
         <Bar yAxisId="right" dataKey="diario" fill={COR.bar} radius={[2,2,0,0]} maxBarSize={20}>
           {labels && <LabelList dataKey="diario" content={thinnedLabel({color:C.muted, dy:-6, step:1})}/>}
         </Bar>
-        <Line yAxisId="left" dataKey="acumulado" stroke={COR.real} strokeWidth={2.6} dot={false} connectNulls={false}>
-          {labels && <LabelList dataKey="acumulado" content={thinnedLabel({color:COR.real, dy:-14, step:step*2, offset:step})}/>}
-        </Line>
+        <Line yAxisId="left" dataKey="acumulado" stroke={COR.real} strokeWidth={2.6} dot={false} connectNulls={false} label={acumLbl}/>
       </ComposedChart>
     </ResponsiveContainer>
   )
@@ -870,7 +882,7 @@ export default function Receitas() {
             <Lg color={COR.bar} label="Receita do dia"/><Lg color={COR.real} label="Acumulado no mês" dash/>
           </>} lblOn={lbls.diario} onLbl={()=>togLbl('diario')}
              onExpand={()=>setExpandInfo({title:'Receita diária e acumulada', key:'diario'})}>
-            <DiarioChart data={diasData} C={C} labels={lbls.diario}/>
+            <DiarioChart data={diasData} C={C} labels={lbls.diario} ajTotal={ajTotal}/>
           </Card>
 
           {/* ── comparativo + dia da semana ── */}
@@ -908,7 +920,7 @@ export default function Receitas() {
       {expandInfo && (
         <ExpandModal title={expandInfo.title} onClose={()=>setExpandInfo(null)}>
           {expandInfo.key==='bullets'      && <BulletChart rows={bulletRows} orcado={meta.orcado} C={C}/>}
-          {expandInfo.key==='diario'       && <DiarioChart data={diasData} C={C} labels={lbls.diario} expanded/>}
+          {expandInfo.key==='diario'       && <DiarioChart data={diasData} C={C} labels={lbls.diario} expanded ajTotal={ajTotal}/>}
           {expandInfo.key==='comparativo'  && <ComparativoChart data={diasData} C={C} orcado={meta.orcado} forecast={meta.forecast} labels={lbls.comparativo} expanded/>}
           {expandInfo.key==='weekday'      && <WeekdayChart data={weekdayData} C={C} labels={lbls.weekday} expanded/>}
           {expandInfo.key==='mix'          && <MixRows rows={mixRows} total={mixTotal}/>}
