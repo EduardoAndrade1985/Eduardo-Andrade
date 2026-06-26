@@ -819,7 +819,6 @@ export default function Receitas() {
                       </div>
                     )})}
                   </div>
-                  </div>
                   <div className="flex justify-between items-center mt-3 pt-2.5 border-t border-border text-xs text-muted">
                     <span>Total de adicionais</span>
                     <b className="font-mono text-sm" style={{color: ajTotal<0?COR.down:(ajTotal>0?COR.up:undefined)}}>{ajTotal<0?'− ':''}{fmtBRL(Math.abs(ajTotal))}</b>
