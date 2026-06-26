@@ -203,10 +203,14 @@ function DiarioChart({data, C, labels, expanded, ajTotal=0}) {
     const isLast = index === lastDataIdx
     if (!isLast && index % step !== 0) return null
     const hasAdj = isLast && ajTotal !== 0
+    const txt = compact(value) + (hasAdj ? ' ✦' : '')
+    const tw = txt.length * 5.4
     return (
-      <text x={x} y={y-9} textAnchor="middle" fontSize={9} fontWeight={700} fill={COR.real}>
-        {compact(value)}{hasAdj ? ' ✦' : ''}
-      </text>
+      <g>
+        <rect x={x - tw/2 - 3} y={y - 21} width={tw + 6} height={13} rx={2}
+          fill="var(--color-bg)" fillOpacity={0.88} stroke={COR.real} strokeOpacity={0.35} strokeWidth={0.8}/>
+        <text x={x} y={y - 11} textAnchor="middle" fontSize={9} fontWeight={700} fill={COR.real}>{txt}</text>
+      </g>
     )
   } : false
 
