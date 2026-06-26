@@ -438,7 +438,11 @@ export default function Receitas() {
   const completo  = dadosMes ? dadosMes.diasDecorridos>=dadosMes.dim : false
   const pctRealOrc = meta.orcado ? realAjustado/meta.orcado : 0
   const pctFcstOrc = meta.orcado ? meta.forecast/meta.orcado : 0
-  const deltaProj  = projAjustada - meta.orcado
+  const deltaProj      = projAjustada - meta.orcado
+  const orcadoEsperado = meta.orcado && dadosMes?.diasDecorridos && dadosMes?.dim
+    ? meta.orcado * (dadosMes.diasDecorridos / dadosMes.dim) : 0
+  const paceDelta      = orcadoEsperado ? realAjustado - orcadoEsperado : 0
+  const pacePositivo   = paceDelta >= 0
 
   // ── séries para gráficos ────────────────────────────────────
   const diasData = useMemo(()=>{
@@ -682,13 +686,19 @@ export default function Receitas() {
               <p className="text-[11px] text-muted mt-1.5">{meta.orcado?fmtPct(pctFcstOrc)+' do orçado':'—'}</p>
             </div>
             <div className="bg-bg2 rounded-xl border border-border px-4 py-3 relative overflow-hidden">
-              <div className="absolute left-0 top-0 bottom-0 w-[3px]" style={{background:COR.add}}/>
-              <p className="text-[10px] font-bold text-muted uppercase tracking-widest">{completo?'Total do mês':'Projeção (run-rate)'}</p>
-              <p className="text-xl font-extrabold text-dim font-mono leading-tight mt-1.5">{fmtBRL(projAjustada)}</p>
-              <p className="text-[11px] text-muted mt-1.5">{completo?'mês fechado':'projeta o fechamento no ritmo atual'}</p>
-              <span className={`inline-block mt-1.5 font-mono font-bold text-xs px-2 py-0.5 rounded-full ${deltaProj>=0?'bg-primary/10':'bg-red-400/10'}`} style={{color: deltaProj>=0?COR.up:COR.down}}>
-                {deltaProj>=0?'▲':'▼'} {fmtBRL(Math.abs(deltaProj))} vs orçado
-              </span>
+              <div className="absolute left-0 top-0 bottom-0 w-[3px]" style={{background: orcadoEsperado ? (pacePositivo?COR.up:COR.down) : COR.add}}/>
+              <p className="text-[10px] font-bold text-muted uppercase tracking-widest">Pace vs. Orçado</p>
+              <p className="text-xl font-extrabold font-mono leading-tight mt-1.5" style={{color: orcadoEsperado ? (pacePositivo?COR.up:COR.down) : 'var(--color-dim)'}}>
+                {orcadoEsperado ? (pacePositivo?'+ ':' − ')+fmtBRL(Math.abs(paceDelta)) : '—'}
+              </p>
+              <p className="text-[11px] text-muted mt-1.5">
+                {orcadoEsperado && dadosMes ? <>esperado até D{dadosMes.diasDecorridos}: <b className="text-dim">{fmtBRL(orcadoEsperado)}</b></> : 'sem orçado definido'}
+              </p>
+              {orcadoEsperado ? (
+                <span className={`inline-block mt-1.5 font-mono font-bold text-xs px-2 py-0.5 rounded-full ${pacePositivo?'bg-primary/10':'bg-red-400/10'}`} style={{color: pacePositivo?COR.up:COR.down}}>
+                  {pacePositivo?'▲':'▼'} {fmtPct(Math.abs(paceDelta/orcadoEsperado))} {pacePositivo?'à frente':'atrás'}
+                </span>
+              ) : null}
             </div>
           </div>
 
