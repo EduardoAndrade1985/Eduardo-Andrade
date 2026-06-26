@@ -14,7 +14,8 @@ const MES_NOME       = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','O
 const MES_NOME_FULL  = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro']
 const MESES = MES_NOME.map((n,i)=>[String(i+1).padStart(2,'0'), n])
 const COR = { real:'#5B9DFF', orc:'#F4B740', fcst:'#2DD4A7', bar:'#7E93AC', add:'#A78BFA',
-  up:'#2DD4A7', down:'#FB7070', gRed:'#E5544B', gYel:'#F4B740', gGreen:'#2FA86A' }
+  up:'#2DD4A7', down:'#FB7070', gRed:'#E5544B', gYel:'#F4B740', gGreen:'#2FA86A',
+  gGreenLt:'#52D48A', gGreenDk:'#1A7848' }
 
 const fmtBRL  = v => new Intl.NumberFormat('pt-BR',{style:'currency',currency:'BRL',maximumFractionDigits:0}).format(v||0)
 const fmtBRL2 = v => new Intl.NumberFormat('pt-BR',{style:'currency',currency:'BRL',minimumFractionDigits:2,maximumFractionDigits:2}).format(v||0)
@@ -27,7 +28,7 @@ const compact = v => {
 }
 const mesLblCurto = m => m ? `${MES_NOME[+m.slice(5,7)-1]}/${m.slice(2,4)}` : ''
 const mesLblLongo = m => m ? `${MES_NOME_FULL[+m.slice(5,7)-1]} ${m.slice(0,4)}` : ''
-const zoneColor = p => p>=0.9 ? COR.gGreen : p>=0.7 ? COR.gYel : COR.gRed
+const zoneColor = p => p>=1.20 ? COR.gGreenDk : p>=1.00 ? COR.gGreenLt : p>=0.70 ? COR.gYel : COR.gRed
 const labelStep = n => Math.max(1, Math.ceil(n/10))
 
 // só desenha 1 a cada `step` rótulos, com `offset` para intercalar séries
@@ -135,18 +136,29 @@ function BulletChart({rows, orcado, C}) {
   const scaleMax = Math.max(orcado>0 ? orcado/0.88 : 0, maxVal*1.12)
   const x = v => L + Math.max(0, Math.min(1, v/scaleMax))*trackW
 
+  // Gradient stops as % of track width
+  const pOrc = orcado>0 ? orcado/scaleMax : 0.80
+  const s70  = `${(pOrc*0.70*100).toFixed(1)}%`
+  const s100 = `${(pOrc*1.00*100).toFixed(1)}%`
+  const s120 = `${Math.min(pOrc*1.20*100, 100).toFixed(1)}%`
+
   return (
     <svg viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="xMidYMid meet" style={{width:'100%', height:'auto', display:'block'}}>
+      <defs>
+        <linearGradient id="bulletBg" x1="0" y1="0" x2="1" y2="0">
+          <stop offset="0%"   stopColor={COR.gRed}     stopOpacity="0.25"/>
+          <stop offset={s70}  stopColor={COR.gYel}     stopOpacity="0.30"/>
+          <stop offset={s100} stopColor={COR.gGreenLt} stopOpacity="0.30"/>
+          <stop offset={s120} stopColor={COR.gGreenDk} stopOpacity="0.32"/>
+          <stop offset="100%" stopColor={COR.gGreenDk} stopOpacity="0.32"/>
+        </linearGradient>
+      </defs>
       {rows.map((row,i)=>{
         const y=T+i*(rowH+gap), trackY=y+20, th=18
-        const fR = orcado>0 ? L+0.7*orcado/scaleMax*trackW : L+0.55*trackW
-        const fY = orcado>0 ? L+0.9*orcado/scaleMax*trackW : L+0.78*trackW
         const zone = zoneColor(row.pct)
         return (
           <g key={row.nome}>
-            <rect x={L} y={trackY} width={Math.max(fR-L,0)} height={th} fill={COR.gRed} opacity={0.30} rx={3}/>
-            <rect x={fR} y={trackY} width={Math.max(fY-fR,0)} height={th} fill={COR.gYel} opacity={0.32}/>
-            <rect x={fY} y={trackY} width={Math.max(L+trackW-fY,0)} height={th} fill={COR.gGreen} opacity={0.30} rx={3}/>
+            <rect x={L} y={trackY} width={trackW} height={th} fill="url(#bulletBg)" rx={3}/>
             <rect x={L} y={trackY+4} width={Math.max(x(row.val)-L,0)} height={th-8} fill={zone} rx={2}/>
             {orcado>0 && (
               <line x1={x(orcado)} y1={trackY-4} x2={x(orcado)} y2={trackY+th+4} stroke={C.dim} strokeWidth={2.5}/>
@@ -704,7 +716,7 @@ export default function Receitas() {
 
           {/* ── bullets: realizado/forecast vs meta ── */}
           <Card title="Realizado e forecast vs meta" legend={<>
-            <Lg color={COR.gRed} label="<70%"/><Lg color={COR.gYel} label="70–90%"/><Lg color={COR.gGreen} label="≥90%"/><Lg color={C.dim} label="meta" dash/>
+            <Lg color={COR.gRed} label="<70%"/><Lg color={COR.gYel} label="70–99%"/><Lg color={COR.gGreenLt} label="100–119%"/><Lg color={COR.gGreenDk} label="≥120%"/><Lg color={C.dim} label="meta" dash/>
           </>} onExpand={()=>setExpandInfo({title:'Realizado e forecast vs meta', key:'bullets'})}>
             <BulletChart rows={bulletRows} orcado={meta.orcado} C={C}/>
           </Card>
