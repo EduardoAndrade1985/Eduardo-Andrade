@@ -107,13 +107,13 @@ function ComparativoTip({active, payload, label}) {
   if (!active || !payload?.length) return null
   const acumulado = payload.find(p=>p.dataKey==='acumulado')?.value
   const orcVal    = payload.find(p=>p.dataKey==='orcAcum')?.value
-  const fcstVal   = payload.find(p=>p.dataKey==='fcstAcum')?.value
+  const projVal   = payload.find(p=>p.dataKey==='projecao')?.value
   return (
     <div className="bg-bg border border-border rounded-lg px-3 py-2 text-xs shadow-xl">
       <p className="text-dim font-semibold mb-1">Dia {label}</p>
-      <p style={{color:COR.real}}>Realizado: <b>{acumulado==null?'—':fmtBRL2(acumulado)}</b></p>
+      {acumulado!=null && <p style={{color:COR.real}}>Realizado: <b>{fmtBRL2(acumulado)}</b></p>}
+      {projVal!=null && acumulado==null && <p style={{color:COR.fcst}}>Projeção forecast: <b>{fmtBRL2(projVal)}</b></p>}
       {orcVal!=null  && <p style={{color:COR.orc}}>Orçado: <b>{fmtBRL2(orcVal)}</b></p>}
-      {fcstVal!=null && <p style={{color:COR.fcst}}>Forecast: <b>{fmtBRL2(fcstVal)}</b></p>}
     </div>
   )
 }
@@ -190,16 +190,30 @@ function DiarioChart({data, C, labels, expanded}) {
 
 function ComparativoChart({data, C, orcado, forecast, labels, expanded}) {
   const step    = labelStep(data.length)
-  const lastIdx = data.length - 1
-  const enriched = data.map((d) => ({
-    ...d,
-    orcAcum:  orcado   > 0 ? orcado   : null,
-    fcstAcum: forecast > 0 ? forecast : null,
-  }))
-  // rótulo único no ponto final da linha (para linhas horizontais fixas)
+  const endIdx  = data.length - 1
+
+  // último ponto com dado real
+  const lastRealIdx = data.reduce((acc, d, i) => d.acumulado != null ? i : acc, -1)
+  const lastRealVal = lastRealIdx >= 0 ? data[lastRealIdx].acumulado : 0
+  const remainingDays = endIdx - lastRealIdx
+
+  const enriched = data.map((d, i) => {
+    let projecao = null
+    if (forecast > 0 && lastRealIdx >= 0 && remainingDays > 0) {
+      if (i === lastRealIdx) {
+        projecao = lastRealVal
+      } else if (i > lastRealIdx) {
+        const t = (i - lastRealIdx) / remainingDays
+        projecao = Math.round(lastRealVal + (forecast - lastRealVal) * t)
+      }
+    }
+    return { ...d, orcAcum: orcado > 0 ? orcado : null, projecao }
+  })
+
   const endLbl = (color, dy) => ({x, y, value, index}) =>
-    index !== lastIdx || value == null ? null :
+    index !== endIdx || value == null ? null :
     <text x={x} y={y+dy} textAnchor="end" fontSize={9} fontWeight={700} fill={color}>{compact(value)}</text>
+
   return (
     <ResponsiveContainer width="100%" height={expanded?'100%':400} minHeight={expanded?420:undefined}>
       <LineChart data={enriched} margin={{top:28,right:16,left:0,bottom:0}}>
@@ -210,8 +224,8 @@ function ComparativoChart({data, C, orcado, forecast, labels, expanded}) {
         <Line dataKey="orcAcum" stroke={COR.orc} strokeWidth={2} dot={false} strokeDasharray="6 4" connectNulls>
           {labels && <LabelList dataKey="orcAcum" content={endLbl(COR.orc, -8)}/>}
         </Line>
-        <Line dataKey="fcstAcum" stroke={COR.fcst} strokeWidth={2} dot={false} strokeDasharray="6 4" connectNulls>
-          {labels && <LabelList dataKey="fcstAcum" content={endLbl(COR.fcst, 14)}/>}
+        <Line dataKey="projecao" stroke={COR.fcst} strokeWidth={2} dot={false} strokeDasharray="6 4" connectNulls={false}>
+          {labels && <LabelList dataKey="projecao" content={endLbl(COR.fcst, 14)}/>}
         </Line>
         <Line dataKey="acumulado" stroke={COR.real} strokeWidth={2.8} dot={false} connectNulls={false}>
           {labels && <LabelList dataKey="acumulado" content={thinnedLabel({color:COR.real, dy:-10, step:step, offset:0})}/>}
@@ -313,8 +327,9 @@ export default function Receitas() {
   const [padraoForm,  setPadraoForm]  = useState({orcado:'', forecast:''})
   const [mesDraft,    setMesDraft]    = useState({})
   const [anoMetas,    setAnoMetas]    = useState('')
-  const [addDesc,     setAddDesc]     = useState('')
-  const [addVal,      setAddVal]      = useState('')
+  const [addDesc,      setAddDesc]      = useState('')
+  const [addVal,       setAddVal]       = useState('')
+  const [addCategoria, setAddCategoria] = useState('hosp')
 
   const [lbls,       setLbls]       = useState({diario:false, comparativo:false, weekday:false})
   const [expandInfo, setExpandInfo] = useState(null)
@@ -411,6 +426,11 @@ export default function Receitas() {
 
   const ajustesMes = useMemo(()=>ajustes.filter(a=>a.mes===mesAtual),[ajustes, mesAtual])
   const ajTotal    = useMemo(()=>ajustesMes.reduce((s,a)=>s+(+a.valor||0),0),[ajustesMes])
+  const ajustesMix = useMemo(()=>{
+    const m = {hosp:0, ab:0, outros:0}
+    ajustesMes.forEach(a=>{ const k = a.categoria||'outros'; m[k] = (m[k]||0) + (+a.valor||0) })
+    return m
+  },[ajustesMes])
 
   const meta = mesAtual ? metaOf(mesAtual) : {orcado:0, forecast:0, orcOverride:false, fcOverride:false}
   const realAjustado = (dadosMes?.realizado||0) + ajTotal
@@ -423,10 +443,15 @@ export default function Receitas() {
   // ── séries para gráficos ────────────────────────────────────
   const diasData = useMemo(()=>{
     if (!dadosMes) return []
+    const lastIdx = dadosMes.diasDecorridos - 1
     return Array.from({length:dadosMes.dim}, (_,i)=>({
-      dia: i+1, diario: dadosMes.diario[i], acumulado: dadosMes.acumulado[i],
+      dia: i+1,
+      diario: dadosMes.diario[i],
+      acumulado: dadosMes.acumulado[i] != null
+        ? dadosMes.acumulado[i] + (i === lastIdx ? ajTotal : 0)
+        : null,
     }))
-  },[dadosMes])
+  },[dadosMes, ajTotal])
 
   const weekdayData = useMemo(()=>{
     if (!mesAtual) return []
@@ -445,11 +470,11 @@ export default function Receitas() {
     {nome:'Forecast',    sub:'projeção do fechamento', val: meta.forecast, pct: pctFcstOrc},
   ]),[realAjustado, pctRealOrc, meta.forecast, pctFcstOrc])
 
-  const mixTotal = dadosMes ? (dadosMes.mix.hosp+dadosMes.mix.ab+dadosMes.mix.outros)||1 : 1
+  const mixTotal = dadosMes ? (dadosMes.mix.hosp+dadosMes.mix.ab+dadosMes.mix.outros+ajTotal)||1 : 1
   const mixRows = dadosMes ? [
-    {nome:'Hospedagem', valor: dadosMes.mix.hosp,   cor: COR.real},
-    {nome:'A&B',        valor: dadosMes.mix.ab,     cor: COR.fcst},
-    {nome:'Outros',     valor: dadosMes.mix.outros, cor: COR.orc},
+    {nome:'Hospedagem', valor: dadosMes.mix.hosp   + (ajustesMix.hosp  ||0), cor: COR.real},
+    {nome:'A&B',        valor: dadosMes.mix.ab     + (ajustesMix.ab    ||0), cor: COR.fcst},
+    {nome:'Outros',     valor: dadosMes.mix.outros + (ajustesMix.outros||0), cor: COR.orc},
   ] : []
 
   const detalheRows = useMemo(()=>{
@@ -534,9 +559,9 @@ export default function Receitas() {
     const d = (addDesc||'').trim()
     if (!v && !d) return
     try {
-      const res = await api.post('/receitas/ajustes/criar/', {mes: mesAtual, valor: v, descricao: d})
+      const res = await api.post('/receitas/ajustes/criar/', {mes: mesAtual, valor: v, descricao: d, categoria: addCategoria})
       setAjustes(prev=>{
-        const next=[{id:res.data.id, mes:mesAtual, valor:v, descricao:d}, ...prev]
+        const next=[{id:res.data.id, mes:mesAtual, valor:v, descricao:d, categoria:addCategoria}, ...prev]
         setCached('receitas_ajustes', next, empresaAtiva?.id)
         return next
       })
@@ -760,10 +785,16 @@ export default function Receitas() {
                     <p className="text-xs font-bold text-dim">Lançamentos adicionais · {mesLblLongo(mesAtual)}</p>
                     <span className="text-[10px] text-muted">acréscimos/decréscimos com observação</span>
                   </div>
-                  <div className="flex gap-2 items-center mb-3">
+                  <div className="flex gap-2 items-center mb-3 flex-wrap">
                     <input value={addDesc} onChange={e=>setAddDesc(e.target.value)} onKeyDown={e=>e.key==='Enter'&&adicionarAjuste()}
                       placeholder="A que se refere? (ex.: NF Locação Plaza)"
-                      className="flex-1 bg-bg2 border border-border rounded-lg px-3 py-2 text-xs text-dim outline-none focus:border-primary"/>
+                      className="flex-1 min-w-[160px] bg-bg2 border border-border rounded-lg px-3 py-2 text-xs text-dim outline-none focus:border-primary"/>
+                    <select value={addCategoria} onChange={e=>setAddCategoria(e.target.value)}
+                      className="bg-bg2 border border-border rounded-lg px-2 py-2 text-xs text-dim outline-none focus:border-primary cursor-pointer">
+                      <option value="hosp">Hospedagem</option>
+                      <option value="ab">A&amp;B</option>
+                      <option value="outros">Outros</option>
+                    </select>
                     <div className="w-32 bg-bg2 border border-border rounded-lg px-2.5 py-2 flex items-baseline gap-1">
                       <span className="text-muted text-xs font-mono">R$</span>
                       <input value={addVal} onChange={e=>setAddVal(e.target.value)} onKeyDown={e=>e.key==='Enter'&&adicionarAjuste()}
@@ -775,13 +806,19 @@ export default function Receitas() {
                   <div className="flex flex-col gap-2 max-h-[230px] overflow-auto">
                     {ajustesMes.length===0 ? (
                       <p className="text-[12px] text-muted px-1 py-2">Nenhum lançamento neste mês.</p>
-                    ) : ajustesMes.map(a=>(
+                    ) : ajustesMes.map(a=>{
+                      const cat = a.categoria||'outros'
+                      const catLbl = cat==='hosp'?'Hosp.':cat==='ab'?'A&B':'Outros'
+                      const catClr = cat==='hosp'?COR.real:cat==='ab'?COR.fcst:COR.orc
+                      return (
                       <div key={a.id} className="flex items-center gap-2.5 bg-bg2 border border-border rounded-lg px-3 py-2">
+                        <span className="text-[10px] px-1.5 py-0.5 rounded font-bold shrink-0" style={{color:catClr,background:catClr+'22'}}>{catLbl}</span>
                         <span className="flex-1 text-xs text-dim">{a.descricao || <i className="text-muted">sem descrição</i>}</span>
                         <span className="font-mono font-semibold text-xs" style={{color: a.valor<0?COR.down:COR.up}}>{a.valor<0?'− ':'+ '}{fmtBRL(Math.abs(a.valor))}</span>
                         <button onClick={()=>removerAjuste(a.id)} className="text-muted hover:text-red-400 text-base leading-none px-1">×</button>
                       </div>
-                    ))}
+                    )})}
+                  </div>
                   </div>
                   <div className="flex justify-between items-center mt-3 pt-2.5 border-t border-border text-xs text-muted">
                     <span>Total de adicionais</span>

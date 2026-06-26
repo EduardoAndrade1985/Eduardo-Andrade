@@ -73,9 +73,12 @@ class MetaMensal(EmpresaBaseModel):
 
 
 class LancamentoAdicional(EmpresaBaseModel):
+    CATEGORIA_CHOICES = [('hosp', 'Hospedagem'), ('ab', 'A&B'), ('outros', 'Outros')]
+
     mes        = models.CharField(max_length=7)  # YYYY-MM
     descricao  = models.CharField(max_length=255, blank=True)
     valor      = models.DecimalField(max_digits=14, decimal_places=2)
+    categoria  = models.CharField(max_length=10, choices=CATEGORIA_CHOICES, default='outros')
     criado_em  = models.DateTimeField(auto_now_add=True)
 
     class Meta:

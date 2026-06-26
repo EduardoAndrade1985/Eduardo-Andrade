@@ -370,6 +370,7 @@ def api_ajustes(request):
             'mes':       a.mes,
             'descricao': a.descricao,
             'valor':     float(a.valor),
+            'categoria': a.categoria,
         }
         for a in qs
     ]
@@ -393,8 +394,15 @@ def api_ajuste_criar(request):
     if not mes or valor in (None, ''):
         return JsonResponse({'ok': False, 'erro': 'mes e valor são obrigatórios.'}, status=400)
 
+    categorias_validas = {'hosp', 'ab', 'outros'}
+    categoria = body.get('categoria') or 'outros'
+    if categoria not in categorias_validas:
+        categoria = 'outros'
+
     ajuste = LancamentoAdicional.objects.create(
-        empresa=empresa, mes=mes, valor=valor, descricao=(body.get('descricao') or '').strip(),
+        empresa=empresa, mes=mes, valor=valor,
+        descricao=(body.get('descricao') or '').strip(),
+        categoria=categoria,
     )
     return JsonResponse({'ok': True, 'id': ajuste.id})
 
