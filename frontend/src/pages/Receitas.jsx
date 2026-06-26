@@ -242,7 +242,7 @@ function ComparativoChart({data, C, orcado, forecast, labels, expanded}) {
 
   const enriched = data.map((d, i) => {
     let projecao = null
-    if (forecast > 0 && lastRealIdx >= 0 && remainingDays > 0) {
+    if (forecast > 0 && lastRealIdx >= 0 && remainingDays > 0 && lastRealVal < forecast) {
       if (i === lastRealIdx) {
         projecao = lastRealVal
       } else if (i > lastRealIdx) {
@@ -499,6 +499,15 @@ export default function Receitas() {
         : null,
     }))
   },[dadosMes, ajTotal])
+
+  // sem ajTotal — acumulação orgânica diária para o comparativo
+  const comparativoDias = useMemo(()=>{
+    if (!dadosMes) return []
+    return Array.from({length:dadosMes.dim}, (_,i)=>({
+      dia: i+1,
+      acumulado: dadosMes.acumulado[i] ?? null,
+    }))
+  },[dadosMes])
 
   const weekdayData = useMemo(()=>{
     if (!mesAtual) return []
@@ -895,7 +904,7 @@ export default function Receitas() {
               <Lg color={COR.real} label="Realizado"/><Lg color={COR.orc} label="Orçado" dash/><Lg color={COR.fcst} label="Forecast" dash/>
             </>} lblOn={lbls.comparativo} onLbl={()=>togLbl('comparativo')}
                onExpand={()=>setExpandInfo({title:'Comparativo do mês', key:'comparativo'})}>
-              <ComparativoChart data={diasData} C={C} orcado={meta.orcado} forecast={meta.forecast} labels={lbls.comparativo}/>
+              <ComparativoChart data={comparativoDias} C={C} orcado={meta.orcado} forecast={meta.forecast} labels={lbls.comparativo}/>
             </Card>
             <Card title="Receita média por dia da semana" lblOn={lbls.weekday} onLbl={()=>togLbl('weekday')}
                onExpand={()=>setExpandInfo({title:'Receita média por dia da semana', key:'weekday'})}>
@@ -925,7 +934,7 @@ export default function Receitas() {
         <ExpandModal title={expandInfo.title} onClose={()=>setExpandInfo(null)}>
           {expandInfo.key==='bullets'      && <BulletChart rows={bulletRows} orcado={meta.orcado} C={C}/>}
           {expandInfo.key==='diario'       && <DiarioChart data={diasData} C={C} labels={lbls.diario} expanded ajTotal={ajTotal}/>}
-          {expandInfo.key==='comparativo'  && <ComparativoChart data={diasData} C={C} orcado={meta.orcado} forecast={meta.forecast} labels={lbls.comparativo} expanded/>}
+          {expandInfo.key==='comparativo'  && <ComparativoChart data={comparativoDias} C={C} orcado={meta.orcado} forecast={meta.forecast} labels={lbls.comparativo} expanded/>}
           {expandInfo.key==='weekday'      && <WeekdayChart data={weekdayData} C={C} labels={lbls.weekday} expanded/>}
           {expandInfo.key==='mix'          && <MixRows rows={mixRows} total={mixTotal}/>}
           {expandInfo.key==='detalhe'      && <DetalheTable rows={detalheRows} diasDecorridos={dadosMes?.diasDecorridos} orcado={meta.orcado}/>}
