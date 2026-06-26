@@ -146,12 +146,27 @@ function BulletChart({rows, orcado, C}) {
     <svg viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="xMidYMid meet" style={{width:'100%', height:'auto', display:'block'}}>
       <defs>
         <linearGradient id="bulletBg" x1="0" y1="0" x2="1" y2="0">
-          <stop offset="0%"   stopColor={COR.gRed}     stopOpacity="0.25"/>
-          <stop offset={s70}  stopColor={COR.gYel}     stopOpacity="0.30"/>
-          <stop offset={s100} stopColor={COR.gGreenLt} stopOpacity="0.30"/>
-          <stop offset={s120} stopColor={COR.gGreenDk} stopOpacity="0.32"/>
-          <stop offset="100%" stopColor={COR.gGreenDk} stopOpacity="0.32"/>
+          <stop offset="0%"   stopColor={COR.gRed}     stopOpacity="0.22"/>
+          <stop offset={s70}  stopColor={COR.gYel}     stopOpacity="0.27"/>
+          <stop offset={s100} stopColor={COR.gGreenLt} stopOpacity="0.27"/>
+          <stop offset={s120} stopColor={COR.gGreenDk} stopOpacity="0.30"/>
+          <stop offset="100%" stopColor={COR.gGreenDk} stopOpacity="0.30"/>
         </linearGradient>
+        <linearGradient id="bulletBar" x1="0" y1="0" x2="1" y2="0">
+          <stop offset="0%"   stopColor={COR.gRed}/>
+          <stop offset={s70}  stopColor={COR.gYel}/>
+          <stop offset={s100} stopColor={COR.gGreenLt}/>
+          <stop offset={s120} stopColor={COR.gGreenDk}/>
+          <stop offset="100%" stopColor={COR.gGreenDk}/>
+        </linearGradient>
+        {rows.map((row,i)=>{
+          const trackY=T+i*(rowH+gap)+20, th=18
+          return (
+            <clipPath key={i} id={`barClip_${i}`}>
+              <rect x={L} y={trackY+4} width={Math.max(x(row.val)-L,0)} height={th-8} rx={2}/>
+            </clipPath>
+          )
+        })}
       </defs>
       {rows.map((row,i)=>{
         const y=T+i*(rowH+gap), trackY=y+20, th=18
@@ -159,7 +174,7 @@ function BulletChart({rows, orcado, C}) {
         return (
           <g key={row.nome}>
             <rect x={L} y={trackY} width={trackW} height={th} fill="url(#bulletBg)" rx={3}/>
-            <rect x={L} y={trackY+4} width={Math.max(x(row.val)-L,0)} height={th-8} fill={zone} rx={2}/>
+            <rect x={L} y={trackY+4} width={trackW} height={th-8} fill="url(#bulletBar)" clipPath={`url(#barClip_${i})`} rx={2}/>
             {orcado>0 && (
               <line x1={x(orcado)} y1={trackY-4} x2={x(orcado)} y2={trackY+th+4} stroke={C.dim} strokeWidth={2.5}/>
             )}
