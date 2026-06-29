@@ -387,6 +387,8 @@ export default function Receitas() {
   const fileRef    = useRef(null)
   const timersRef  = useRef({})
   const contentRef = useRef(null)
+  const refPag1    = useRef(null)
+  const refPag2    = useRef(null)
 
   const C = useMemo(()=>({
     grid:  tema==='light'?'#e2e8f0':'#252b3b',
@@ -658,52 +660,34 @@ export default function Receitas() {
 
   // ── export PDF ───────────────────────────────────────────────
   async function gerarPDF() {
-    const el = contentRef.current
-    if (!el) return
+    if (!refPag1.current || !refPag2.current) return
     setExportando(true)
     setPdfModal(false)
 
-    // Se o mês selecionado no modal for diferente do atual, muda a view e aguarda render
     if (pdfMes && pdfMes !== mesAtual) {
       setMesAtual(pdfMes)
-      await new Promise(r => setTimeout(r, 350))
+      await new Promise(r => setTimeout(r, 400))
     }
-
-    // Expande o div scrollável para capturar o conteúdo inteiro
-    const origH  = el.style.height
-    const origOv = el.style.overflowY
-    el.style.height    = el.scrollHeight + 'px'
-    el.style.overflowY = 'visible'
-    el.scrollTop = 0
 
     try {
       const bgColor = tema === 'light' ? '#f1f5f9' : '#0d1117'
-      const canvas = await html2canvas(el, {
-        scale: 1.8,
-        useCORS: true,
-        allowTaint: true,
-        logging: false,
-        backgroundColor: bgColor,
-        width:  el.scrollWidth,
-        height: el.scrollHeight,
-      })
+      const opts = { scale: 2, useCORS: true, allowTaint: true, logging: false, backgroundColor: bgColor }
 
-      el.style.height    = origH
-      el.style.overflowY = origOv
+      const [canvas1, canvas2] = await Promise.all([
+        html2canvas(refPag1.current, opts),
+        html2canvas(refPag2.current, opts),
+      ])
 
-      const pdf      = new jsPDF({ orientation: 'portrait', unit: 'pt', format: 'a4' })
-      const pageW    = pdf.internal.pageSize.getWidth()
-      const pageH    = pdf.internal.pageSize.getHeight()
-      const margin   = 22
-      const HDR_H    = 54
-      const availW   = pageW - 2 * margin
-      const availH   = pageH - HDR_H - margin
-      const scale    = availW / canvas.width
-      const sliceH   = Math.round(availH / scale)
-      const nPages   = Math.ceil(canvas.height / sliceH)
-      const empresa  = empresaAtiva?.nome || 'RPHub'
-      const periodo  = mesLblLongo(mesAtual)
-      const hoje     = new Date().toLocaleDateString('pt-BR')
+      const pdf     = new jsPDF({ orientation: 'portrait', unit: 'pt', format: 'a4' })
+      const pageW   = pdf.internal.pageSize.getWidth()
+      const pageH   = pdf.internal.pageSize.getHeight()
+      const margin  = 22
+      const HDR_H   = 54
+      const availW  = pageW - 2 * margin
+      const availH  = pageH - HDR_H - margin - 8
+      const empresa = empresaAtiva?.nome || 'RPHub'
+      const periodo = mesLblLongo(mesAtual)
+      const hoje    = new Date().toLocaleDateString('pt-BR')
 
       const drawHeader = (pg) => {
         pdf.setFillColor(22, 27, 39)
@@ -717,29 +701,27 @@ export default function Receitas() {
         pdf.setTextColor(122, 143, 168)
         pdf.text(`${empresa} · ${periodo} · Gerado em ${hoje}`, margin, 38)
         pdf.setFontSize(8)
-        pdf.text(`Página ${pg + 1} de ${nPages}`, pageW - margin, 38, { align: 'right' })
+        pdf.text(`Página ${pg} de 2`, pageW - margin, 38, { align: 'right' })
       }
 
-      for (let i = 0; i < nPages; i++) {
-        if (i > 0) pdf.addPage()
-        drawHeader(i)
-
-        const srcY   = i * sliceH
-        const srcH   = Math.min(sliceH, canvas.height - srcY)
-        const slice  = document.createElement('canvas')
-        slice.width  = canvas.width
-        slice.height = srcH
-        slice.getContext('2d').drawImage(canvas, 0, srcY, canvas.width, srcH, 0, 0, canvas.width, srcH)
-
-        pdf.addImage(slice.toDataURL('image/jpeg', 0.90), 'JPEG',
-          margin, HDR_H + 4, availW, srcH * scale)
+      const addCanvasToPage = (canvas) => {
+        const s = Math.min(availW / canvas.width, availH / canvas.height)
+        const w = canvas.width  * s
+        const h = canvas.height * s
+        const x = margin + (availW - w) / 2
+        pdf.addImage(canvas.toDataURL('image/jpeg', 0.92), 'JPEG', x, HDR_H + 6, w, h)
       }
+
+      drawHeader(1)
+      addCanvasToPage(canvas1)
+
+      pdf.addPage()
+      drawHeader(2)
+      addCanvasToPage(canvas2)
 
       pdf.save(`receitas_${mesAtual}_${empresa.replace(/\s+/g,'_').toLowerCase()}.pdf`)
     } catch (err) {
       console.error('Erro ao gerar PDF:', err)
-      el.style.height    = origH
-      el.style.overflowY = origOv
     } finally {
       setExportando(false)
     }
@@ -787,6 +769,9 @@ export default function Receitas() {
         </div>
       ) : (
         <div ref={contentRef} className="flex-1 overflow-y-auto p-4 space-y-4 fade-up">
+
+          {/* ── PÁGINA 1: resumo + KPIs + bullet ── */}
+          <div ref={refPag1} className="space-y-4">
 
           {/* ── cards de resumo ── */}
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
@@ -865,6 +850,7 @@ export default function Receitas() {
           </>} onExpand={()=>setExpandInfo({title:'Realizado e forecast vs meta', key:'bullets'})}>
             <BulletChart rows={bulletRows} orcado={meta.orcado} C={C}/>
           </Card>
+          </div>{/* /refPag1 */}
 
           {/* ── metas mensais & lançamentos adicionais ── */}
           <div className="bg-bg2 rounded-xl border border-border p-4">
@@ -995,6 +981,9 @@ export default function Receitas() {
             )}
           </div>
 
+          {/* ── PÁGINA 2: gráficos + tabelas ── */}
+          <div ref={refPag2} className="space-y-4">
+
           {/* ── receita diária e acumulada ── */}
           <Card title={`Receita diária e acumulada · ${mesLblLongo(mesAtual)}`} legend={<>
             <Lg color={COR.bar} label="Receita do dia"/><Lg color={COR.real} label="Acumulado no mês" dash/>
@@ -1031,6 +1020,7 @@ export default function Receitas() {
             Receita líquida considerada = <b className="text-dim">Débito + Crédito</b> (estornos entram negativos).{' '}
             <b className="text-dim">% realizado do orçado</b> = realizado acumulado (com adicional) ÷ orçado do mês.
           </p>
+          </div>{/* /refPag2 */}
         </div>
       )}
 
