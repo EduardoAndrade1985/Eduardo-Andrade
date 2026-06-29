@@ -1,6 +1,8 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react'
 import { useEmpresa } from '../contexts/EmpresaContext'
 import { useTheme } from '../contexts/ThemeContext'
+import jsPDF from 'jspdf'
+import html2canvas from 'html2canvas'
 import { SkeletonReceitas } from '../components/Skeleton'
 import { getCached, setCached, invalidateCache } from '../services/dataCache'
 import {
@@ -378,8 +380,13 @@ export default function Receitas() {
   const [expandInfo, setExpandInfo] = useState(null)
   const togLbl = key => setLbls(p=>({...p, [key]: !p[key]}))
 
-  const fileRef   = useRef(null)
-  const timersRef = useRef({})
+  const [pdfModal,   setPdfModal]   = useState(false)
+  const [pdfMes,     setPdfMes]     = useState('')
+  const [exportando, setExportando] = useState(false)
+
+  const fileRef    = useRef(null)
+  const timersRef  = useRef({})
+  const contentRef = useRef(null)
 
   const C = useMemo(()=>({
     grid:  tema==='light'?'#e2e8f0':'#252b3b',
@@ -649,6 +656,95 @@ export default function Receitas() {
     finally { setUploading(false) }
   }
 
+  // ── export PDF ───────────────────────────────────────────────
+  async function gerarPDF() {
+    const el = contentRef.current
+    if (!el) return
+    setExportando(true)
+    setPdfModal(false)
+
+    // Se o mês selecionado no modal for diferente do atual, muda a view e aguarda render
+    if (pdfMes && pdfMes !== mesAtual) {
+      setMesAtual(pdfMes)
+      await new Promise(r => setTimeout(r, 350))
+    }
+
+    // Expande o div scrollável para capturar o conteúdo inteiro
+    const origH  = el.style.height
+    const origOv = el.style.overflowY
+    el.style.height    = el.scrollHeight + 'px'
+    el.style.overflowY = 'visible'
+    el.scrollTop = 0
+
+    try {
+      const bgColor = tema === 'light' ? '#f1f5f9' : '#0d1117'
+      const canvas = await html2canvas(el, {
+        scale: 1.8,
+        useCORS: true,
+        allowTaint: true,
+        logging: false,
+        backgroundColor: bgColor,
+        width:  el.scrollWidth,
+        height: el.scrollHeight,
+      })
+
+      el.style.height    = origH
+      el.style.overflowY = origOv
+
+      const pdf      = new jsPDF({ orientation: 'portrait', unit: 'pt', format: 'a4' })
+      const pageW    = pdf.internal.pageSize.getWidth()
+      const pageH    = pdf.internal.pageSize.getHeight()
+      const margin   = 22
+      const HDR_H    = 54
+      const availW   = pageW - 2 * margin
+      const availH   = pageH - HDR_H - margin
+      const scale    = availW / canvas.width
+      const sliceH   = Math.round(availH / scale)
+      const nPages   = Math.ceil(canvas.height / sliceH)
+      const empresa  = empresaAtiva?.nome || 'RPHub'
+      const periodo  = mesLblLongo(mesAtual)
+      const hoje     = new Date().toLocaleDateString('pt-BR')
+
+      const drawHeader = (pg) => {
+        pdf.setFillColor(22, 27, 39)
+        pdf.rect(0, 0, pageW, HDR_H, 'F')
+        pdf.setFillColor(45, 212, 160)
+        pdf.rect(0, HDR_H - 1.5, pageW, 1.5, 'F')
+        pdf.setFontSize(14)
+        pdf.setTextColor(45, 212, 160)
+        pdf.text('RPHub · Relatório de Receitas', margin, 22)
+        pdf.setFontSize(9)
+        pdf.setTextColor(122, 143, 168)
+        pdf.text(`${empresa} · ${periodo} · Gerado em ${hoje}`, margin, 38)
+        pdf.setFontSize(8)
+        pdf.text(`Página ${pg + 1} de ${nPages}`, pageW - margin, 38, { align: 'right' })
+      }
+
+      for (let i = 0; i < nPages; i++) {
+        if (i > 0) pdf.addPage()
+        drawHeader(i)
+
+        const srcY   = i * sliceH
+        const srcH   = Math.min(sliceH, canvas.height - srcY)
+        const slice  = document.createElement('canvas')
+        slice.width  = canvas.width
+        slice.height = srcH
+        slice.getContext('2d').drawImage(canvas, 0, srcY, canvas.width, srcH, 0, 0, canvas.width, srcH)
+
+        pdf.addImage(slice.toDataURL('image/jpeg', 0.90), 'JPEG',
+          margin, HDR_H + 4, availW, srcH * scale)
+      }
+
+      pdf.save(`receitas_${mesAtual}_${empresa.replace(/\s+/g,'_').toLowerCase()}.pdf`)
+    } catch (err) {
+      console.error('Erro ao gerar PDF:', err)
+      el.style.height    = origH
+      el.style.overflowY = origOv
+    } finally {
+      setExportando(false)
+    }
+  }
+
   if (carregando) return <SkeletonReceitas />
 
   // ── render ───────────────────────────────────────────────────
@@ -669,6 +765,15 @@ export default function Receitas() {
           </div>
         )}
         <div className="flex-1"/>
+        {!semDados && (
+          <button
+            onClick={() => { setPdfMes(mesAtual); setPdfModal(true) }}
+            disabled={exportando}
+            className="flex items-center gap-1.5 px-4 py-1.5 rounded-full border border-border text-xs font-semibold text-muted hover:text-dim hover:border-primary/40 transition disabled:opacity-40 whitespace-nowrap"
+          >
+            {exportando ? '⏳ Gerando...' : '⬇ Exportar PDF'}
+          </button>
+        )}
         <button onClick={()=>{setImportModal(true);setUploadMsg('');setFileUpload(null)}}
           className="flex items-center gap-1.5 px-4 py-1.5 rounded-full bg-primary text-bg text-xs font-bold hover:bg-primary/90 transition">↑ Importar planilha</button>
       </div>
@@ -681,7 +786,7 @@ export default function Receitas() {
           <button onClick={()=>setImportModal(true)} className="px-5 py-2.5 rounded-lg bg-primary text-bg text-sm font-semibold hover:bg-primary/90 transition">Importar planilha</button>
         </div>
       ) : (
-        <div className="flex-1 overflow-y-auto p-4 space-y-4 fade-up">
+        <div ref={contentRef} className="flex-1 overflow-y-auto p-4 space-y-4 fade-up">
 
           {/* ── cards de resumo ── */}
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
@@ -939,6 +1044,52 @@ export default function Receitas() {
           {expandInfo.key==='mix'          && <MixRows rows={mixRows} total={mixTotal}/>}
           {expandInfo.key==='detalhe'      && <DetalheTable rows={detalheRows} diasDecorridos={dadosMes?.diasDecorridos} orcado={meta.orcado}/>}
         </ExpandModal>
+      )}
+
+      {/* ── Export PDF Modal ── */}
+      {pdfModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
+          <div className="bg-bg2 border border-border rounded-2xl shadow-2xl w-full max-w-sm mx-4 fade-up">
+            <div className="flex items-center justify-between px-6 py-4 border-b border-border">
+              <h2 className="font-bold text-dim text-sm">⬇ Exportar PDF · Receitas</h2>
+              <button onClick={() => setPdfModal(false)} className="text-muted hover:text-dim text-xl leading-none">×</button>
+            </div>
+            <div className="px-6 py-5 space-y-4">
+              <div>
+                <label className="block text-[10px] font-bold text-muted uppercase tracking-widest mb-2">Período a exportar</label>
+                <select
+                  value={pdfMes}
+                  onChange={e => setPdfMes(e.target.value)}
+                  className="w-full bg-bg3 border border-border rounded-lg px-3 py-2.5 text-sm text-dim focus:outline-none focus:border-primary/50 transition"
+                >
+                  {[...mesesDisponiveis].reverse().map(m => (
+                    <option key={m} value={m}>{mesLblLongo(m)}</option>
+                  ))}
+                </select>
+                {pdfMes !== mesAtual && (
+                  <p className="text-[11px] text-warn mt-2 flex items-center gap-1">
+                    ⚠ A visualização mudará para {mesLblLongo(pdfMes)}
+                  </p>
+                )}
+              </div>
+              <div className="bg-bg3 rounded-lg border border-border px-4 py-3">
+                <p className="text-[11px] text-muted leading-relaxed">
+                  Inclui: <b className="text-dim">cards de resumo, KPIs, bullet chart, gráfico diário, comparativo mensal, composição de receita e detalhe diário</b>.
+                </p>
+              </div>
+            </div>
+            <div className="flex gap-3 px-6 pb-5">
+              <button onClick={() => setPdfModal(false)} className="flex-1 py-2.5 rounded-lg border border-border text-sm text-muted hover:text-dim transition">Cancelar</button>
+              <button
+                onClick={gerarPDF}
+                disabled={!pdfMes}
+                className="flex-1 py-2.5 rounded-lg bg-primary text-bg text-sm font-semibold hover:bg-primary/90 transition disabled:opacity-40"
+              >
+                Exportar PDF
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* ── Import Modal ── */}
