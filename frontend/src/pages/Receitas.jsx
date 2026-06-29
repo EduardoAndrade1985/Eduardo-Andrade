@@ -669,6 +669,11 @@ export default function Receitas() {
       await new Promise(r => setTimeout(r, 400))
     }
 
+    // Ativa todos os rótulos para o PDF e restaura depois
+    const lblsOrig = lbls
+    setLbls({ diario: true, comparativo: true, weekday: true })
+    await new Promise(r => setTimeout(r, 200))
+
     try {
       const bgColor = tema === 'light' ? '#f1f5f9' : '#0d1117'
       const opts = { scale: 2, useCORS: true, allowTaint: true, logging: false, backgroundColor: bgColor }
@@ -723,6 +728,7 @@ export default function Receitas() {
     } catch (err) {
       console.error('Erro ao gerar PDF:', err)
     } finally {
+      setLbls(lblsOrig)
       setExportando(false)
     }
   }
