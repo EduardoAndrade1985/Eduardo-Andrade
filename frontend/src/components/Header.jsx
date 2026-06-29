@@ -15,7 +15,7 @@ function Modal({ onClose, children }) {
   )
 }
 
-export default function Header({ title }) {
+export default function Header({ title, onMenuClick }) {
   const { user, logout, refreshUser } = useAuth()
   const { tema, toggleTema } = useTheme()
   const [open, setOpen]         = useState(false)
@@ -87,10 +87,25 @@ export default function Header({ title }) {
                          px-6 bg-bg2 border-b border-border
                          shadow-[0_1px_0_rgba(255,255,255,0.03),0_4px_12px_rgba(0,0,0,0.25)]">
 
-        <h1 className="text-sm font-semibold tracking-wide
-                       bg-gradient-to-r from-primary to-teal-400 bg-clip-text text-transparent">
-          {title}
-        </h1>
+        <div className="flex items-center gap-2">
+          {/* Hamburger — só mobile */}
+          <button
+            onClick={onMenuClick}
+            className="lg:hidden p-2 -ml-1 rounded-lg text-muted hover:text-primary hover:bg-primary/5 transition"
+          >
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
+              strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"
+              className="w-5 h-5">
+              <line x1="3" y1="6" x2="21" y2="6"/>
+              <line x1="3" y1="12" x2="21" y2="12"/>
+              <line x1="3" y1="18" x2="21" y2="18"/>
+            </svg>
+          </button>
+          <h1 className="text-sm font-semibold tracking-wide
+                         bg-gradient-to-r from-primary to-teal-400 bg-clip-text text-transparent">
+            {title}
+          </h1>
+        </div>
 
         <div className="flex items-center gap-4">
           <span className="hidden sm:block text-[11px] text-muted capitalize tracking-wide">

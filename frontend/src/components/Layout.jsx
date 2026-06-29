@@ -19,6 +19,7 @@ const TITLES = {
 
 function LayoutInner() {
   const [collapsed, setCollapsed] = useState(false)
+  const [drawerOpen, setDrawerOpen] = useState(false)
   const { pathname } = useLocation()
   const { carregarEmpresas, empresaAtiva } = useEmpresa()
   const title = TITLES[pathname] || 'RPHub'
@@ -27,11 +28,25 @@ function LayoutInner() {
     carregarEmpresas()
   }, [carregarEmpresas])
 
+  useEffect(() => {
+    setDrawerOpen(false)
+  }, [pathname])
+
+  function openDrawer() {
+    setCollapsed(false)
+    setDrawerOpen(true)
+  }
+
   return (
     <div className="flex h-screen overflow-hidden bg-bg">
-      <Sidebar collapsed={collapsed} setCollapsed={setCollapsed} />
+      <Sidebar
+        collapsed={collapsed}
+        setCollapsed={setCollapsed}
+        drawerOpen={drawerOpen}
+        onDrawerClose={() => setDrawerOpen(false)}
+      />
       <div className="flex flex-col flex-1 min-w-0 overflow-hidden">
-        <Header title={title} />
+        <Header title={title} onMenuClick={openDrawer} />
         <main className="flex-1 overflow-y-scroll">
           {/* key força remonte completo quando empresa muda — páginas releem dados do banco */}
           <Outlet key={empresaAtiva?.id ?? 'sem-empresa'} />

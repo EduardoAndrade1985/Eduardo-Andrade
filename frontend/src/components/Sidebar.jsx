@@ -34,6 +34,7 @@ function Ic({ n, cls = 'w-4 h-4 flex-shrink-0' }) {
     logout:     <><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></>,
     sun:        <><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></>,
     moon:       <><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></>,
+    close:      <><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></>,
   }
   return (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
@@ -190,7 +191,7 @@ function NavItem({ mod, bloqueado }) {
 }
 
 // ── main component ───────────────────────────────────────────────
-export default function Sidebar({ collapsed, setCollapsed }) {
+export default function Sidebar({ collapsed, setCollapsed, drawerOpen, onDrawerClose }) {
   const { user, logout } = useAuth()
   const { tema, toggleTema } = useTheme()
   const isAdmin = user?.papel === 'admin' || user?.is_staff
@@ -221,10 +222,22 @@ export default function Sidebar({ collapsed, setCollapsed }) {
   }
 
   return (
+    <>
+      {/* Mobile backdrop */}
+      <div
+        className={`fixed inset-0 z-40 bg-black/60 backdrop-blur-sm lg:hidden
+          transition-opacity duration-300
+          ${drawerOpen ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'}`}
+        onClick={onDrawerClose}
+      />
+
     <aside className={`
-      flex flex-col h-screen bg-bg2 border-r border-border
-      transition-all duration-300 flex-shrink-0
-      ${collapsed ? 'w-[60px]' : 'w-[240px]'}
+      flex flex-col bg-bg2 border-r border-border flex-shrink-0
+      transition-transform duration-300
+      fixed top-0 left-0 h-full z-50 w-[280px]
+      ${drawerOpen ? 'translate-x-0' : '-translate-x-full'}
+      lg:static lg:h-screen lg:z-auto lg:translate-x-0
+      ${collapsed ? 'lg:w-[60px]' : 'lg:w-[240px]'}
     `}>
 
       {/* ── Header ── */}
@@ -253,12 +266,21 @@ export default function Sidebar({ collapsed, setCollapsed }) {
             </p>
             <p className="text-[10px] text-muted truncate leading-tight">Sistema Gerencial</p>
           </div>
+          {/* Desktop: recolher */}
           <button
             onClick={() => setCollapsed(true)}
-            className="p-1.5 rounded-lg text-muted hover:text-primary hover:bg-bg3 transition flex-shrink-0"
+            className="hidden lg:block p-1.5 rounded-lg text-muted hover:text-primary hover:bg-bg3 transition flex-shrink-0"
             title="Recolher"
           >
             <Ic n="menu" cls="w-4 h-4"/>
+          </button>
+          {/* Mobile: fechar drawer */}
+          <button
+            onClick={onDrawerClose}
+            className="lg:hidden p-1.5 rounded-lg text-muted hover:text-primary hover:bg-bg3 transition flex-shrink-0"
+            title="Fechar"
+          >
+            <Ic n="close" cls="w-4 h-4"/>
           </button>
         </div>
       )}
@@ -394,5 +416,6 @@ export default function Sidebar({ collapsed, setCollapsed }) {
         </button>
       </div>
     </aside>
+    </>
   )
 }
