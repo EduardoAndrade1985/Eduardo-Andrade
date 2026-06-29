@@ -388,6 +388,7 @@ export default function Receitas() {
   const timersRef  = useRef({})
   const contentRef = useRef(null)
   const refPag1    = useRef(null)
+  const refDiario  = useRef(null)
   const refPag2    = useRef(null)
 
   const C = useMemo(()=>({
@@ -672,22 +673,24 @@ export default function Receitas() {
     // Ativa todos os rótulos para o PDF e restaura depois
     const lblsOrig = lbls
     setLbls({ diario: true, comparativo: true, weekday: true })
-    await new Promise(r => setTimeout(r, 200))
+    // Aguarda React re-renderizar + animações do Recharts terminarem
+    await new Promise(r => setTimeout(r, 700))
 
     try {
       const bgColor = tema === 'light' ? '#f1f5f9' : '#0d1117'
       const opts = { scale: 2, useCORS: true, allowTaint: true, logging: false, backgroundColor: bgColor }
 
-      const [canvas1, canvas2] = await Promise.all([
-        html2canvas(refPag1.current, opts),
-        html2canvas(refPag2.current, opts),
+      const [canvas1, canvasDiario, canvas2] = await Promise.all([
+        html2canvas(refPag1.current,   opts),
+        html2canvas(refDiario.current, opts),
+        html2canvas(refPag2.current,   opts),
       ])
 
       const pdf     = new jsPDF({ orientation: 'portrait', unit: 'pt', format: 'a4' })
       const pageW   = pdf.internal.pageSize.getWidth()
       const pageH   = pdf.internal.pageSize.getHeight()
       const margin  = 22
-      const HDR_H   = 54
+      const HDR_H   = 48
       const availW  = pageW - 2 * margin
       const availH  = pageH - HDR_H - margin - 8
       const empresa = empresaAtiva?.nome || 'RPHub'
@@ -695,34 +698,45 @@ export default function Receitas() {
       const hoje    = new Date().toLocaleDateString('pt-BR')
 
       const drawHeader = (pg) => {
-        pdf.setFillColor(22, 27, 39)
+        // Fundo branco
+        pdf.setFillColor(255, 255, 255)
         pdf.rect(0, 0, pageW, HDR_H, 'F')
+        // Linha verde no rodapé do header
         pdf.setFillColor(45, 212, 160)
-        pdf.rect(0, HDR_H - 1.5, pageW, 1.5, 'F')
+        pdf.rect(0, HDR_H - 2, pageW, 2, 'F')
+        // Título
         pdf.setFontSize(14)
         pdf.setTextColor(45, 212, 160)
-        pdf.text('RPHub · Relatório de Receitas', margin, 22)
+        pdf.text('RPHub · Relatório de Receitas', margin, 20)
+        // Subtítulo
         pdf.setFontSize(9)
-        pdf.setTextColor(122, 143, 168)
-        pdf.text(`${empresa} · ${periodo} · Gerado em ${hoje}`, margin, 38)
+        pdf.setTextColor(71, 85, 105)
+        pdf.text(`${empresa} · ${periodo} · Gerado em ${hoje}`, margin, 35)
+        // Paginação
         pdf.setFontSize(8)
-        pdf.text(`Página ${pg} de 2`, pageW - margin, 38, { align: 'right' })
+        pdf.text(`Página ${pg} de 2`, pageW - margin, 35, { align: 'right' })
       }
 
-      const addCanvasToPage = (canvas) => {
-        const s = Math.min(availW / canvas.width, availH / canvas.height)
-        const w = canvas.width  * s
-        const h = canvas.height * s
-        const x = margin + (availW - w) / 2
-        pdf.addImage(canvas.toDataURL('image/jpeg', 0.92), 'JPEG', x, HDR_H + 6, w, h)
-      }
-
+      // Página 1: resumo/KPIs/bullet (canvas1) + diário (canvasDiario) empilhados
       drawHeader(1)
-      addCanvasToPage(canvas1)
+      const gap    = 8
+      const scale1 = Math.min(
+        availW / canvas1.width,
+        (availH - gap) / (canvas1.height + canvasDiario.height)
+      )
+      const w1  = canvas1.width      * scale1
+      const hh1 = canvas1.height     * scale1
+      const hhD = canvasDiario.height * scale1
+      pdf.addImage(canvas1.toDataURL('image/jpeg', 0.92),      'JPEG', margin, HDR_H + 4,        w1, hh1)
+      pdf.addImage(canvasDiario.toDataURL('image/jpeg', 0.92), 'JPEG', margin, HDR_H + 4 + hh1 + gap, w1, hhD)
 
+      // Página 2: comparativo + weekday + mix + detalhe
       pdf.addPage()
       drawHeader(2)
-      addCanvasToPage(canvas2)
+      const scale2 = Math.min(availW / canvas2.width, availH / canvas2.height)
+      const w2  = canvas2.width  * scale2
+      const hh2 = canvas2.height * scale2
+      pdf.addImage(canvas2.toDataURL('image/jpeg', 0.92), 'JPEG', margin, HDR_H + 4, w2, hh2)
 
       pdf.save(`receitas_${mesAtual}_${empresa.replace(/\s+/g,'_').toLowerCase()}.pdf`)
     } catch (err) {
@@ -987,16 +1001,18 @@ export default function Receitas() {
             )}
           </div>
 
-          {/* ── PÁGINA 2: gráficos + tabelas ── */}
-          <div ref={refPag2} className="space-y-4">
-
-          {/* ── receita diária e acumulada ── */}
+          {/* ── receita diária (página 1 no PDF) ── */}
+          <div ref={refDiario}>
           <Card title={`Receita diária e acumulada · ${mesLblLongo(mesAtual)}`} legend={<>
             <Lg color={COR.bar} label="Receita do dia"/><Lg color={COR.real} label="Acumulado no mês" dash/>
           </>} lblOn={lbls.diario} onLbl={()=>togLbl('diario')}
              onExpand={()=>setExpandInfo({title:'Receita diária e acumulada', key:'diario'})}>
             <DiarioChart data={diasData} C={C} labels={lbls.diario} ajTotal={ajTotal}/>
           </Card>
+          </div>{/* /refDiario */}
+
+          {/* ── PÁGINA 2: comparativo + tabelas ── */}
+          <div ref={refPag2} className="space-y-4">
 
           {/* ── comparativo + dia da semana ── */}
           <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
