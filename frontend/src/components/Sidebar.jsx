@@ -1,8 +1,9 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useCallback } from 'react'
 import { NavLink, useNavigate, useLocation } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
 import { useTheme } from '../contexts/ThemeContext'
 import EmpresaSwitcher from './EmpresaSwitcher'
+import { ThemeCustomizer } from './ThemeCustomizer'
 
 // ── SVG icon library ─────────────────────────────────────────────
 function Ic({ n, cls = 'w-4 h-4 flex-shrink-0' }) {
@@ -34,6 +35,8 @@ function Ic({ n, cls = 'w-4 h-4 flex-shrink-0' }) {
     logout:     <><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></>,
     sun:        <><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></>,
     moon:       <><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></>,
+    palette:    <><circle cx="13.5" cy="6.5" r="2.5"/><circle cx="17.5" cy="10.5" r="2.5"/><circle cx="8.5" cy="7.5" r="2.5"/><circle cx="6.5" cy="12.5" r="2.5"/><path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c.926 0 1.648-.746 1.648-1.688 0-.437-.18-.835-.437-1.125-.29-.289-.438-.652-.438-1.125a1.64 1.64 0 0 1 1.668-1.668h1.996c3.051 0 5.555-2.503 5.555-5.554C21.965 6.012 17.461 2 12 2z"/></>,
+    pencil:     <><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></>,
   }
   return (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
@@ -192,7 +195,7 @@ function NavItem({ mod, bloqueado }) {
 // ── main component ───────────────────────────────────────────────
 export default function Sidebar({ collapsed, setCollapsed }) {
   const { user, logout } = useAuth()
-  const { tema, toggleTema } = useTheme()
+  const { tema, setTema } = useTheme()
   const isAdmin = user?.papel === 'admin' || user?.is_staff
   const modulosPermitidos = user?.modulos_permitidos  // null/undefined = todos
 
@@ -200,10 +203,14 @@ export default function Sidebar({ collapsed, setCollapsed }) {
     if (!modulosPermitidos || modulosPermitidos.length === 0) return true
     return modulosPermitidos.includes(item.key)
   }
-  const [search, setSearch]     = useState('')
-  const [openSecs, setOpenSecs] = useState(() =>
+  const [search, setSearch]         = useState('')
+  const [openSecs, setOpenSecs]     = useState(() =>
     Object.fromEntries(SECOES.map(s => [s.id, true]))
   )
+  const [custOpen, setCustOpen]     = useState(false)
+  const closeCust                   = useCallback(() => setCustOpen(false), [])
+
+  const sidebarW = collapsed ? 56 : 224
 
   const toggleSec = id => setOpenSecs(p => ({ ...p, [id]: !p[id] }))
 
@@ -371,17 +378,55 @@ export default function Sidebar({ collapsed, setCollapsed }) {
           </div>
         )}
         {/* tema */}
-        <button
-          onClick={toggleTema}
-          title={collapsed ? (tema === 'dark' ? 'Modo Claro' : 'Modo Escuro') : ''}
-          className={`flex items-center gap-3 w-full px-3 py-2 rounded-lg text-[13px] text-muted
-            hover:text-primary hover:bg-primary/5 transition mb-0.5 ${collapsed ? 'justify-center' : ''}`}
-        >
-          <Ic n={tema === 'dark' ? 'sun' : 'moon'} cls="w-4 h-4 flex-shrink-0"/>
-          {!collapsed && (
-            <span>{tema === 'dark' ? 'Modo Claro' : 'Modo Escuro'}</span>
-          )}
-        </button>
+        {collapsed ? (
+          <button
+            onClick={() => setTema(tema === 'dark' ? 'light' : tema === 'light' ? 'custom' : 'dark')}
+            title={tema === 'dark' ? 'Escuro' : tema === 'light' ? 'Claro' : 'Personalizado'}
+            className="flex items-center justify-center w-full px-3 py-2 rounded-lg text-muted
+              hover:text-primary hover:bg-primary/5 transition mb-0.5"
+          >
+            <Ic
+              n={tema === 'dark' ? 'moon' : tema === 'light' ? 'sun' : 'palette'}
+              cls="w-4 h-4 flex-shrink-0"
+            />
+          </button>
+        ) : (
+          <div className="mb-0.5">
+            {[
+              { id: 'dark',   label: 'Escuro',       icon: 'moon'    },
+              { id: 'light',  label: 'Claro',         icon: 'sun'     },
+              { id: 'custom', label: 'Personalizado', icon: 'palette' },
+            ].map(({ id, label, icon }) => (
+              <button
+                key={id}
+                onClick={() => {
+                  setTema(id)
+                  if (id === 'custom') setCustOpen(true)
+                  else setCustOpen(false)
+                }}
+                className={`flex items-center gap-2.5 w-full px-3 py-1.5 rounded-lg text-[12px]
+                  transition ${tema === id
+                    ? 'text-primary bg-primary/5'
+                    : 'text-muted hover:text-primary hover:bg-primary/5'
+                  }`}
+              >
+                <Ic n={icon} cls="w-3.5 h-3.5 flex-shrink-0"/>
+                <span className="flex-1 text-left">{label}</span>
+                {id === 'custom' && tema === 'custom' && (
+                  <span
+                    role="button"
+                    tabIndex={0}
+                    onClick={e => { e.stopPropagation(); setCustOpen(v => !v) }}
+                    onKeyDown={e => e.key === 'Enter' && (e.stopPropagation(), setCustOpen(v => !v))}
+                    className="p-0.5 rounded hover:bg-primary/10 text-primary/60 hover:text-primary transition"
+                  >
+                    <Ic n="pencil" cls="w-3 h-3"/>
+                  </span>
+                )}
+              </button>
+            ))}
+          </div>
+        )}
 
         {/* logout */}
         <button
@@ -393,6 +438,8 @@ export default function Sidebar({ collapsed, setCollapsed }) {
           {!collapsed && <span>Sair</span>}
         </button>
       </div>
+
+      <ThemeCustomizer open={custOpen} onClose={closeCust} sidebarW={sidebarW} />
     </aside>
   )
 }
