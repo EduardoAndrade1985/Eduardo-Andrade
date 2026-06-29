@@ -489,8 +489,9 @@ export default function Receitas() {
   const realAjustado = (dadosMes?.realizado||0) + ajTotal
   const projAjustada = (dadosMes?.projecao||0) + ajTotal
   const completo  = dadosMes ? dadosMes.diasDecorridos>=dadosMes.dim : false
-  const pctRealOrc = meta.orcado ? realAjustado/meta.orcado : 0
-  const pctFcstOrc = meta.orcado ? meta.forecast/meta.orcado : 0
+  const pctRealOrc  = meta.orcado   ? realAjustado/meta.orcado   : 0
+  const pctFcstOrc  = meta.orcado   ? meta.forecast/meta.orcado  : 0
+  const pctRealFcst = meta.forecast ? realAjustado/meta.forecast  : 0
   const deltaProj      = projAjustada - meta.orcado
   const orcadoEsperado = meta.orcado && dadosMes?.diasDecorridos && dadosMes?.dim
     ? meta.orcado * (dadosMes.diasDecorridos / dadosMes.dim) : 0
@@ -842,9 +843,9 @@ export default function Receitas() {
             </div>
             <div className="bg-bg2 rounded-xl border border-border px-4 py-3 relative overflow-hidden">
               <div className="absolute left-0 top-0 bottom-0 w-[3px]" style={{background:COR.fcst}}/>
-              <p className="text-[10px] font-bold text-muted uppercase tracking-widest">Forecast</p>
-              <p className="text-xl font-extrabold text-dim font-mono leading-tight mt-1.5">{fmtBRL(meta.forecast)}</p>
-              <p className="text-[11px] text-muted mt-1.5">{meta.orcado?fmtPct(pctFcstOrc)+' do orçado':'—'}</p>
+              <p className="text-[10px] font-bold text-muted uppercase tracking-widest">% realizado do forecast</p>
+              <p className="text-xl font-extrabold text-dim font-mono leading-tight mt-1.5">{meta.forecast ? fmtPct(pctRealFcst) : '—'}</p>
+              <p className="text-[11px] text-muted mt-1.5">{meta.forecast ? <>{fmtBRL(realAjustado)} de {fmtBRL(meta.forecast)}</> : 'sem forecast definido'}</p>
             </div>
             <div className="bg-bg2 rounded-xl border border-border px-4 py-3 relative overflow-hidden">
               <div className="absolute left-0 top-0 bottom-0 w-[3px]" style={{background: orcadoEsperado ? (pacePositivo?COR.up:COR.down) : COR.add}}/>
