@@ -225,7 +225,7 @@ function DiarioChart({data, C, labels, expanded, ajTotal=0}) {
         <YAxis yAxisId="right" orientation="right" tickFormatter={compact} tick={{fill:COR.bar, fontSize:11}} axisLine={false} tickLine={false} width={60}/>
         <Tooltip content={<DiarioTip/>}/>
         <Bar yAxisId="right" dataKey="diario" fill={COR.bar} radius={[2,2,0,0]} maxBarSize={20}>
-          {labels && <LabelList dataKey="diario" content={thinnedLabel({color:C.muted, dy:-6, step:1})}/>}
+          {labels && <LabelList dataKey="diario" isAnimationActive={false} content={thinnedLabel({color:C.muted, dy:-6, step:1})}/>}
         </Bar>
         <Line yAxisId="left" dataKey="acumulado" stroke={COR.real} strokeWidth={2.6} dot={false} connectNulls={false} label={acumLbl}/>
       </ComposedChart>
@@ -267,13 +267,13 @@ function ComparativoChart({data, C, orcado, forecast, labels, expanded}) {
         <YAxis tickFormatter={compact} tick={{fill:C.muted, fontSize:11}} axisLine={false} tickLine={false} width={60}/>
         <Tooltip content={<ComparativoTip/>}/>
         <Line dataKey="orcAcum" stroke={COR.orc} strokeWidth={2} dot={false} strokeDasharray="6 4" connectNulls>
-          {labels && <LabelList dataKey="orcAcum" content={endLbl(COR.orc, -8)}/>}
+          {labels && <LabelList dataKey="orcAcum" isAnimationActive={false} content={endLbl(COR.orc, -8)}/>}
         </Line>
         <Line dataKey="projecao" stroke={COR.fcst} strokeWidth={2} dot={false} strokeDasharray="6 4" connectNulls={false}>
-          {labels && <LabelList dataKey="projecao" content={endLbl(COR.fcst, 14)}/>}
+          {labels && <LabelList dataKey="projecao" isAnimationActive={false} content={endLbl(COR.fcst, 14)}/>}
         </Line>
         <Line dataKey="acumulado" stroke={COR.real} strokeWidth={2.8} dot={false} connectNulls={false}>
-          {labels && <LabelList dataKey="acumulado" content={thinnedLabel({color:COR.real, dy:-10, step:step, offset:0})}/>}
+          {labels && <LabelList dataKey="acumulado" isAnimationActive={false} content={thinnedLabel({color:COR.real, dy:-10, step:step, offset:0})}/>}
         </Line>
       </LineChart>
     </ResponsiveContainer>
@@ -290,7 +290,7 @@ function WeekdayChart({data, C, labels, expanded}) {
         <Tooltip content={<WeekdayTip/>} cursor={{fill:'transparent'}}/>
         <Bar dataKey="media" radius={[3,3,0,0]} maxBarSize={44}>
           {data.map((d,i)=><Cell key={i} fill={d.fds?COR.bar:COR.real}/>)}
-          {labels && <LabelList dataKey="media" content={thinnedLabel({color:C.muted, dy:-6, step:1})}/>}
+          {labels && <LabelList dataKey="media" isAnimationActive={false} content={thinnedLabel({color:C.muted, dy:-6, step:1})}/>}
         </Bar>
       </BarChart>
     </ResponsiveContainer>
@@ -673,18 +673,17 @@ export default function Receitas() {
     // Ativa todos os rótulos para o PDF e restaura depois
     const lblsOrig = lbls
     setLbls({ diario: true, comparativo: true, weekday: true })
-    // Aguarda React re-renderizar + animações do Recharts terminarem
-    await new Promise(r => setTimeout(r, 700))
+    // LabelList com isAnimationActive={false} aparece imediatamente; 350ms garante re-render completo
+    await new Promise(r => setTimeout(r, 350))
 
     try {
       const bgColor = tema === 'light' ? '#f1f5f9' : '#0d1117'
       const opts = { scale: 2, useCORS: true, allowTaint: true, logging: false, backgroundColor: bgColor }
 
-      const [canvas1, canvasDiario, canvas2] = await Promise.all([
-        html2canvas(refPag1.current,   opts),
-        html2canvas(refDiario.current, opts),
-        html2canvas(refPag2.current,   opts),
-      ])
+      // Captura sequencial evita interferência entre clones DOM do html2canvas
+      const canvas1      = await html2canvas(refPag1.current,   opts)
+      const canvasDiario = await html2canvas(refDiario.current, opts)
+      const canvas2      = await html2canvas(refPag2.current,   opts)
 
       const pdf     = new jsPDF({ orientation: 'portrait', unit: 'pt', format: 'a4' })
       const pageW   = pdf.internal.pageSize.getWidth()
