@@ -317,9 +317,9 @@ function MixRows({rows, total}) {
   )
 }
 
-function DetalheTable({rows, diasDecorridos, orcado}) {
+function DetalheTable({rows, diasDecorridos, orcado, noScroll}) {
   return (
-    <div className="max-h-[344px] overflow-auto mt-1">
+    <div className={noScroll ? "mt-1" : "max-h-[344px] overflow-auto mt-1"}>
       <table className="w-full border-collapse">
         <thead>
           <tr className="text-[10px] uppercase tracking-wide text-muted">
@@ -1033,7 +1033,7 @@ export default function Receitas() {
               <MixRows rows={mixRows} total={mixTotal}/>
             </Card>
             <Card title="Detalhe diário" onExpand={()=>setExpandInfo({title:'Detalhe diário', key:'detalhe'})}>
-              <DetalheTable rows={detalheRows} diasDecorridos={dadosMes?.diasDecorridos} orcado={meta.orcado}/>
+              <DetalheTable rows={detalheRows} diasDecorridos={dadosMes?.diasDecorridos} orcado={meta.orcado} noScroll={exportando}/>
             </Card>
           </div>
 
