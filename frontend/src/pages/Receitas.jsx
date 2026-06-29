@@ -707,7 +707,7 @@ export default function Receitas() {
         // Título
         pdf.setFontSize(14)
         pdf.setTextColor(45, 212, 160)
-        pdf.text('RPHub · Relatório de Receitas', margin, 20)
+        pdf.text('Relatório de Receitas - Gerencial', margin, 20)
         // Subtítulo
         pdf.setFontSize(9)
         pdf.setTextColor(71, 85, 105)
