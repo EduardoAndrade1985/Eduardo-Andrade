@@ -114,22 +114,25 @@ export default function Login() {
     <div className="min-h-screen flex" style={{ background: 'var(--color-bg)' }}>
 
       {/* ── Painel esquerdo — branding ── */}
-      <div className="hidden lg:flex lg:w-1/2 flex-col relative overflow-hidden" style={{ background: 'var(--color-bg2)' }}>
+      <div className="hidden lg:flex lg:w-1/2 flex-col relative overflow-hidden" style={{ background: '#0d1117' }}>
 
-        {/* Fundo gradiente + padrão */}
-        <div className="absolute inset-0 gradient-primary opacity-90" />
+        {/* Foto de fundo */}
+        <div
+          className="absolute inset-0 bg-cover bg-center"
+          style={{ backgroundImage: `url('https://images.unsplash.com/photo-1566073771259-6a8506099945?auto=format&fit=crop&w=1200&q=80')` }}
+        />
+        {/* Overlay gradiente sobre a foto */}
+        <div className="absolute inset-0" style={{
+          background: 'linear-gradient(135deg, rgba(13,17,23,0.72) 0%, rgba(45,212,160,0.55) 60%, rgba(14,165,116,0.70) 100%)'
+        }} />
+        {/* Padrão de pontos sutil */}
         <div
           className="absolute inset-0 opacity-10"
           style={{
-            backgroundImage: `radial-gradient(circle at 1px 1px, rgba(255,255,255,.25) 1px, transparent 0)`,
+            backgroundImage: `radial-gradient(circle at 1px 1px, rgba(255,255,255,.3) 1px, transparent 0)`,
             backgroundSize: '28px 28px',
           }}
         />
-        {/* Brilho decorativo */}
-        <div className="absolute -top-32 -right-32 w-96 h-96 rounded-full"
-          style={{ background: 'rgba(255,255,255,0.08)', filter: 'blur(60px)' }} />
-        <div className="absolute -bottom-24 -left-24 w-80 h-80 rounded-full"
-          style={{ background: 'rgba(0,0,0,0.15)', filter: 'blur(50px)' }} />
 
         <div className="relative z-10 flex flex-col h-full p-10">
 
