@@ -58,23 +58,25 @@ def upload_excel(request):
     if not dias:
         return JsonResponse({'ok': False, 'erro': 'Nenhum registro válido encontrado.'}, status=400)
 
-    qs_anterior = ArquivoImportado.objects.all()
-    if empresa:
-        qs_anterior = qs_anterior.filter(empresa=empresa)
-    qs_anterior.update(ativo=False)
+    meses_novos = {d.strftime('%Y-%m') for d in dias}
 
-    create_kwargs = {'nome': nome, 'total_registros': total_transacoes}
-    if empresa:
-        create_kwargs['empresa'] = empresa
-    else:
-        from apps.empresas.models import Empresa as EmpresaModel
-        primeira = EmpresaModel.objects.filter(ativo=True).first()
-        if primeira:
-            create_kwargs['empresa'] = primeira
+    # Reutiliza o arquivo ativo existente; se não houver, cria um novo
+    arquivo = _arquivo_ativo(empresa)
+    if not arquivo:
+        create_kwargs = {'nome': nome, 'total_registros': 0}
+        if empresa:
+            create_kwargs['empresa'] = empresa
         else:
-            return JsonResponse({'ok': False, 'erro': 'Nenhuma empresa cadastrada no sistema.'}, status=400)
+            from apps.empresas.models import Empresa as EmpresaModel
+            primeira = EmpresaModel.objects.filter(ativo=True).first()
+            if primeira:
+                create_kwargs['empresa'] = primeira
+            else:
+                return JsonResponse({'ok': False, 'erro': 'Nenhuma empresa cadastrada no sistema.'}, status=400)
+        arquivo = ArquivoImportado.objects.create(**create_kwargs)
 
-    arquivo = ArquivoImportado.objects.create(**create_kwargs)
+    # Remove apenas os dias dos meses presentes na nova planilha; os demais meses são preservados
+    LancamentoDiario.objects.filter(arquivo=arquivo, mes__in=meses_novos).delete()
 
     objs = [
         LancamentoDiario(
@@ -88,14 +90,22 @@ def upload_excel(request):
     ]
     LancamentoDiario.objects.bulk_create(objs, batch_size=1000)
 
-    meses = sorted({d.strftime('%Y-%m') for d in dias})
+    # Atualiza metadados do arquivo com o nome e total da última importação
+    arquivo.nome = nome
+    arquivo.total_registros = total_transacoes
+    arquivo.save(update_fields=['nome', 'total_registros'])
+
+    meses_todos = sorted(
+        LancamentoDiario.objects.filter(arquivo=arquivo)
+        .values_list('mes', flat=True).distinct()
+    )
 
     return JsonResponse({
         'ok': True,
         'arquivo': nome,
         'total_registros': total_transacoes,
         'dias_importados': len(dias),
-        'meses': meses,
+        'meses': meses_todos,
     })
 
 
