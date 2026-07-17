@@ -156,7 +156,7 @@ function BensTab({ categorias, departamentos, localizacoes }) {
       Object.entries(form).forEach(([k, v]) => fd.append(k, v))
       if (fotoFile) fd.append('foto', fotoFile)
       await api.patch(`/imobilizado/bens/${bemSel.id}/`, fd, {
-        headers: { 'Content-Type': 'multipart/form-data' },
+        headers: { 'Content-Type': undefined },
       })
       setEditando(false)
       setBemSel(null)
@@ -460,7 +460,7 @@ function LancamentoTab({ categorias, departamentos, localizacoes, onSucesso }) {
       fd.append('itens', JSON.stringify(itensFiltrados.map(({ foto, ...rest }) => rest)))
       itensFiltrados.forEach((it, i) => { if (it.foto) fd.append(`foto_${i}`, it.foto) })
       const { data } = await api.post('/imobilizado/lancamento/', fd, {
-        headers: { 'Content-Type': 'multipart/form-data' },
+        headers: { 'Content-Type': undefined },
       })
       if (data.ok) {
         setOk(data.total)
