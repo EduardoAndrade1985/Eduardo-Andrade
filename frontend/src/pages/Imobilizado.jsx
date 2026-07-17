@@ -1,38 +1,40 @@
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import api from '../services/api'
 
-// ── formatação ────────────────────────────────────────────────────────────────
-const fmtR = v =>
-  v == null ? '—' : Number(v).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
+// ── helpers ───────────────────────────────────────────────────────────────────
+const fmtR  = v => v == null ? '—' : Number(v).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
 const fmtDt = s => s ? new Date(s + 'T12:00:00').toLocaleDateString('pt-BR') : '—'
 const today = () => new Date().toISOString().slice(0, 10)
 
-// ── cores por situação ────────────────────────────────────────────────────────
 const SITUACAO_COR = {
-  EM_USO:     { bg: 'bg-teal-500/10',   text: 'text-teal-400',   label: 'Em Uso'       },
-  MANUTENCAO: { bg: 'bg-amber-500/10',  text: 'text-amber-400',  label: 'Manutenção'   },
-  BAIXADO:    { bg: 'bg-rose-500/10',   text: 'text-rose-400',   label: 'Baixado'      },
+  EM_USO:     { bg: 'bg-teal-500/10',  text: 'text-teal-400',  label: 'Em Uso'     },
+  MANUTENCAO: { bg: 'bg-amber-500/10', text: 'text-amber-400', label: 'Manutenção' },
+  BAIXADO:    { bg: 'bg-rose-500/10',  text: 'text-rose-400',  label: 'Baixado'    },
 }
 
 function SituacaoBadge({ s }) {
   const c = SITUACAO_COR[s] || { bg: 'bg-bg3', text: 'text-muted', label: s }
   return (
-    <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold ${c.bg} ${c.text}`}>
+    <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold ${c.bg} ${c.text}`}>
       {c.label}
     </span>
   )
 }
 
-// ── ícones inline ─────────────────────────────────────────────────────────────
-function Ic({ d, cls = 'w-4 h-4' }) {
+// ── campo de formulário ───────────────────────────────────────────────────────
+function Field({ label, required, children }) {
   return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
-      strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" className={cls}>
-      <path d={d}/>
-    </svg>
+    <div className="flex flex-col gap-1">
+      <label className="text-[11px] font-semibold text-muted uppercase tracking-wider">
+        {label}{required && <span className="text-rose-400 ml-0.5">*</span>}
+      </label>
+      {children}
+    </div>
   )
 }
+const inp = 'bg-bg3 border border-border rounded-lg px-3 py-2 text-sm text-dim placeholder-muted focus:outline-none focus:border-primary/60 transition w-full'
+const sel = inp + ' cursor-pointer'
 
 // ── modal genérico ────────────────────────────────────────────────────────────
 function Modal({ title, onClose, children, wide }) {
@@ -60,44 +62,64 @@ function Modal({ title, onClose, children, wide }) {
   )
 }
 
-// ── campo de formulário ───────────────────────────────────────────────────────
-function Field({ label, required, children }) {
+// ── lista gerenciável (categorias / departamentos / localizações) ──────────────
+function ListaConfig({ titulo, itens, novoValor, onNovoValor, onAdicionar, onRemover }) {
   return (
-    <div className="flex flex-col gap-1">
-      <label className="text-[11px] font-semibold text-muted uppercase tracking-wider">
-        {label}{required && <span className="text-rose-400 ml-0.5">*</span>}
-      </label>
-      {children}
+    <div className="flex flex-col gap-3">
+      <p className="text-[11px] font-bold text-muted uppercase tracking-wider">{titulo}</p>
+      <div className="space-y-1 max-h-48 overflow-y-auto pr-1">
+        {itens.length === 0 && (
+          <p className="text-xs text-muted italic px-2 py-3">Nenhum cadastrado ainda.</p>
+        )}
+        {itens.map(item => (
+          <div key={item.id} className="flex items-center justify-between gap-2 bg-bg3 rounded-lg px-3 py-1.5">
+            <span className="text-sm text-dim truncate">{item.nome}</span>
+            {onRemover && (
+              <button onClick={() => onRemover(item)}
+                className="text-muted hover:text-danger transition text-xs flex-shrink-0">✕</button>
+            )}
+          </div>
+        ))}
+      </div>
+      <div className="flex gap-2">
+        <input className={`${inp} flex-1`} value={novoValor}
+          onChange={e => onNovoValor(e.target.value)}
+          onKeyDown={e => e.key === 'Enter' && onAdicionar()}
+          placeholder={`Novo(a) ${titulo.toLowerCase()}…`}/>
+        <button onClick={onAdicionar}
+          className="bg-primary/10 text-primary border border-primary/20 px-3 py-2 rounded-lg text-sm hover:bg-primary/20 transition font-medium">
+          +
+        </button>
+      </div>
     </div>
   )
 }
-const inp = 'bg-bg3 border border-border rounded-lg px-3 py-2 text-sm text-dim placeholder-muted focus:outline-none focus:border-primary/60 transition w-full'
-const sel = inp + ' cursor-pointer'
 
 // ════════════════════════════════════════════════════════════════════════════════
 // ABA BENS
 // ════════════════════════════════════════════════════════════════════════════════
-function BensTab({ categorias, departamentos }) {
-  const [bens, setBens]             = useState([])
-  const [loading, setLoading]       = useState(true)
-  const [filtros, setFiltros]       = useState({ q: '', situacao: '', categoria_id: '', departamento_id: '', pendente: '' })
-  const [bemSel, setBemSel]         = useState(null)
-  const [editando, setEditando]     = useState(false)
-  const [baixando, setBaixando]     = useState(false)
-  const [form, setForm]             = useState({})
-  const [fotoFile, setFotoFile]     = useState(null)
-  const [erros, setErros]           = useState([])
-  const [salvando, setSalvando]     = useState(false)
+function BensTab({ categorias, departamentos, localizacoes }) {
+  const [bens, setBens]         = useState([])
+  const [loading, setLoading]   = useState(true)
+  const [filtros, setFiltros]   = useState({ q: '', situacao: '', categoria_id: '', departamento_id: '', pendente: '' })
+  const [bemSel, setBemSel]     = useState(null)
+  const [editando, setEditando] = useState(false)
+  const [baixando, setBaixando] = useState(false)
+  const [form, setForm]         = useState({})
+  const [fotoFile, setFotoFile] = useState(null)
+  const [erros, setErros]       = useState([])
+  const [salvando, setSalvando] = useState(false)
+  const [baixaForm, setBaixaForm] = useState({ motivo_baixa: '', data_baixa: today(), observacoes: '' })
 
   const carregar = useCallback(async () => {
     setLoading(true)
     try {
       const params = {}
-      if (filtros.q)             params.q             = filtros.q
-      if (filtros.situacao)      params.situacao      = filtros.situacao
-      if (filtros.categoria_id)  params.categoria_id  = filtros.categoria_id
+      if (filtros.q)               params.q               = filtros.q
+      if (filtros.situacao)        params.situacao        = filtros.situacao
+      if (filtros.categoria_id)    params.categoria_id    = filtros.categoria_id
       if (filtros.departamento_id) params.departamento_id = filtros.departamento_id
-      if (filtros.pendente)      params.pendente      = '1'
+      if (filtros.pendente)        params.pendente        = '1'
       const { data } = await api.get('/imobilizado/bens/', { params })
       setBens(data)
     } finally {
@@ -107,18 +129,17 @@ function BensTab({ categorias, departamentos }) {
 
   useEffect(() => { carregar() }, [carregar])
 
-  const abrirEditar = (bem) => {
+  const abrirEditar = bem => {
     setForm({
       descricao:       bem.descricao,
-      categoria_id:    bem.categoria?.id || '',
+      categoria_id:    bem.categoria?.id   || '',
       departamento_id: bem.departamento?.id || '',
-      localizacao:     bem.localizacao || '',
-      responsavel:     bem.responsavel || '',
-      nota_fiscal:     bem.nota_fiscal || '',
-      fornecedor:      bem.fornecedor || '',
-      data_aquisicao:  bem.data_aquisicao || '',
+      localizacao:     bem.localizacao     || '',
+      nota_fiscal:     bem.nota_fiscal     || '',
+      fornecedor:      bem.fornecedor      || '',
+      data_aquisicao:  bem.data_aquisicao  || '',
       valor_aquisicao: bem.valor_aquisicao != null ? String(bem.valor_aquisicao).replace('.', ',') : '',
-      observacoes:     bem.observacoes || '',
+      observacoes:     bem.observacoes     || '',
       situacao:        bem.situacao,
     })
     setFotoFile(null)
@@ -147,7 +168,6 @@ function BensTab({ categorias, departamentos }) {
     }
   }
 
-  const [baixaForm, setBaixaForm] = useState({ motivo_baixa: '', data_baixa: today(), observacoes: '' })
   const executarBaixa = async () => {
     setSalvando(true)
     try {
@@ -170,12 +190,12 @@ function BensTab({ categorias, departamentos }) {
   return (
     <div className="space-y-4">
       {/* KPIs */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         {[
-          { l: 'Total de Bens',     v: total,                 cor: 'text-dim'         },
-          { l: 'Em Uso',            v: emUso,                 cor: 'text-teal-400'    },
-          { l: 'Pendentes',         v: pendente,              cor: 'text-amber-400'   },
-          { l: 'Valor Total (Ativos)', v: fmtR(valorTotal),  cor: 'text-primary'     },
+          { l: 'Total de Bens',        v: total,          cor: 'text-dim'      },
+          { l: 'Em Uso',               v: emUso,          cor: 'text-teal-400' },
+          { l: 'Pendentes',            v: pendente,       cor: 'text-amber-400'},
+          { l: 'Valor Total (Ativos)', v: fmtR(valorTotal), cor: 'text-primary' },
         ].map(k => (
           <div key={k.l} className="bg-bg2 border border-white/[0.06] rounded-xl p-3">
             <p className="text-[10px] font-bold uppercase tracking-widest text-muted">{k.l}</p>
@@ -186,24 +206,24 @@ function BensTab({ categorias, departamentos }) {
 
       {/* Filtros */}
       <div className="bg-bg2 border border-white/[0.06] rounded-xl p-4 flex flex-wrap gap-3">
-        <input className={`${inp} flex-1 min-w-[160px]`}
-          placeholder="Buscar plaqueta, descrição, NF…"
+        <input className={`${inp} flex-1 min-w-[180px]`}
+          placeholder="Buscar plaqueta, descrição ou NF…"
           value={filtros.q} onChange={e => setFiltros(p => ({ ...p, q: e.target.value }))}/>
         <select className={`${sel} w-36`} value={filtros.situacao}
           onChange={e => setFiltros(p => ({ ...p, situacao: e.target.value }))}>
-          <option value="">Todas situações</option>
+          <option value="">Situação</option>
           <option value="EM_USO">Em Uso</option>
           <option value="MANUTENCAO">Manutenção</option>
           <option value="BAIXADO">Baixado</option>
         </select>
         <select className={`${sel} w-44`} value={filtros.categoria_id}
           onChange={e => setFiltros(p => ({ ...p, categoria_id: e.target.value }))}>
-          <option value="">Todas categorias</option>
+          <option value="">Categoria</option>
           {categorias.map(c => <option key={c.id} value={c.id}>{c.nome}</option>)}
         </select>
         <select className={`${sel} w-44`} value={filtros.departamento_id}
           onChange={e => setFiltros(p => ({ ...p, departamento_id: e.target.value }))}>
-          <option value="">Todos departamentos</option>
+          <option value="">Departamento</option>
           {departamentos.map(d => <option key={d.id} value={d.id}>{d.nome}</option>)}
         </select>
         <label className="flex items-center gap-2 text-sm text-dim cursor-pointer select-none">
@@ -226,14 +246,12 @@ function BensTab({ categorias, departamentos }) {
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
           {bens.map(b => (
             <div key={b.id} onClick={() => abrirEditar(b)}
-              className="bg-bg2 border border-white/[0.06] rounded-xl p-4 hover:border-primary/30 hover:bg-bg3/30 cursor-pointer transition group">
+              className="bg-bg2 border border-white/[0.06] rounded-xl p-4 hover:border-primary/30 hover:bg-bg3/30 cursor-pointer transition">
               <div className="flex items-start gap-3">
                 {b.foto_url ? (
                   <img src={b.foto_url} alt="" className="w-14 h-14 rounded-lg object-cover flex-shrink-0 border border-border"/>
                 ) : (
-                  <div className="w-14 h-14 rounded-lg bg-bg3 border border-border flex items-center justify-center text-2xl flex-shrink-0">
-                    📦
-                  </div>
+                  <div className="w-14 h-14 rounded-lg bg-bg3 border border-border flex items-center justify-center text-2xl flex-shrink-0">📦</div>
                 )}
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 flex-wrap">
@@ -252,17 +270,17 @@ function BensTab({ categorias, departamentos }) {
                 </div>
               </div>
               <div className="mt-3 pt-3 border-t border-border/50 grid grid-cols-2 gap-x-4 gap-y-1 text-xs text-muted">
-                {b.localizacao && <span className="truncate">📍 {b.localizacao}</span>}
-                {b.nota_fiscal && <span className="truncate">NF {b.nota_fiscal}</span>}
+                {b.localizacao         && <span className="truncate">📍 {b.localizacao}</span>}
+                {b.nota_fiscal         && <span className="truncate">NF {b.nota_fiscal}</span>}
                 {b.valor_aquisicao != null && <span className="font-semibold text-dim">{fmtR(b.valor_aquisicao)}</span>}
-                {b.data_aquisicao && <span>{fmtDt(b.data_aquisicao)}</span>}
+                {b.data_aquisicao      && <span>{fmtDt(b.data_aquisicao)}</span>}
               </div>
             </div>
           ))}
         </div>
       )}
 
-      {/* Modal de edição/detalhe */}
+      {/* Modal de edição */}
       {editando && bemSel && (
         <Modal title={`Bem ${bemSel.plaqueta}`} onClose={() => { setEditando(false); setBemSel(null) }} wide>
           <div className="space-y-4">
@@ -292,10 +310,14 @@ function BensTab({ categorias, departamentos }) {
                 </select>
               </Field>
               <Field label="Localização">
-                <input className={inp} value={form.localizacao} onChange={e => setForm(p => ({ ...p, localizacao: e.target.value }))} placeholder="Ex: Bancada 2"/>
-              </Field>
-              <Field label="Responsável">
-                <input className={inp} value={form.responsavel} onChange={e => setForm(p => ({ ...p, responsavel: e.target.value }))}/>
+                <select className={sel} value={form.localizacao}
+                  onChange={e => setForm(p => ({ ...p, localizacao: e.target.value }))}>
+                  <option value="">Selecione ou deixe em branco</option>
+                  {localizacoes.map(l => <option key={l.id} value={l.nome}>{l.nome}</option>)}
+                  {form.localizacao && !localizacoes.find(l => l.nome === form.localizacao) && (
+                    <option value={form.localizacao}>{form.localizacao} (atual)</option>
+                  )}
+                </select>
               </Field>
               <Field label="Nota Fiscal">
                 <input className={inp} value={form.nota_fiscal} onChange={e => setForm(p => ({ ...p, nota_fiscal: e.target.value }))}/>
@@ -356,12 +378,15 @@ function BensTab({ categorias, departamentos }) {
                 {erros.map((e, i) => <p key={i}>{e}</p>)}
               </div>
             )}
-            <p className="text-sm text-muted">Confirme a baixa do bem <strong className="text-dim">{bemSel.descricao}</strong>.</p>
+            <p className="text-sm text-muted">
+              Confirme a baixa de <strong className="text-dim">{bemSel.descricao}</strong>.
+            </p>
             <Field label="Motivo" required>
               <select className={sel} value={baixaForm.motivo_baixa}
                 onChange={e => setBaixaForm(p => ({ ...p, motivo_baixa: e.target.value }))}>
                 <option value="">Selecione…</option>
-                {[['VENDA','Venda'],['PERDA','Perda/Sinistro'],['ROUBO','Roubo'],['SUCATA','Sucateamento'],['DOACAO','Doação'],['OUTRO','Outro']].map(([v,l]) => (
+                {[['VENDA','Venda'],['PERDA','Perda/Sinistro'],['ROUBO','Roubo'],
+                  ['SUCATA','Sucateamento'],['DOACAO','Doação'],['OUTRO','Outro']].map(([v,l]) => (
                   <option key={v} value={v}>{l}</option>
                 ))}
               </select>
@@ -373,7 +398,7 @@ function BensTab({ categorias, departamentos }) {
             <Field label="Observações">
               <textarea className={`${inp} h-20 resize-none`} value={baixaForm.observacoes}
                 onChange={e => setBaixaForm(p => ({ ...p, observacoes: e.target.value }))}
-                placeholder="Justificativa, número do BO, etc."/>
+                placeholder="Nº do BO, justificativa…"/>
             </Field>
             <div className="flex gap-3 pt-2">
               <button onClick={executarBaixa} disabled={salvando || !baixaForm.motivo_baixa}
@@ -395,13 +420,14 @@ function BensTab({ categorias, departamentos }) {
 // ════════════════════════════════════════════════════════════════════════════════
 // ABA LANÇAMENTO
 // ════════════════════════════════════════════════════════════════════════════════
-function LancamentoTab({ categorias, departamentos, onSucesso }) {
+function LancamentoTab({ categorias, departamentos, localizacoes, onSucesso }) {
   const linhaVazia = () => ({ plaqueta: '', descricao: '', valor: '', localizacao: '' })
+
   const [cab, setCab] = useState({
-    categoria_id: '', departamento_id: '', nota_fiscal: '',
-    fornecedor: '', data_aquisicao: today(), responsavel: '', localizacao: '',
+    categoria_id: '', departamento_id: '',
+    nota_fiscal: '', fornecedor: '', data_aquisicao: today(), localizacao: '',
   })
-  const [itens, setItens] = useState([linhaVazia()])
+  const [itens, setItens]       = useState([linhaVazia()])
   const [qtdNova, setQtdNova]   = useState(1)
   const [erros, setErros]       = useState([])
   const [salvando, setSalvando] = useState(false)
@@ -415,7 +441,7 @@ function LancamentoTab({ categorias, departamentos, onSucesso }) {
   const setItem = (i, campo, val) =>
     setItens(p => p.map((it, idx) => idx === i ? { ...it, [campo]: val } : it))
 
-  const remItem = (i) => setItens(p => p.filter((_, idx) => idx !== i))
+  const remItem = i => setItens(p => p.filter((_, idx) => idx !== i))
 
   const aplicarValor = () => {
     const v = itens[0]?.valor || ''
@@ -438,8 +464,7 @@ function LancamentoTab({ categorias, departamentos, onSucesso }) {
         onSucesso()
       }
     } catch (e) {
-      const errosApi = e.response?.data?.erros || [e.response?.data?.erro || 'Erro ao salvar']
-      setErros(errosApi)
+      setErros(e.response?.data?.erros || [e.response?.data?.erro || 'Erro ao salvar'])
     } finally {
       setSalvando(false)
     }
@@ -460,8 +485,8 @@ function LancamentoTab({ categorias, departamentos, onSucesso }) {
 
       {/* Cabeçalho da nota */}
       <div className="bg-bg2 border border-white/[0.06] rounded-xl p-4">
-        <p className="text-[11px] font-bold text-muted uppercase tracking-wider mb-3">Cabeçalho da Nota</p>
-        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
+        <p className="text-[11px] font-bold text-muted uppercase tracking-wider mb-4">Cabeçalho da Nota</p>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
           <Field label="Categoria" required>
             <select className={sel} value={cab.categoria_id}
               onChange={e => setCab(p => ({ ...p, categoria_id: e.target.value }))}>
@@ -489,47 +514,46 @@ function LancamentoTab({ categorias, departamentos, onSucesso }) {
             <input type="date" className={inp} value={cab.data_aquisicao}
               onChange={e => setCab(p => ({ ...p, data_aquisicao: e.target.value }))}/>
           </Field>
-          <Field label="Responsável">
-            <input className={inp} value={cab.responsavel}
-              onChange={e => setCab(p => ({ ...p, responsavel: e.target.value }))}/>
-          </Field>
-          <Field label="Localização (padrão)">
-            <input className={inp} value={cab.localizacao}
-              onChange={e => setCab(p => ({ ...p, localizacao: e.target.value }))}
-              placeholder="Ex: Cozinha, Sala A"/>
+          <Field label="Localização Padrão">
+            <select className={sel} value={cab.localizacao}
+              onChange={e => setCab(p => ({ ...p, localizacao: e.target.value }))}>
+              <option value="">Selecione ou deixe em branco</option>
+              {localizacoes.map(l => <option key={l.id} value={l.nome}>{l.nome}</option>)}
+            </select>
           </Field>
         </div>
       </div>
 
       {/* Itens */}
       <div className="bg-bg2 border border-white/[0.06] rounded-xl p-4">
-        <div className="flex items-center justify-between mb-3 gap-3 flex-wrap">
+        <div className="flex items-center justify-between mb-4 gap-3">
           <p className="text-[11px] font-bold text-muted uppercase tracking-wider">
-            Itens da Nota ({itens.length})
+            Itens da Nota <span className="text-dim">({itens.length})</span>
           </p>
+          {/* Todos os controles agrupados à direita */}
           <div className="flex items-center gap-2">
             <button onClick={aplicarValor}
-              className="text-xs text-muted hover:text-dim border border-border px-3 py-1.5 rounded-lg hover:bg-bg3 transition">
-              Aplicar valor da 1ª linha a todos
+              className="text-xs text-muted hover:text-dim border border-border px-3 py-1.5 rounded-lg hover:bg-bg3 transition whitespace-nowrap">
+              = Mesmo valor
             </button>
             <input type="number" min={1} max={50} value={qtdNova}
               onChange={e => setQtdNova(e.target.value)}
-              className={`${inp} w-16 text-center`}/>
+              className="bg-bg3 border border-border rounded-lg text-sm text-dim text-center focus:outline-none focus:border-primary/60 w-14 py-1.5"/>
             <button onClick={addLinhas}
-              className="text-xs bg-bg3 border border-border text-dim px-3 py-1.5 rounded-lg hover:border-primary/40 hover:text-primary transition">
-              + Adicionar {qtdNova} linha{qtdNova > 1 ? 's' : ''}
+              className="bg-primary/10 text-primary border border-primary/20 text-xs font-semibold px-3 py-1.5 rounded-lg hover:bg-primary/20 transition whitespace-nowrap">
+              + {qtdNova} linha{qtdNova > 1 ? 's' : ''}
             </button>
           </div>
         </div>
 
-        <div className="space-y-2">
-          {/* cabeçalho tabela */}
-          <div className="hidden md:grid grid-cols-[1fr_2fr_1fr_1fr_auto] gap-2 px-2">
-            {['Plaqueta*', 'Descrição*', 'Valor', 'Localização', ''].map(h => (
-              <p key={h} className="text-[10px] font-bold text-muted uppercase tracking-wider">{h}</p>
-            ))}
-          </div>
+        {/* Cabeçalho das colunas */}
+        <div className="hidden md:grid grid-cols-[1fr_2fr_1fr_1fr_auto] gap-2 px-1 mb-1">
+          {['Plaqueta *', 'Descrição *', 'Valor', 'Localização', ''].map(h => (
+            <p key={h} className="text-[10px] font-bold text-muted uppercase tracking-wider">{h}</p>
+          ))}
+        </div>
 
+        <div className="space-y-2">
           {itens.map((it, i) => (
             <div key={i} className="grid grid-cols-1 md:grid-cols-[1fr_2fr_1fr_1fr_auto] gap-2 items-center">
               <input className={inp} value={it.plaqueta}
@@ -541,15 +565,18 @@ function LancamentoTab({ categorias, departamentos, onSucesso }) {
               <input className={inp} value={it.valor}
                 onChange={e => setItem(i, 'valor', e.target.value)}
                 placeholder="1.500,00"/>
-              <input className={inp} value={it.localizacao}
-                onChange={e => setItem(i, 'localizacao', e.target.value)}
-                placeholder="Local específico"/>
+              <select className={sel} value={it.localizacao}
+                onChange={e => setItem(i, 'localizacao', e.target.value)}>
+                <option value="">Padrão do cab.</option>
+                {localizacoes.map(l => <option key={l.id} value={l.nome}>{l.nome}</option>)}
+              </select>
               <button onClick={() => remItem(i)} disabled={itens.length === 1}
                 className="text-muted hover:text-danger transition p-1.5 rounded-lg hover:bg-danger/10 disabled:opacity-20 flex-shrink-0">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}
                   strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
-                  <polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/>
-                  <path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/>
+                  <polyline points="3 6 5 6 21 6"/>
+                  <path d="M19 6l-1 14H6L5 6"/>
+                  <path d="M10 11v6M14 11v6M9 6V4h6v2"/>
                 </svg>
               </button>
             </div>
@@ -573,27 +600,93 @@ function LancamentoTab({ categorias, departamentos, onSucesso }) {
 // ════════════════════════════════════════════════════════════════════════════════
 // ABA INVENTÁRIOS
 // ════════════════════════════════════════════════════════════════════════════════
+function RelatorioPanel({ relatorio: r, onClose }) {
+  const grupos = [
+    { key: 'localizados',     cor: 'teal',  emoji: '✅', label: 'Localizados',     items: r.localizados     },
+    { key: 'divergentes',     cor: 'amber', emoji: '⚠️', label: 'Local Divergente',items: r.divergentes     },
+    { key: 'nao_cadastrados', cor: 'blue',  emoji: '🆕', label: 'Não Cadastrados', items: r.nao_cadastrados },
+    { key: 'fantasmas',       cor: 'rose',  emoji: '👻', label: 'Não Localizados', items: r.fantasmas       },
+  ]
+  const corMap = {
+    teal:  { text: 'text-teal-400',  bg: 'bg-teal-500/10'  },
+    amber: { text: 'text-amber-400', bg: 'bg-amber-500/10' },
+    blue:  { text: 'text-blue-400',  bg: 'bg-blue-500/10'  },
+    rose:  { text: 'text-rose-400',  bg: 'bg-rose-500/10'  },
+  }
+
+  return (
+    <div className="mt-4 pt-4 border-t border-border/50 space-y-4">
+      <div className="flex items-center justify-between">
+        <p className="text-[11px] font-bold text-muted uppercase tracking-wider">Relatório de Reconciliação</p>
+        <button onClick={onClose} className="text-xs text-muted hover:text-dim px-2 py-1 rounded hover:bg-bg3 transition">✕ fechar</button>
+      </div>
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+        {[
+          { l: 'Esperados',  v: r.total_esperados,    c: 'text-dim'      },
+          { l: 'Contados',   v: r.total_contados,     c: 'text-teal-400' },
+          { l: 'Índice',     v: `${r.indice_localizacao}%`, c: 'text-primary' },
+          { l: 'Val. Fantasmas', v: fmtR(r.valor_fantasmas), c: 'text-rose-400' },
+        ].map(k => (
+          <div key={k.l} className="bg-bg3 border border-border rounded-lg p-3 text-center">
+            <p className="text-xs text-muted">{k.l}</p>
+            <p className={`text-xl font-bold ${k.c}`}>{k.v}</p>
+          </div>
+        ))}
+      </div>
+      <div className="space-y-3">
+        {grupos.map(g => {
+          if (!g.items.length) return null
+          const c = corMap[g.cor]
+          return (
+            <details key={g.key} open={g.key !== 'localizados'}>
+              <summary className={`cursor-pointer text-sm font-semibold ${c.text} flex items-center gap-2 py-1`}>
+                {g.emoji} {g.label}
+                <span className={`text-[11px] px-1.5 py-0.5 rounded-full ${c.bg} ml-1`}>{g.items.length}</span>
+              </summary>
+              <div className="mt-2 space-y-1 pl-5">
+                {g.items.map((item, i) => {
+                  const isBem = !!item.plaqueta
+                  const plq   = isBem ? item.plaqueta : item.plaqueta_lida
+                  const desc  = isBem ? item.descricao : (item.bem?.descricao || '—')
+                  const loc   = isBem ? item.localizacao : item.localizacao_encontrada
+                  const val   = isBem ? item.valor_aquisicao : null
+                  return (
+                    <div key={i} className="flex items-center gap-2 text-xs text-dim py-1 border-b border-border/30 last:border-0">
+                      <span className="font-mono text-primary font-bold w-20 flex-shrink-0">{plq}</span>
+                      <span className="flex-1 truncate text-muted">{desc}</span>
+                      {loc && <span className="text-muted truncate max-w-[100px]">📍 {loc}</span>}
+                      {val != null && <span className="text-muted">{fmtR(val)}</span>}
+                    </div>
+                  )
+                })}
+              </div>
+            </details>
+          )
+        })}
+      </div>
+      <p className="text-[10px] text-muted italic">
+        * Baixa e incorporação são sempre decisões manuais — o relatório apenas propõe.
+      </p>
+    </div>
+  )
+}
+
 function InventariosTab() {
   const navigate = useNavigate()
-  const [invs, setInvs]             = useState([])
-  const [loading, setLoading]       = useState(true)
-  const [criando, setCriando]       = useState(false)
-  const [novoForm, setNovoForm]     = useState({ data: today(), local_area: '', responsavel: '', observacoes: '' })
-  const [salvando, setSalvando]     = useState(false)
-  const [relatorio, setRelatorio]   = useState(null)
+  const [invs, setInvs]           = useState([])
+  const [loading, setLoading]     = useState(true)
+  const [criando, setCriando]     = useState(false)
+  const [novoForm, setNovoForm]   = useState({ data: today(), local_area: '', responsavel: '', observacoes: '' })
+  const [salvando, setSalvando]   = useState(false)
+  const [relatorio, setRelatorio] = useState(null)
+  const [invRelId, setInvRelId]   = useState(null)
   const [loadingRel, setLoadingRel] = useState(false)
-  const [invRelId, setInvRelId]     = useState(null)
 
   const carregar = async () => {
     setLoading(true)
-    try {
-      const { data } = await api.get('/imobilizado/inventarios/')
-      setInvs(data)
-    } finally {
-      setLoading(false)
-    }
+    try { const { data } = await api.get('/imobilizado/inventarios/'); setInvs(data) }
+    finally { setLoading(false) }
   }
-
   useEffect(() => { carregar() }, [])
 
   const criarInventario = async () => {
@@ -603,32 +696,26 @@ function InventariosTab() {
       setCriando(false)
       setNovoForm({ data: today(), local_area: '', responsavel: '', observacoes: '' })
       carregar()
-    } finally {
-      setSalvando(false)
-    }
+    } finally { setSalvando(false) }
   }
 
-  const verRelatorio = async (inv) => {
+  const verRelatorio = async inv => {
     setInvRelId(inv.id)
     setLoadingRel(true)
     setRelatorio(null)
-    try {
-      const { data } = await api.get(`/imobilizado/inventarios/${inv.id}/relatorio/`)
-      setRelatorio(data)
-    } finally {
-      setLoadingRel(false)
-    }
+    try { const { data } = await api.get(`/imobilizado/inventarios/${inv.id}/relatorio/`); setRelatorio(data) }
+    finally { setLoadingRel(false) }
   }
 
-  const finalizarInventario = async (inv) => {
-    if (!window.confirm(`Finalizar inventário de ${fmtDt(inv.data)}? Não aceitará mais leituras.`)) return
+  const finalizar = async inv => {
+    if (!window.confirm(`Finalizar inventário de ${fmtDt(inv.data)}?`)) return
     await api.post(`/imobilizado/inventarios/${inv.id}/finalizar/`)
     carregar()
   }
 
   const STATUS_COR = {
-    ABERTO:     { bg: 'bg-teal-500/10',  text: 'text-teal-400',  label: 'Aberto'     },
-    FINALIZADO: { bg: 'bg-bg3',          text: 'text-muted',     label: 'Finalizado' },
+    ABERTO:     { bg: 'bg-teal-500/10', text: 'text-teal-400', label: 'Aberto'     },
+    FINALIZADO: { bg: 'bg-bg3',         text: 'text-muted',    label: 'Finalizado' },
   }
 
   return (
@@ -646,7 +733,7 @@ function InventariosTab() {
       ) : invs.length === 0 ? (
         <div className="text-center py-12 text-muted">
           <p className="text-4xl mb-2">📋</p>
-          <p>Nenhum inventário ainda. Crie o primeiro!</p>
+          <p>Nenhum inventário. Crie o primeiro!</p>
         </div>
       ) : (
         <div className="space-y-3">
@@ -658,12 +745,8 @@ function InventariosTab() {
                   <div>
                     <div className="flex items-center gap-2 flex-wrap">
                       <span className="font-semibold text-dim">{fmtDt(inv.data)}</span>
-                      {inv.local_area && (
-                        <span className="text-xs text-muted">— {inv.local_area}</span>
-                      )}
-                      <span className={`text-[11px] font-semibold px-2 py-0.5 rounded-full ${c.bg} ${c.text}`}>
-                        {c.label}
-                      </span>
+                      {inv.local_area && <span className="text-xs text-muted">— {inv.local_area}</span>}
+                      <span className={`text-[11px] font-semibold px-2 py-0.5 rounded-full ${c.bg} ${c.text}`}>{c.label}</span>
                     </div>
                     <p className="text-xs text-muted mt-1">
                       {inv.total_itens} leitura{inv.total_itens !== 1 ? 's' : ''}
@@ -677,20 +760,18 @@ function InventariosTab() {
                         📱 Contagem
                       </button>
                     )}
-                    <button onClick={() => invRelId === inv.id && relatorio ? setRelatorio(null) : verRelatorio(inv)}
+                    <button onClick={() => invRelId === inv.id && relatorio ? (setRelatorio(null), setInvRelId(null)) : verRelatorio(inv)}
                       className="text-xs bg-bg3 border border-border text-dim px-3 py-1.5 rounded-lg hover:border-primary/40 hover:text-primary transition">
                       {invRelId === inv.id && loadingRel ? '…' : '📊 Relatório'}
                     </button>
                     {inv.status === 'ABERTO' && (
-                      <button onClick={() => finalizarInventario(inv)}
+                      <button onClick={() => finalizar(inv)}
                         className="text-xs bg-bg3 border border-border text-muted px-3 py-1.5 rounded-lg hover:border-amber-500/40 hover:text-amber-400 transition">
                         Finalizar
                       </button>
                     )}
                   </div>
                 </div>
-
-                {/* Relatório inline */}
                 {invRelId === inv.id && relatorio && (
                   <RelatorioPanel relatorio={relatorio} onClose={() => { setRelatorio(null); setInvRelId(null) }}/>
                 )}
@@ -700,7 +781,6 @@ function InventariosTab() {
         </div>
       )}
 
-      {/* Modal novo inventário */}
       {criando && (
         <Modal title="Novo Inventário" onClose={() => setCriando(false)}>
           <div className="space-y-4">
@@ -738,125 +818,53 @@ function InventariosTab() {
   )
 }
 
-// ── relatório de reconciliação ─────────────────────────────────────────────────
-function RelatorioPanel({ relatorio: r, onClose }) {
-  const fmtR2 = v => v == null ? '—' : Number(v).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
-
-  const grupos = [
-    { key: 'localizados',     cor: 'teal',   emoji: '✅', label: 'Localizados',      items: r.localizados     },
-    { key: 'divergentes',     cor: 'amber',  emoji: '⚠️', label: 'Local Divergente', items: r.divergentes     },
-    { key: 'nao_cadastrados', cor: 'blue',   emoji: '🆕', label: 'Não Cadastrados',  items: r.nao_cadastrados },
-    { key: 'fantasmas',       cor: 'rose',   emoji: '👻', label: 'Não Localizados',  items: r.fantasmas       },
-  ]
-
-  const corMap = {
-    teal:  { bg: 'bg-teal-500/10',  text: 'text-teal-400'  },
-    amber: { bg: 'bg-amber-500/10', text: 'text-amber-400' },
-    blue:  { bg: 'bg-blue-500/10',  text: 'text-blue-400'  },
-    rose:  { bg: 'bg-rose-500/10',  text: 'text-rose-400'  },
-  }
-
-  return (
-    <div className="mt-4 pt-4 border-t border-border/50 space-y-4">
-      <div className="flex items-center justify-between">
-        <p className="text-[11px] font-bold text-muted uppercase tracking-wider">Relatório de Reconciliação</p>
-        <button onClick={onClose} className="text-xs text-muted hover:text-dim px-2 py-1 rounded hover:bg-bg3 transition">✕ fechar</button>
-      </div>
-
-      {/* Métricas */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
-        <div className="bg-bg3 border border-border rounded-lg p-3 text-center">
-          <p className="text-xs text-muted">Esperados</p>
-          <p className="text-2xl font-bold text-dim">{r.total_esperados}</p>
-        </div>
-        <div className="bg-bg3 border border-border rounded-lg p-3 text-center">
-          <p className="text-xs text-muted">Contados</p>
-          <p className="text-2xl font-bold text-teal-400">{r.total_contados}</p>
-        </div>
-        <div className="bg-bg3 border border-border rounded-lg p-3 text-center">
-          <p className="text-xs text-muted">Índice</p>
-          <p className="text-2xl font-bold text-primary">{r.indice_localizacao}%</p>
-        </div>
-        <div className="bg-bg3 border border-border rounded-lg p-3 text-center">
-          <p className="text-xs text-muted">Valor Fantasmas</p>
-          <p className="text-lg font-bold text-rose-400">{fmtR2(r.valor_fantasmas)}</p>
-        </div>
-      </div>
-
-      {/* Grupos */}
-      <div className="space-y-3">
-        {grupos.map(g => {
-          if (g.items.length === 0) return null
-          const c = corMap[g.cor]
-          return (
-            <details key={g.key} open={g.key !== 'localizados'}>
-              <summary className={`cursor-pointer text-sm font-semibold ${c.text} flex items-center gap-2 py-1`}>
-                <span>{g.emoji}</span>
-                <span>{g.label}</span>
-                <span className={`text-[11px] px-1.5 py-0.5 rounded-full ${c.bg} ml-1`}>{g.items.length}</span>
-              </summary>
-              <div className="mt-2 space-y-1 pl-6">
-                {g.items.map((item, i) => {
-                  const isBem = !!item.plaqueta  // fantasma tem .plaqueta direto
-                  const plq   = isBem ? item.plaqueta : item.plaqueta_lida
-                  const desc  = isBem ? item.descricao : (item.bem?.descricao || '—')
-                  const loc   = isBem ? item.localizacao : (item.localizacao_encontrada || '')
-                  const val   = isBem ? item.valor_aquisicao : null
-                  return (
-                    <div key={i} className="flex items-center gap-2 text-xs text-dim py-1 border-b border-border/30 last:border-0">
-                      <span className="font-mono text-primary font-bold w-20 flex-shrink-0">{plq}</span>
-                      <span className="flex-1 truncate text-muted">{desc}</span>
-                      {loc && <span className="text-muted truncate max-w-[120px]">📍 {loc}</span>}
-                      {val != null && <span className="text-muted">{fmtR2(val)}</span>}
-                    </div>
-                  )
-                })}
-              </div>
-            </details>
-          )
-        })}
-      </div>
-
-      <p className="text-[10px] text-muted italic">
-        * O relatório propõe ajustes. Baixa e incorporação de bens são sempre decisões manuais.
-      </p>
-    </div>
-  )
-}
-
 // ════════════════════════════════════════════════════════════════════════════════
 // COMPONENTE PRINCIPAL
 // ════════════════════════════════════════════════════════════════════════════════
 export default function Imobilizado() {
-  const [aba, setAba]                 = useState('bens')
-  const [categorias, setCategorias]   = useState([])
+  const [aba, setAba]               = useState('bens')
+  const [categorias, setCategorias] = useState([])
   const [departamentos, setDepartamentos] = useState([])
-  const [novaCat, setNovaCat]         = useState('')
-  const [novaDep, setNovaDep]         = useState('')
-  const [showConfig, setShowConfig]   = useState(false)
+  const [localizacoes, setLocalizacoes]   = useState([])
+  const [showConfig, setShowConfig] = useState(false)
+
+  const [novaCat, setNovaCat]   = useState('')
+  const [novaDep, setNovaDep]   = useState('')
+  const [novaLoc, setNovaLoc]   = useState('')
 
   const carregarConfig = useCallback(async () => {
-    const [cs, ds] = await Promise.all([
+    const [cs, ds, ls] = await Promise.all([
       api.get('/imobilizado/categorias/'),
       api.get('/imobilizado/departamentos/'),
+      api.get('/imobilizado/localizacoes/'),
     ])
     setCategorias(cs.data)
     setDepartamentos(ds.data)
+    setLocalizacoes(ls.data)
   }, [])
 
   useEffect(() => { carregarConfig() }, [carregarConfig])
 
-  const adicionarCategoria = async () => {
+  const adicionarCat = async () => {
     if (!novaCat.trim()) return
     await api.post('/imobilizado/categorias/', { nome: novaCat.trim() })
     setNovaCat('')
     carregarConfig()
   }
-
-  const adicionarDepartamento = async () => {
+  const adicionarDep = async () => {
     if (!novaDep.trim()) return
     await api.post('/imobilizado/departamentos/', { nome: novaDep.trim() })
     setNovaDep('')
+    carregarConfig()
+  }
+  const adicionarLoc = async () => {
+    if (!novaLoc.trim()) return
+    await api.post('/imobilizado/localizacoes/', { nome: novaLoc.trim() })
+    setNovaLoc('')
+    carregarConfig()
+  }
+  const removerLoc = async item => {
+    await api.delete(`/imobilizado/localizacoes/?id=${item.id}`)
     carregarConfig()
   }
 
@@ -867,9 +875,9 @@ export default function Imobilizado() {
   ]
 
   return (
-    <div className="flex flex-col h-full min-h-0">
+    <div className="p-4 md:p-6 space-y-5">
       {/* Cabeçalho */}
-      <div className="flex-shrink-0 pb-4 border-b border-border mb-4 flex items-center justify-between gap-4 flex-wrap">
+      <div className="flex items-center justify-between gap-4 flex-wrap">
         <div>
           <h1 className="text-xl font-bold text-dim">Imobilizado</h1>
           <p className="text-xs text-muted mt-0.5">Controle patrimonial · plaquetas · inventários</p>
@@ -881,10 +889,10 @@ export default function Imobilizado() {
       </div>
 
       {/* Tabs */}
-      <div className="flex-shrink-0 flex items-center gap-1 mb-4 border-b border-border pb-0.5">
+      <div className="flex items-center gap-1 border-b border-border">
         {tabs.map(t => (
           <button key={t.id} onClick={() => setAba(t.id)}
-            className={`px-4 py-2 text-sm font-medium rounded-t-lg transition border-b-2 -mb-0.5
+            className={`px-4 py-2 text-sm font-medium rounded-t-lg transition border-b-2 -mb-px
               ${aba === t.id
                 ? 'border-primary text-primary bg-primary/5'
                 : 'border-transparent text-muted hover:text-dim hover:border-border'}`}>
@@ -894,62 +902,45 @@ export default function Imobilizado() {
       </div>
 
       {/* Conteúdo */}
-      <div className="flex-1 overflow-y-auto">
-        {aba === 'bens' && (
-          <BensTab categorias={categorias} departamentos={departamentos}/>
-        )}
-        {aba === 'lancamento' && (
-          <LancamentoTab
-            categorias={categorias}
-            departamentos={departamentos}
-            onSucesso={() => setAba('bens')}
-          />
-        )}
-        {aba === 'inventarios' && (
-          <InventariosTab/>
-        )}
-      </div>
+      {aba === 'bens' && (
+        <BensTab categorias={categorias} departamentos={departamentos} localizacoes={localizacoes}/>
+      )}
+      {aba === 'lancamento' && (
+        <LancamentoTab
+          categorias={categorias}
+          departamentos={departamentos}
+          localizacoes={localizacoes}
+          onSucesso={() => setAba('bens')}
+        />
+      )}
+      {aba === 'inventarios' && <InventariosTab/>}
 
-      {/* Modal config */}
+      {/* Modal de configuração */}
       {showConfig && (
-        <Modal title="Categorias &amp; Departamentos" onClose={() => setShowConfig(false)}>
-          <div className="space-y-5">
-            <div>
-              <p className="text-[11px] font-bold text-muted uppercase tracking-wider mb-3">Categorias</p>
-              <div className="space-y-1 mb-3 max-h-40 overflow-y-auto">
-                {categorias.map(c => (
-                  <p key={c.id} className="text-sm text-dim px-2 py-1 bg-bg3 rounded">{c.nome}</p>
-                ))}
-              </div>
-              <div className="flex gap-2">
-                <input className={`${inp} flex-1`} value={novaCat}
-                  onChange={e => setNovaCat(e.target.value)}
-                  onKeyDown={e => e.key === 'Enter' && adicionarCategoria()}
-                  placeholder="Nova categoria…"/>
-                <button onClick={adicionarCategoria}
-                  className="bg-primary/10 text-primary border border-primary/20 px-3 py-2 rounded-lg text-sm hover:bg-primary/20 transition">
-                  +
-                </button>
-              </div>
-            </div>
-            <div>
-              <p className="text-[11px] font-bold text-muted uppercase tracking-wider mb-3">Departamentos</p>
-              <div className="space-y-1 mb-3 max-h-40 overflow-y-auto">
-                {departamentos.map(d => (
-                  <p key={d.id} className="text-sm text-dim px-2 py-1 bg-bg3 rounded">{d.nome}</p>
-                ))}
-              </div>
-              <div className="flex gap-2">
-                <input className={`${inp} flex-1`} value={novaDep}
-                  onChange={e => setNovaDep(e.target.value)}
-                  onKeyDown={e => e.key === 'Enter' && adicionarDepartamento()}
-                  placeholder="Novo departamento…"/>
-                <button onClick={adicionarDepartamento}
-                  className="bg-primary/10 text-primary border border-primary/20 px-3 py-2 rounded-lg text-sm hover:bg-primary/20 transition">
-                  +
-                </button>
-              </div>
-            </div>
+        <Modal title="Configurações de Cadastro" wide onClose={() => setShowConfig(false)}>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            <ListaConfig
+              titulo="Categorias"
+              itens={categorias}
+              novoValor={novaCat}
+              onNovoValor={setNovaCat}
+              onAdicionar={adicionarCat}
+            />
+            <ListaConfig
+              titulo="Departamentos"
+              itens={departamentos}
+              novoValor={novaDep}
+              onNovoValor={setNovaDep}
+              onAdicionar={adicionarDep}
+            />
+            <ListaConfig
+              titulo="Localizações"
+              itens={localizacoes}
+              novoValor={novaLoc}
+              onNovoValor={setNovaLoc}
+              onAdicionar={adicionarLoc}
+              onRemover={removerLoc}
+            />
           </div>
         </Modal>
       )}

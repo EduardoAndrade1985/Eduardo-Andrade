@@ -31,6 +31,20 @@ class Departamento(EmpresaBaseModel):
         return self.nome
 
 
+class LocalizacaoBem(EmpresaBaseModel):
+    nome  = models.CharField(max_length=120)
+    ativo = models.BooleanField(default=True)
+
+    class Meta:
+        ordering            = ['nome']
+        unique_together     = [('empresa', 'nome')]
+        verbose_name        = 'Localização'
+        verbose_name_plural = 'Localizações'
+
+    def __str__(self):
+        return self.nome
+
+
 class Bem(EmpresaBaseModel):
     EM_USO     = 'EM_USO'
     MANUTENCAO = 'MANUTENCAO'

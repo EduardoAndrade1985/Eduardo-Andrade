@@ -4,6 +4,7 @@ from . import views
 urlpatterns = [
     path('categorias/',                          views.api_categorias),
     path('departamentos/',                       views.api_departamentos),
+    path('localizacoes/',                        views.api_localizacoes),
     path('bens/buscar/',                         views.api_bem_buscar),
     path('bens/',                                views.api_bens),
     path('bens/<int:pk>/',                       views.api_bem_detalhe),

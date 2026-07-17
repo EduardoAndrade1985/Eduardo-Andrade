@@ -6,7 +6,7 @@ from django.http import JsonResponse
 from django.views.decorators.csrf import csrf_exempt
 from django.utils import timezone
 
-from .models import CategoriaBem, Departamento, Bem, Inventario, ItemInventario
+from .models import CategoriaBem, Departamento, LocalizacaoBem, Bem, Inventario, ItemInventario
 from .services import registrar_leitura, reconciliar
 
 
@@ -140,6 +140,39 @@ def api_departamentos(request):
         d.ativo = True
         d.save(update_fields=['ativo'])
         return JsonResponse({'ok': True, 'id': d.id, 'nome': d.nome})
+
+    return _err('Método não permitido', 405)
+
+
+# ─── LOCALIZAÇÕES ────────────────────────────────────────────────────────────
+
+@csrf_exempt
+def api_localizacoes(request):
+    empresa = _empresa(request)
+    if not empresa:
+        return _err('Sem empresa ativa', 401)
+
+    if request.method == 'GET':
+        qs = LocalizacaoBem.objects.filter(empresa=empresa, ativo=True)
+        return JsonResponse([{'id': l.id, 'nome': l.nome} for l in qs], safe=False)
+
+    if request.method == 'POST':
+        try:
+            data = json.loads(request.body)
+        except Exception:
+            return _err('JSON inválido')
+        nome = (data.get('nome') or '').strip()
+        if not nome:
+            return _err('Nome obrigatório')
+        l, _ = LocalizacaoBem.objects.get_or_create(empresa=empresa, nome=nome, defaults={'ativo': True})
+        l.ativo = True
+        l.save(update_fields=['ativo'])
+        return JsonResponse({'ok': True, 'id': l.id, 'nome': l.nome})
+
+    if request.method == 'DELETE':
+        pk = request.GET.get('id')
+        LocalizacaoBem.objects.filter(pk=pk, empresa=empresa).update(ativo=False)
+        return JsonResponse({'ok': True})
 
     return _err('Método não permitido', 405)
 
