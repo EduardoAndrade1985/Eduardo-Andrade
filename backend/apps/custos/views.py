@@ -17,10 +17,10 @@ def _empresa(request):
     return getattr(request, 'empresa', None)
 
 
-# ─── INDEX — serve o dashboard HTML ───────────────────────────────────────────
+# ─── INDEX — serve o React SPA ────────────────────────────────────────────────
 def index(request):
     return FileResponse(
-        open(settings.BASE_DIR / 'static' / 'Dashboard_de_Custos Atualizado.html', 'rb'),
+        open(settings.BASE_DIR / 'static' / 'index.html', 'rb'),
         content_type='text/html; charset=utf-8',
     )
 

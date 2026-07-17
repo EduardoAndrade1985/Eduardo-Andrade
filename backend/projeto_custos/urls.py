@@ -4,12 +4,21 @@ from django.urls import path, include, re_path
 from django.conf import settings
 from django.conf.urls.static import static
 from django.views.static import serve
+from django.http import FileResponse
 from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
 from rest_framework_simplejwt.exceptions import TokenError, InvalidToken
 from rest_framework.response import Response
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import AllowAny
 from apps.empresas.views import me_view, change_password_view
+
+
+def spa_fallback(request, *args, **kwargs):
+    """Serve o index.html do React para qualquer rota não reconhecida pelo Django."""
+    return FileResponse(
+        open(settings.BASE_DIR / 'static' / 'index.html', 'rb'),
+        content_type='text/html; charset=utf-8',
+    )
 
 
 @api_view(['GET'])
@@ -79,4 +88,7 @@ urlpatterns = [
 
     # Serve arquivos de media em produção também
     re_path(r'^uploads/(?P<path>.*)$', serve, {'document_root': settings.MEDIA_ROOT}),
+
+    # Catch-all: qualquer rota não reconhecida → React SPA (deve ser a última entrada)
+    re_path(r'^.*$', spa_fallback),
 ]
