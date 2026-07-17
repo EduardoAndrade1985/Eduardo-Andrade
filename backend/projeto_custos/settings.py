@@ -113,6 +113,42 @@ STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'
 MEDIA_URL  = '/uploads/'
 MEDIA_ROOT = BASE_DIR / 'uploads'
 
+# ── Supabase Storage (S3-compatible) para arquivos de media ──────────────────
+# Quando SUPABASE_S3_URL estiver definido no ambiente, usa Supabase.
+# Caso contrário, usa disco local (desenvolvimento).
+_SUPABASE_URL        = os.environ.get('SUPABASE_S3_URL', '')        # ex: https://<ref>.supabase.co/storage/v1/s3
+_SUPABASE_KEY_ID     = os.environ.get('SUPABASE_S3_KEY_ID', '')
+_SUPABASE_SECRET     = os.environ.get('SUPABASE_S3_SECRET', '')
+_SUPABASE_BUCKET     = os.environ.get('SUPABASE_S3_BUCKET', 'rphub-fotos')
+_SUPABASE_PUBLIC_URL = os.environ.get('SUPABASE_S3_PUBLIC_URL', '')  # ex: https://<ref>.supabase.co/storage/v1/object/public
+
+if _SUPABASE_URL and _SUPABASE_KEY_ID:
+    # custom_domain deve ser sem protocolo; django-storages prepend "https://" automaticamente
+    _s3_custom_domain = None
+    if _SUPABASE_PUBLIC_URL:
+        _base = _SUPABASE_PUBLIC_URL.replace('https://', '', 1).replace('http://', '', 1)
+        _s3_custom_domain = f'{_base}/{_SUPABASE_BUCKET}'
+
+    STORAGES = {
+        'default': {
+            'BACKEND': 'storages.backends.s3boto3.S3Boto3Storage',
+            'OPTIONS': {
+                'endpoint_url':     _SUPABASE_URL,
+                'access_key':       _SUPABASE_KEY_ID,
+                'secret_key':       _SUPABASE_SECRET,
+                'bucket_name':      _SUPABASE_BUCKET,
+                'region_name':      'sa-east-1',
+                'default_acl':      'public-read',
+                'file_overwrite':   False,
+                'querystring_auth': False,          # URLs públicas sem assinatura
+                **({'custom_domain': _s3_custom_domain} if _s3_custom_domain else {}),
+            },
+        },
+        'staticfiles': {
+            'BACKEND': 'whitenoise.storage.CompressedManifestStaticFilesStorage',
+        },
+    }
+
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 # ── CORS ──────────────────────────────────────────────────────────────────────
