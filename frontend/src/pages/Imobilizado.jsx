@@ -776,6 +776,16 @@ function InventariosTab({ departamentos }) {
                         📱 Contagem
                       </button>
                     )}
+                    {inv.status === 'ABERTO' && (
+                      <button
+                        onClick={async () => {
+                          const url = `${window.location.origin}/imobilizado/${inv.id}/contagem`
+                          try { await navigator.clipboard.writeText(url) } catch { prompt('Copie o link:', url) }
+                        }}
+                        className="text-xs bg-bg3 border border-border text-muted px-3 py-1.5 rounded-lg hover:border-primary/40 hover:text-primary transition">
+                        🔗 Link
+                      </button>
+                    )}
                     <button onClick={() => invRelId === inv.id && relatorio ? (setRelatorio(null), setInvRelId(null)) : verRelatorio(inv)}
                       className="text-xs bg-bg3 border border-border text-dim px-3 py-1.5 rounded-lg hover:border-primary/40 hover:text-primary transition">
                       {invRelId === inv.id && loadingRel ? '…' : '📊 Relatório'}
