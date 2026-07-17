@@ -518,6 +518,23 @@ def api_inventario_leitura(request, pk):
     return JsonResponse({'ok': True, 'criado': created, 'item': _item_dict(item, request)})
 
 
+def api_bem_buscar(request):
+    """Busca um bem pela plaqueta exata — sem registrar leitura. Usado na confirmação mobile."""
+    empresa = _empresa(request)
+    if not empresa:
+        return _err('Sem empresa ativa', 401)
+    plaqueta = (request.GET.get('plaqueta') or '').strip().upper()
+    if not plaqueta:
+        return _err('Plaqueta obrigatória')
+    try:
+        bem = Bem.objects.select_related('categoria', 'departamento').get(
+            plaqueta__iexact=plaqueta, empresa=empresa
+        )
+        return JsonResponse({'encontrado': True, 'bem': _bem_dict(bem, request)})
+    except Bem.DoesNotExist:
+        return JsonResponse({'encontrado': False, 'plaqueta': plaqueta})
+
+
 def api_inventario_relatorio(request, pk):
     empresa = _empresa(request)
     if not empresa:
