@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useLocation } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
 import api from '../services/api'
 
@@ -76,6 +76,8 @@ const KPIS = [
 export default function Login() {
   const { login } = useAuth()
   const navigate  = useNavigate()
+  const location  = useLocation()
+  const from      = location.state?.from?.pathname
 
   const [form, setForm]         = useState({ username: '', password: '' })
   const [error, setError]       = useState('')
@@ -91,7 +93,9 @@ export default function Login() {
       await login(form.username.trim().toLowerCase(), form.password)
       const res = await api.get('/empresas/minhas/')
       const { empresas } = res.data
-      if (empresas.length > 1) {
+      if (from && from !== '/login') {
+        navigate(from, { replace: true })
+      } else if (empresas.length > 1) {
         navigate('/selecionar-empresa', { replace: true })
       } else {
         navigate('/custos', { replace: true })
