@@ -79,10 +79,20 @@ function QRScanner({ onDetected, onClose }) {
     }
   }, [onDetected])
 
+  const [scanLine, setScanLine] = useState(0)
+  useEffect(() => {
+    if (erro) return
+    const id = setInterval(() => setScanLine(p => (p + 2) % 100), 16)
+    return () => clearInterval(id)
+  }, [erro])
+
   return (
     <div style={{ position: 'fixed', inset: 0, zIndex: 9999, background: '#000', display: 'flex', flexDirection: 'column' }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 16px', background: '#111' }}>
-        <p style={{ color: '#fff', fontWeight: 700, fontSize: 15 }}>📷 Aponte para a plaqueta</p>
+        <div>
+          <p style={{ color: '#fff', fontWeight: 700, fontSize: 15 }}>📷 Aponte para a plaqueta</p>
+          <p style={{ color: '#6b7280', fontSize: 12, marginTop: 2 }}>Centralize o código de barras na faixa verde</p>
+        </div>
         <button onClick={onClose} style={{ color: '#9ca3af', background: 'none', border: 'none', fontSize: 22, cursor: 'pointer', lineHeight: 1 }}>✕</button>
       </div>
       {erro ? (
@@ -92,9 +102,44 @@ function QRScanner({ onDetected, onClose }) {
       ) : (
         <div style={{ flex: 1, position: 'relative' }}>
           <video ref={videoRef} muted playsInline style={{ width: '100%', height: '100%', objectFit: 'cover' }}/>
-          <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', pointerEvents: 'none' }}>
-            <div style={{ width: 230, height: 230, border: '3px solid #2dd4a0', borderRadius: 18, boxShadow: '0 0 0 9999px rgba(0,0,0,0.55)' }}/>
+
+          {/* Overlay: 4 faixas escuras deixando janela central livre */}
+          {/* Topo */}
+          <div style={{ position: 'absolute', inset: '0 0 auto 0', height: 'calc(50% - 55px)', background: 'rgba(0,0,0,0.6)', pointerEvents: 'none' }}/>
+          {/* Base */}
+          <div style={{ position: 'absolute', inset: 'auto 0 0 0', height: 'calc(50% - 55px)', background: 'rgba(0,0,0,0.6)', pointerEvents: 'none' }}/>
+          {/* Esquerda */}
+          <div style={{ position: 'absolute', top: 'calc(50% - 55px)', bottom: 'calc(50% - 55px)', left: 0, width: '10%', background: 'rgba(0,0,0,0.6)', pointerEvents: 'none' }}/>
+          {/* Direita */}
+          <div style={{ position: 'absolute', top: 'calc(50% - 55px)', bottom: 'calc(50% - 55px)', right: 0, width: '10%', background: 'rgba(0,0,0,0.6)', pointerEvents: 'none' }}/>
+
+          {/* Borda da janela + linha de scan animada */}
+          <div style={{
+            position: 'absolute', left: '10%', right: '10%',
+            top: '50%', transform: 'translateY(-55px)',
+            height: 110, pointerEvents: 'none',
+            border: '2px solid #2dd4a044', borderRadius: 10,
+            overflow: 'hidden',
+          }}>
+            {/* cantos verdes */}
+            {[
+              { top: 0, left: 0, borderTop: '3px solid #2dd4a0', borderLeft: '3px solid #2dd4a0', borderRadius: '10px 0 0 0' },
+              { top: 0, right: 0, borderTop: '3px solid #2dd4a0', borderRight: '3px solid #2dd4a0', borderRadius: '0 10px 0 0' },
+              { bottom: 0, left: 0, borderBottom: '3px solid #2dd4a0', borderLeft: '3px solid #2dd4a0', borderRadius: '0 0 0 10px' },
+              { bottom: 0, right: 0, borderBottom: '3px solid #2dd4a0', borderRight: '3px solid #2dd4a0', borderRadius: '0 0 10px 0' },
+            ].map((s, i) => (
+              <div key={i} style={{ position: 'absolute', width: 22, height: 22, ...s }}/>
+            ))}
+            {/* linha animada de scan */}
+            <div style={{
+              position: 'absolute', left: 0, right: 0,
+              top: `${scanLine}%`,
+              height: 2,
+              background: 'linear-gradient(90deg, transparent, #2dd4a0cc, transparent)',
+              boxShadow: '0 0 6px #2dd4a0',
+            }}/>
           </div>
+
           <p style={{ position: 'absolute', bottom: 28, left: 0, right: 0, textAlign: 'center', color: '#fff', fontSize: 13, opacity: 0.7 }}>
             Escaneando automaticamente…
           </p>
