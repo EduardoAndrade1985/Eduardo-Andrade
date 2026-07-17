@@ -132,7 +132,6 @@ STORAGES = {
             'secret_key':       _SUPABASE_SECRET,
             'bucket_name':      _SUPABASE_BUCKET,
             'region_name':      'sa-east-1',
-            'default_acl':      'public-read',
             'file_overwrite':   False,
             'querystring_auth': False,
             **({'custom_domain': _s3_custom_domain} if _s3_custom_domain else {}),
