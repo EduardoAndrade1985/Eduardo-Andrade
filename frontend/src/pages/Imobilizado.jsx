@@ -671,7 +671,7 @@ function RelatorioPanel({ relatorio: r, onClose }) {
   )
 }
 
-function InventariosTab() {
+function InventariosTab({ departamentos }) {
   const navigate = useNavigate()
   const [invs, setInvs]           = useState([])
   const [loading, setLoading]     = useState(true)
@@ -788,10 +788,12 @@ function InventariosTab() {
               <input type="date" className={inp} value={novoForm.data}
                 onChange={e => setNovoForm(p => ({ ...p, data: e.target.value }))}/>
             </Field>
-            <Field label="Área / Local">
-              <input className={inp} value={novoForm.local_area}
-                onChange={e => setNovoForm(p => ({ ...p, local_area: e.target.value }))}
-                placeholder="Ex: Cozinha Principal, Bar, Recepção"/>
+            <Field label="Departamento / Área">
+              <select className={sel} value={novoForm.local_area}
+                onChange={e => setNovoForm(p => ({ ...p, local_area: e.target.value }))}>
+                <option value="">Selecione…</option>
+                {departamentos.map(d => <option key={d.id} value={d.nome}>{d.nome}</option>)}
+              </select>
             </Field>
             <Field label="Responsável">
               <input className={inp} value={novoForm.responsavel}
@@ -913,7 +915,7 @@ export default function Imobilizado() {
           onSucesso={() => setAba('bens')}
         />
       )}
-      {aba === 'inventarios' && <InventariosTab/>}
+      {aba === 'inventarios' && <InventariosTab departamentos={departamentos}/>}
 
       {/* Modal de configuração */}
       {showConfig && (
