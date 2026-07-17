@@ -19,6 +19,8 @@ import TVManager from './pages/TVManager'
 import TVPlayer from './pages/TVPlayer'
 import FoodIntelligence from './pages/FoodIntelligence'
 import FoodIntelligenceRegistrar from './pages/FoodIntelligenceRegistrar'
+import Imobilizado from './pages/Imobilizado'
+import ImobilizadoContagem from './pages/ImobilizadoContagem'
 
 export default function App() {
   return (
@@ -53,9 +55,15 @@ export default function App() {
           <Route path="/estoque"   element={<Estoque />} />
           <Route path="/usuarios"  element={<Usuarios />} />
           <Route path="/empresas"  element={<Empresas />} />
-          <Route path="/tv-manager" element={<TVManager />} />
+          <Route path="/tv-manager"   element={<TVManager />} />
           <Route path="/desperdicio" element={<FoodIntelligence />} />
+          <Route path="/imobilizado" element={<Imobilizado />} />
         </Route>
+
+        {/* Contagem de imobilizado — sem sidebar, com auth */}
+        <Route path="/imobilizado/:id/contagem" element={
+          <ProtectedRoute><ImobilizadoContagem /></ProtectedRoute>
+        } />
 
         {/* Food Intelligence — tela de lançamento (tablet), pública e sem login: o
             dispositivo se identifica pelo token de pareamento (igual ao /tv) */}

@@ -74,6 +74,9 @@ urlpatterns = [
     # Food Intelligence (desperdício de buffet)
     path('api/desperdicio/', include('apps.desperdicio.urls')),
 
+    # Imobilizado (controle patrimonial)
+    path('api/imobilizado/', include('apps.imobilizado.urls')),
+
     # Serve arquivos de media em produção também
     re_path(r'^uploads/(?P<path>.*)$', serve, {'document_root': settings.MEDIA_ROOT}),
 ]

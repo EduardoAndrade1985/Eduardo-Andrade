@@ -41,6 +41,7 @@ INSTALLED_APPS = [
     'apps.estoque.apps.EstoqueConfig',
     'apps.tv.apps.TvConfig',
     'apps.desperdicio.apps.DesperdicioConfig',
+    'apps.imobilizado.apps.ImobilizadoConfig',
 ]
 
 MIDDLEWARE = [
