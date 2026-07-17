@@ -421,7 +421,7 @@ function BensTab({ categorias, departamentos, localizacoes }) {
 // ABA LANÇAMENTO
 // ════════════════════════════════════════════════════════════════════════════════
 function LancamentoTab({ categorias, departamentos, localizacoes, onSucesso }) {
-  const linhaVazia = () => ({ plaqueta: '', descricao: '', valor: '', localizacao: '' })
+  const linhaVazia = () => ({ plaqueta: '', descricao: '', valor: '', localizacao: '', foto: null })
 
   const [cab, setCab] = useState({
     categoria_id: '', departamento_id: '',
@@ -454,9 +454,13 @@ function LancamentoTab({ categorias, departamentos, localizacoes, onSucesso }) {
     setErros([])
     setOk(null)
     try {
-      const { data } = await api.post('/imobilizado/lancamento/', {
-        cabecalho: cab,
-        itens: itens.filter(it => it.plaqueta.trim() || it.descricao.trim()),
+      const itensFiltrados = itens.filter(it => it.plaqueta.trim() || it.descricao.trim())
+      const fd = new FormData()
+      fd.append('cabecalho', JSON.stringify(cab))
+      fd.append('itens', JSON.stringify(itensFiltrados.map(({ foto, ...rest }) => rest)))
+      itensFiltrados.forEach((it, i) => { if (it.foto) fd.append(`foto_${i}`, it.foto) })
+      const { data } = await api.post('/imobilizado/lancamento/', fd, {
+        headers: { 'Content-Type': 'multipart/form-data' },
       })
       if (data.ok) {
         setOk(data.total)
@@ -547,15 +551,15 @@ function LancamentoTab({ categorias, departamentos, localizacoes, onSucesso }) {
         </div>
 
         {/* Cabeçalho das colunas */}
-        <div className="hidden md:grid grid-cols-[1fr_2fr_1fr_1fr_auto] gap-2 px-1 mb-1">
-          {['Plaqueta *', 'Descrição *', 'Valor', 'Localização', ''].map(h => (
+        <div className="hidden md:grid grid-cols-[1fr_2fr_1fr_1fr_auto_auto] gap-2 px-1 mb-1">
+          {['Plaqueta *', 'Descrição *', 'Valor', 'Localização', 'Foto', ''].map(h => (
             <p key={h} className="text-[10px] font-bold text-muted uppercase tracking-wider">{h}</p>
           ))}
         </div>
 
         <div className="space-y-2">
           {itens.map((it, i) => (
-            <div key={i} className="grid grid-cols-1 md:grid-cols-[1fr_2fr_1fr_1fr_auto] gap-2 items-center">
+            <div key={i} className="grid grid-cols-1 md:grid-cols-[1fr_2fr_1fr_1fr_auto_auto] gap-2 items-center">
               <input className={inp} value={it.plaqueta}
                 onChange={e => setItem(i, 'plaqueta', e.target.value.toUpperCase())}
                 placeholder="P-001"/>
@@ -570,6 +574,18 @@ function LancamentoTab({ categorias, departamentos, localizacoes, onSucesso }) {
                 <option value="">Padrão do cab.</option>
                 {localizacoes.map(l => <option key={l.id} value={l.nome}>{l.nome}</option>)}
               </select>
+              {/* Upload de foto compacto */}
+              <div className="flex-shrink-0">
+                <input type="file" accept="image/*" id={`foto-linha-${i}`} className="hidden"
+                  onChange={e => setItem(i, 'foto', e.target.files[0] || null)}/>
+                <label htmlFor={`foto-linha-${i}`}
+                  className="cursor-pointer flex items-center justify-center w-9 h-9 rounded-lg border border-dashed border-border hover:border-primary/50 hover:bg-primary/5 transition overflow-hidden">
+                  {it.foto
+                    ? <img src={URL.createObjectURL(it.foto)} alt="" className="w-full h-full object-cover rounded-lg"/>
+                    : <span className="text-base">📷</span>
+                  }
+                </label>
+              </div>
               <button onClick={() => remItem(i)} disabled={itens.length === 1}
                 className="text-muted hover:text-danger transition p-1.5 rounded-lg hover:bg-danger/10 disabled:opacity-20 flex-shrink-0">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}

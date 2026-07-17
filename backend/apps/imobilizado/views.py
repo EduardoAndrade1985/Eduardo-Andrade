@@ -357,13 +357,20 @@ def api_lancamento(request):
     if request.method != 'POST':
         return _err('Método não permitido', 405)
 
-    try:
-        payload = json.loads(request.body)
-    except Exception:
-        return _err('JSON inválido')
-
-    cab   = payload.get('cabecalho', {})
-    itens = payload.get('itens', [])
+    is_multi = request.content_type and 'multipart' in request.content_type
+    if is_multi:
+        try:
+            cab   = json.loads(request.POST.get('cabecalho', '{}'))
+            itens = json.loads(request.POST.get('itens', '[]'))
+        except Exception:
+            return _err('Dados inválidos no formulário')
+    else:
+        try:
+            payload = json.loads(request.body)
+        except Exception:
+            return _err('JSON inválido')
+        cab   = payload.get('cabecalho', {})
+        itens = payload.get('itens', [])
 
     if not itens:
         return _err('Nenhum item enviado')
@@ -408,12 +415,12 @@ def api_lancamento(request):
 
     with transaction.atomic():
         criados = []
-        for item in itens:
+        for i, item in enumerate(itens):
             plaqueta  = item.get('plaqueta', '').strip().upper()
             descricao = item.get('descricao', '').strip()
             loc_item  = (item.get('localizacao') or localizacao).strip()
             valor     = _parse_valor(str(item.get('valor') or ''))
-            b = Bem.objects.create(
+            b = Bem(
                 empresa         = empresa,
                 plaqueta        = plaqueta,
                 descricao       = descricao,
@@ -426,6 +433,10 @@ def api_lancamento(request):
                 data_aquisicao  = data_aquisicao,
                 valor_aquisicao = valor,
             )
+            foto_file = request.FILES.get(f'foto_{i}')
+            if foto_file:
+                b.foto = foto_file
+            b.save()
             criados.append({'id': b.id, 'plaqueta': b.plaqueta})
 
     return JsonResponse({'ok': True, 'total': len(criados), 'bens': criados})
