@@ -111,6 +111,7 @@ function BensTab({ categorias, departamentos, localizacoes }) {
   const [salvando, setSalvando] = useState(false)
   const [baixaForm, setBaixaForm] = useState({ motivo_baixa: '', data_baixa: today(), observacoes: '' })
   const [confirmExcluir, setConfirmExcluir] = useState(false)
+  const [fotoZoom, setFotoZoom] = useState(null)
 
   const carregar = useCallback(async () => {
     setLoading(true)
@@ -275,13 +276,13 @@ function BensTab({ categorias, departamentos, localizacoes }) {
                 {bens.map(b => (
                   <tr key={b.id} onClick={() => abrirEditar(b)}
                     className="border-b border-border/40 last:border-0 hover:bg-bg3/50 cursor-pointer transition">
-                    <td className="px-4 py-2.5">
+                    <td className="px-4 py-1.5" onClick={b.foto_url ? e => { e.stopPropagation(); setFotoZoom(b.foto_url) } : undefined}>
                       {b.foto_url
-                        ? <img src={b.foto_url} alt="" className="w-9 h-9 rounded-lg object-cover border border-border"/>
-                        : <div className="w-9 h-9 rounded-lg bg-bg3 border border-border flex items-center justify-center text-base">📦</div>
+                        ? <img src={b.foto_url} alt="" className="w-8 h-8 rounded-lg object-cover border border-border cursor-zoom-in hover:ring-2 hover:ring-primary/50 transition"/>
+                        : <div className="w-8 h-8 rounded-lg bg-bg3 border border-border flex items-center justify-center text-sm">📦</div>
                       }
                     </td>
-                    <td className="px-4 py-2.5">
+                    <td className="px-4 py-1.5">
                       <div className="flex items-center gap-1.5">
                         <span className="text-xs font-mono font-bold text-primary bg-primary/10 px-2 py-0.5 rounded whitespace-nowrap">{b.plaqueta}</span>
                         {!b.cadastro_completo && (
@@ -289,16 +290,16 @@ function BensTab({ categorias, departamentos, localizacoes }) {
                         )}
                       </div>
                     </td>
-                    <td className="px-4 py-2.5 text-dim font-medium max-w-[200px]">
+                    <td className="px-4 py-1.5 text-dim font-medium max-w-[200px]">
                       <span className="block truncate">{b.descricao}</span>
                     </td>
-                    <td className="px-4 py-2.5 text-muted whitespace-nowrap">{b.categoria?.nome}</td>
-                    <td className="px-4 py-2.5 text-muted whitespace-nowrap">{b.departamento?.nome}</td>
-                    <td className="px-4 py-2.5 text-muted whitespace-nowrap">{b.localizacao || '—'}</td>
-                    <td className="px-4 py-2.5 text-dim font-medium whitespace-nowrap text-right">
+                    <td className="px-4 py-1.5 text-muted whitespace-nowrap">{b.categoria?.nome}</td>
+                    <td className="px-4 py-1.5 text-muted whitespace-nowrap">{b.departamento?.nome}</td>
+                    <td className="px-4 py-1.5 text-muted whitespace-nowrap">{b.localizacao || '—'}</td>
+                    <td className="px-4 py-1.5 text-dim font-medium whitespace-nowrap text-right">
                       {b.valor_aquisicao != null ? fmtR(b.valor_aquisicao) : '—'}
                     </td>
-                    <td className="px-4 py-2.5"><SituacaoBadge s={b.situacao}/></td>
+                    <td className="px-4 py-1.5"><SituacaoBadge s={b.situacao}/></td>
                   </tr>
                 ))}
               </tbody>
@@ -307,16 +308,26 @@ function BensTab({ categorias, departamentos, localizacoes }) {
         </div>
       )}
 
+      {/* Lightbox de foto */}
+      {fotoZoom && (
+        <div className="fixed inset-0 z-[1000] bg-black/90 flex items-center justify-center p-6 cursor-zoom-out"
+          onClick={() => setFotoZoom(null)}>
+          <img src={fotoZoom} alt="" className="max-w-full max-h-full rounded-xl object-contain shadow-2xl"/>
+          <button className="absolute top-4 right-4 text-white/60 hover:text-white text-2xl leading-none">✕</button>
+        </div>
+      )}
+
       {/* Modal de edição */}
       {editando && bemSel && (
-        <Modal title={`Bem ${bemSel.plaqueta}`} onClose={() => { setEditando(false); setBemSel(null) }} wide>
-          <div className="space-y-4">
+        <Modal title={`Bem ${bemSel.plaqueta}`} onClose={() => { setEditando(false); setBemSel(null); setConfirmExcluir(false) }} wide>
+          <div className="space-y-3">
             {erros.length > 0 && (
-              <div className="bg-rose-500/10 border border-rose-500/20 rounded-lg p-3 text-sm text-rose-400">
+              <div className="bg-rose-500/10 border border-rose-500/20 rounded-lg p-2.5 text-sm text-rose-400">
                 {erros.map((e, i) => <p key={i}>{e}</p>)}
               </div>
             )}
-            <div className="grid grid-cols-2 gap-3">
+            {/* 3 colunas para caber sem scroll */}
+            <div className="grid grid-cols-3 gap-2">
               <Field label="Descrição" required>
                 <input className={inp} value={form.descricao} onChange={e => setForm(p => ({ ...p, descricao: e.target.value }))}/>
               </Field>
@@ -325,6 +336,9 @@ function BensTab({ categorias, departamentos, localizacoes }) {
                   <option value="EM_USO">Em Uso</option>
                   <option value="MANUTENCAO">Em Manutenção</option>
                 </select>
+              </Field>
+              <Field label="Nota Fiscal">
+                <input className={inp} value={form.nota_fiscal} onChange={e => setForm(p => ({ ...p, nota_fiscal: e.target.value }))}/>
               </Field>
               <Field label="Categoria">
                 <select className={sel} value={form.categoria_id} onChange={e => setForm(p => ({ ...p, categoria_id: e.target.value }))}>
@@ -337,17 +351,13 @@ function BensTab({ categorias, departamentos, localizacoes }) {
                 </select>
               </Field>
               <Field label="Localização">
-                <select className={sel} value={form.localizacao}
-                  onChange={e => setForm(p => ({ ...p, localizacao: e.target.value }))}>
-                  <option value="">Selecione ou deixe em branco</option>
+                <select className={sel} value={form.localizacao} onChange={e => setForm(p => ({ ...p, localizacao: e.target.value }))}>
+                  <option value="">— sem localização —</option>
                   {localizacoes.map(l => <option key={l.id} value={l.nome}>{l.nome}</option>)}
                   {form.localizacao && !localizacoes.find(l => l.nome === form.localizacao) && (
-                    <option value={form.localizacao}>{form.localizacao} (atual)</option>
+                    <option value={form.localizacao}>{form.localizacao}</option>
                   )}
                 </select>
-              </Field>
-              <Field label="Nota Fiscal">
-                <input className={inp} value={form.nota_fiscal} onChange={e => setForm(p => ({ ...p, nota_fiscal: e.target.value }))}/>
               </Field>
               <Field label="Fornecedor">
                 <input className={inp} value={form.fornecedor} onChange={e => setForm(p => ({ ...p, fornecedor: e.target.value }))}/>
@@ -361,33 +371,38 @@ function BensTab({ categorias, departamentos, localizacoes }) {
                   placeholder="Ex: 1.500,00"/>
               </Field>
             </div>
-            <Field label="Observações">
-              <textarea className={`${inp} h-20 resize-none`} value={form.observacoes}
-                onChange={e => setForm(p => ({ ...p, observacoes: e.target.value }))}/>
-            </Field>
-            <Field label="Foto">
-              <div className="flex items-center gap-3">
-                {bemSel.foto_url && !fotoFile && (
-                  <img src={bemSel.foto_url} alt="" className="w-16 h-16 rounded-lg object-cover border border-border"/>
-                )}
-                {fotoFile && (
-                  <img src={URL.createObjectURL(fotoFile)} alt="" className="w-16 h-16 rounded-lg object-cover border border-border"/>
-                )}
-                <input type="file" accept="image/*"
-                  onChange={e => setFotoFile(e.target.files[0] || null)}
-                  className="text-xs text-muted"/>
-              </div>
-            </Field>
-            <div className="flex gap-3 pt-2 flex-wrap items-center">
+            {/* Observações + Foto lado a lado */}
+            <div className="grid grid-cols-2 gap-2">
+              <Field label="Observações">
+                <textarea className={`${inp} h-16 resize-none`} value={form.observacoes}
+                  onChange={e => setForm(p => ({ ...p, observacoes: e.target.value }))}/>
+              </Field>
+              <Field label="Foto">
+                <div className="flex items-center gap-3 h-16">
+                  {(bemSel.foto_url && !fotoFile) && (
+                    <img src={bemSel.foto_url} alt="" onClick={() => setFotoZoom(bemSel.foto_url)}
+                      className="h-14 w-14 rounded-lg object-cover border border-border cursor-zoom-in hover:ring-2 hover:ring-primary/50 transition flex-shrink-0"/>
+                  )}
+                  {fotoFile && (
+                    <img src={URL.createObjectURL(fotoFile)} alt=""
+                      className="h-14 w-14 rounded-lg object-cover border border-border flex-shrink-0"/>
+                  )}
+                  <input type="file" accept="image/*"
+                    onChange={e => setFotoFile(e.target.files[0] || null)}
+                    className="text-xs text-muted"/>
+                </div>
+              </Field>
+            </div>
+            <div className="flex gap-2 pt-1 flex-wrap items-center border-t border-border/50">
               <button onClick={salvarEdicao} disabled={salvando}
                 className="bg-primary text-bg text-sm font-semibold px-5 py-2 rounded-lg hover:bg-primary/90 transition disabled:opacity-50">
                 {salvando ? 'Salvando…' : 'Salvar'}
               </button>
               <button onClick={() => { setEditando(false); setBaixando(true) }}
-                className="bg-rose-500/10 text-rose-400 border border-rose-500/20 text-sm font-semibold px-5 py-2 rounded-lg hover:bg-rose-500/20 transition">
+                className="bg-rose-500/10 text-rose-400 border border-rose-500/20 text-sm font-semibold px-4 py-2 rounded-lg hover:bg-rose-500/20 transition">
                 Dar Baixa
               </button>
-              <button onClick={() => { setEditando(false); setBemSel(null) }}
+              <button onClick={() => { setEditando(false); setBemSel(null); setConfirmExcluir(false) }}
                 className="text-muted text-sm px-4 py-2 rounded-lg hover:bg-bg3 transition">
                 Cancelar
               </button>
