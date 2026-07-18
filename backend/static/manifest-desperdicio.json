@@ -1,0 +1,9 @@
+{
+  "name": "Food Intelligence — Lançamento",
+  "short_name": "Food Intel",
+  "start_url": "/desperdicio/registrar",
+  "display": "standalone",
+  "background_color": "#0a0e14",
+  "theme_color": "#2dd4a0",
+  "orientation": "portrait"
+}

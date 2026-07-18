@@ -32,6 +32,15 @@ class EmpresaMiddleware(MiddlewareMixin):
             self._resolve_user_from_jwt(request)
 
         if not request.user.is_authenticated:
+            # Acesso público via inventário (link compartilhável sem login)
+            inventario_id = request.headers.get('X-Inventario-Id')
+            if inventario_id:
+                try:
+                    from apps.imobilizado.models import Inventario
+                    inv = Inventario.objects.select_related('empresa').get(pk=int(inventario_id))
+                    request.empresa = inv.empresa
+                except Exception:
+                    pass
             return
 
         from apps.empresas.models import Empresa, MembroEmpresa

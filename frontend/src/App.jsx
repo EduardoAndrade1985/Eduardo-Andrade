@@ -60,10 +60,8 @@ export default function App() {
           <Route path="/imobilizado" element={<Imobilizado />} />
         </Route>
 
-        {/* Contagem de imobilizado — sem sidebar, com auth */}
-        <Route path="/imobilizado/:id/contagem" element={
-          <ProtectedRoute><ImobilizadoContagem /></ProtectedRoute>
-        } />
+        {/* Contagem de imobilizado — sem sidebar, sem login (link público) */}
+        <Route path="/imobilizado/:id/contagem" element={<ImobilizadoContagem />} />
 
         {/* Food Intelligence — tela de lançamento (tablet), pública e sem login: o
             dispositivo se identifica pelo token de pareamento (igual ao /tv) */}

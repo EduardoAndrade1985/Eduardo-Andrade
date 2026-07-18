@@ -1,6 +1,6 @@
-import { useState, useEffect, useRef, useCallback } from 'react'
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import api from '../services/api'
+import axios from 'axios'
 
 // ── paleta por situação ───────────────────────────────────────────────────────
 const COR = {
@@ -382,6 +382,14 @@ export default function ImobilizadoContagem() {
   const { id }   = useParams()
   const navigate = useNavigate()
 
+  const invApi = useMemo(() => {
+    const BASE = import.meta.env.VITE_API_BASE_URL || ''
+    return axios.create({
+      baseURL: BASE + '/api',
+      headers: { 'Content-Type': 'application/json', 'X-Inventario-Id': id },
+    })
+  }, [id])
+
   const [inventario, setInventario]   = useState(null)
   const [loading, setLoading]         = useState(true)
   const [itens, setItens]             = useState([])
@@ -405,9 +413,9 @@ export default function ImobilizadoContagem() {
   const carregarInventario = useCallback(async () => {
     try {
       const [invRes, catRes, depRes] = await Promise.all([
-        api.get(`/imobilizado/inventarios/${id}/`),
-        api.get('/imobilizado/categorias/'),
-        api.get('/imobilizado/departamentos/'),
+        invApi.get(`/imobilizado/inventarios/${id}/`),
+        invApi.get('/imobilizado/categorias/'),
+        invApi.get('/imobilizado/departamentos/'),
       ])
       setInventario(invRes.data)
       setItens([...(invRes.data.itens || [])].reverse())
@@ -418,7 +426,7 @@ export default function ImobilizadoContagem() {
     } finally {
       setLoading(false)
     }
-  }, [id])
+  }, [id, invApi])
 
   useEffect(() => { carregarInventario() }, [carregarInventario])
   useEffect(() => { if (operador) localStorage.setItem('imob_operador', operador) }, [operador])
@@ -431,7 +439,7 @@ export default function ImobilizadoContagem() {
     setPlaqueta('')
     setStep('buscando')
     try {
-      const { data } = await api.get('/imobilizado/bens/buscar/', { params: { plaqueta: p } })
+      const { data } = await invApi.get('/imobilizado/bens/buscar/', { params: { plaqueta: p } })
       setLocalEncontrado(data.encontrado ? (data.bem.localizacao || '') : '')
       setBuscaResult(data)
       setStep('confirmar')
@@ -439,7 +447,7 @@ export default function ImobilizadoContagem() {
       setStep('scan')
       mostrarFlash({ bg: '#1c0a17', border: '#dc2626', text: '#f87171', msg: '✗ Erro ao buscar plaqueta' })
     }
-  }, [])
+  }, [invApi])
 
   // ── confirma leitura (com ou sem cadastro prévio) ────────────────────────────
   const confirmar = useCallback(async ({ cadastrarPendente, novaDesc, novaCatId, novaDepId }) => {
@@ -449,7 +457,7 @@ export default function ImobilizadoContagem() {
     try {
       // Se não cadastrado e usuário quer cadastrar como pendente → cria o Bem primeiro
       if (!buscaResult.encontrado && cadastrarPendente) {
-        const { data: bemData } = await api.post('/imobilizado/bens/', {
+        const { data: bemData } = await invApi.post('/imobilizado/bens/', {
           plaqueta:        plq,
           descricao:       novaDesc.trim(),
           categoria_id:    novaCatId,
@@ -460,7 +468,7 @@ export default function ImobilizadoContagem() {
       }
 
       // Registra a leitura (agora o bem existe se foi cadastrado)
-      const { data } = await api.post(`/imobilizado/inventarios/${id}/leitura/`, {
+      const { data } = await invApi.post(`/imobilizado/inventarios/${id}/leitura/`, {
         plaqueta:               plq,
         localizacao_encontrada: localEncontrado.trim(),
         contado_por:            operador.trim(),
@@ -482,7 +490,7 @@ export default function ImobilizadoContagem() {
       setLocalEncontrado('')
       setStep('scan')
     }
-  }, [id, buscaResult, localEncontrado, operador])
+  }, [id, buscaResult, localEncontrado, operador, invApi])
 
   const mostrarFlash = (f) => { setFlash(f); setTimeout(() => setFlash(null), 2200) }
   const onSubmit     = (e) => { e.preventDefault(); buscarPlaqueta(plaqueta) }
@@ -501,8 +509,8 @@ export default function ImobilizadoContagem() {
 
   const finalizarInventario = async () => {
     if (!window.confirm('Finalizar inventário? Não aceitará mais leituras.')) return
-    await api.post(`/imobilizado/inventarios/${id}/finalizar/`)
-    navigate('/imobilizado')
+    await invApi.post(`/imobilizado/inventarios/${id}/finalizar/`)
+    await carregarInventario()
   }
 
   if (loading) {
