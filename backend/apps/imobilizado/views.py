@@ -486,6 +486,7 @@ def api_inventarios(request):
     return _err('Método não permitido', 405)
 
 
+@csrf_exempt
 def api_inventario_detalhe(request, pk):
     empresa = _empresa(request)
     if not empresa:
@@ -495,6 +496,10 @@ def api_inventario_detalhe(request, pk):
         inv = Inventario.objects.get(pk=pk, empresa=empresa)
     except Inventario.DoesNotExist:
         return _err('Inventário não encontrado', 404)
+
+    if request.method == 'DELETE':
+        inv.delete()
+        return JsonResponse({'ok': True})
 
     itens = inv.itens.select_related('bem', 'bem__categoria', 'bem__departamento').all()
     return JsonResponse({

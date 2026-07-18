@@ -110,6 +110,7 @@ function BensTab({ categorias, departamentos, localizacoes }) {
   const [erros, setErros]       = useState([])
   const [salvando, setSalvando] = useState(false)
   const [baixaForm, setBaixaForm] = useState({ motivo_baixa: '', data_baixa: today(), observacoes: '' })
+  const [confirmExcluir, setConfirmExcluir] = useState(false)
 
   const carregar = useCallback(async () => {
     setLoading(true)
@@ -168,6 +169,21 @@ function BensTab({ categorias, departamentos, localizacoes }) {
     }
   }
 
+  const excluirBem = async () => {
+    setSalvando(true)
+    try {
+      await api.delete(`/imobilizado/bens/${bemSel.id}/`)
+      setEditando(false)
+      setBemSel(null)
+      setConfirmExcluir(false)
+      carregar()
+    } catch (e) {
+      setErros([e.response?.data?.erro || 'Erro ao excluir'])
+    } finally {
+      setSalvando(false)
+    }
+  }
+
   const executarBaixa = async () => {
     setSalvando(true)
     try {
@@ -204,37 +220,39 @@ function BensTab({ categorias, departamentos, localizacoes }) {
         ))}
       </div>
 
-      {/* Filtros */}
-      <div className="bg-bg2 border border-white/[0.06] rounded-xl p-4 flex flex-wrap gap-3">
-        <input className={`${inp} flex-1 min-w-[180px]`}
-          placeholder="Buscar plaqueta, descrição ou NF…"
-          value={filtros.q} onChange={e => setFiltros(p => ({ ...p, q: e.target.value }))}/>
-        <select className={`${sel} w-36`} value={filtros.situacao}
-          onChange={e => setFiltros(p => ({ ...p, situacao: e.target.value }))}>
-          <option value="">Situação</option>
-          <option value="EM_USO">Em Uso</option>
-          <option value="MANUTENCAO">Manutenção</option>
-          <option value="BAIXADO">Baixado</option>
-        </select>
-        <select className={`${sel} w-44`} value={filtros.categoria_id}
-          onChange={e => setFiltros(p => ({ ...p, categoria_id: e.target.value }))}>
-          <option value="">Categoria</option>
-          {categorias.map(c => <option key={c.id} value={c.id}>{c.nome}</option>)}
-        </select>
-        <select className={`${sel} w-44`} value={filtros.departamento_id}
-          onChange={e => setFiltros(p => ({ ...p, departamento_id: e.target.value }))}>
-          <option value="">Departamento</option>
-          {departamentos.map(d => <option key={d.id} value={d.id}>{d.nome}</option>)}
-        </select>
-        <label className="flex items-center gap-2 text-sm text-dim cursor-pointer select-none">
-          <input type="checkbox" checked={!!filtros.pendente}
-            onChange={e => setFiltros(p => ({ ...p, pendente: e.target.checked ? '1' : '' }))}
-            className="accent-primary"/>
-          Só pendentes
-        </label>
+      {/* Filtros — linha única com scroll horizontal em telas menores */}
+      <div className="bg-bg2 border border-white/[0.06] rounded-xl px-4 py-3 overflow-x-auto">
+        <div className="flex gap-2 items-center min-w-max">
+          <input className={`${inp} w-56`}
+            placeholder="Buscar plaqueta, descrição ou NF…"
+            value={filtros.q} onChange={e => setFiltros(p => ({ ...p, q: e.target.value }))}/>
+          <select className={`${sel} w-32`} value={filtros.situacao}
+            onChange={e => setFiltros(p => ({ ...p, situacao: e.target.value }))}>
+            <option value="">Situação</option>
+            <option value="EM_USO">Em Uso</option>
+            <option value="MANUTENCAO">Manutenção</option>
+            <option value="BAIXADO">Baixado</option>
+          </select>
+          <select className={`${sel} w-36`} value={filtros.categoria_id}
+            onChange={e => setFiltros(p => ({ ...p, categoria_id: e.target.value }))}>
+            <option value="">Categoria</option>
+            {categorias.map(c => <option key={c.id} value={c.id}>{c.nome}</option>)}
+          </select>
+          <select className={`${sel} w-36`} value={filtros.departamento_id}
+            onChange={e => setFiltros(p => ({ ...p, departamento_id: e.target.value }))}>
+            <option value="">Departamento</option>
+            {departamentos.map(d => <option key={d.id} value={d.id}>{d.nome}</option>)}
+          </select>
+          <label className="flex items-center gap-2 text-sm text-dim cursor-pointer select-none whitespace-nowrap">
+            <input type="checkbox" checked={!!filtros.pendente}
+              onChange={e => setFiltros(p => ({ ...p, pendente: e.target.checked ? '1' : '' }))}
+              className="accent-primary"/>
+            Só pendentes
+          </label>
+        </div>
       </div>
 
-      {/* Lista */}
+      {/* Lista — tabela */}
       {loading ? (
         <div className="text-center py-12 text-muted">Carregando…</div>
       ) : bens.length === 0 ? (
@@ -243,40 +261,49 @@ function BensTab({ categorias, departamentos, localizacoes }) {
           <p>Nenhum bem encontrado.</p>
         </div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
-          {bens.map(b => (
-            <div key={b.id} onClick={() => abrirEditar(b)}
-              className="bg-bg2 border border-white/[0.06] rounded-xl p-4 hover:border-primary/30 hover:bg-bg3/30 cursor-pointer transition">
-              <div className="flex items-start gap-3">
-                {b.foto_url ? (
-                  <img src={b.foto_url} alt="" className="w-14 h-14 rounded-lg object-cover flex-shrink-0 border border-border"/>
-                ) : (
-                  <div className="w-14 h-14 rounded-lg bg-bg3 border border-border flex items-center justify-center text-2xl flex-shrink-0">📦</div>
-                )}
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <span className="text-xs font-mono font-bold text-primary bg-primary/10 px-2 py-0.5 rounded">
-                      {b.plaqueta}
-                    </span>
-                    <SituacaoBadge s={b.situacao}/>
-                    {!b.cadastro_completo && (
-                      <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-400 border border-amber-500/20">
-                        pendente
-                      </span>
-                    )}
-                  </div>
-                  <p className="text-sm font-medium text-dim mt-1 truncate">{b.descricao}</p>
-                  <p className="text-xs text-muted mt-0.5">{b.categoria?.nome} · {b.departamento?.nome}</p>
-                </div>
-              </div>
-              <div className="mt-3 pt-3 border-t border-border/50 grid grid-cols-2 gap-x-4 gap-y-1 text-xs text-muted">
-                {b.localizacao         && <span className="truncate">📍 {b.localizacao}</span>}
-                {b.nota_fiscal         && <span className="truncate">NF {b.nota_fiscal}</span>}
-                {b.valor_aquisicao != null && <span className="font-semibold text-dim">{fmtR(b.valor_aquisicao)}</span>}
-                {b.data_aquisicao      && <span>{fmtDt(b.data_aquisicao)}</span>}
-              </div>
-            </div>
-          ))}
+        <div className="bg-bg2 border border-white/[0.06] rounded-xl overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-border">
+                  {['', 'Plaqueta', 'Descrição', 'Categoria', 'Departamento', 'Localização', 'Valor', 'Situação'].map(h => (
+                    <th key={h} className="text-left text-[10px] font-bold text-muted uppercase tracking-wider px-4 py-3 whitespace-nowrap">{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {bens.map(b => (
+                  <tr key={b.id} onClick={() => abrirEditar(b)}
+                    className="border-b border-border/40 last:border-0 hover:bg-bg3/50 cursor-pointer transition">
+                    <td className="px-4 py-2.5">
+                      {b.foto_url
+                        ? <img src={b.foto_url} alt="" className="w-9 h-9 rounded-lg object-cover border border-border"/>
+                        : <div className="w-9 h-9 rounded-lg bg-bg3 border border-border flex items-center justify-center text-base">📦</div>
+                      }
+                    </td>
+                    <td className="px-4 py-2.5">
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-xs font-mono font-bold text-primary bg-primary/10 px-2 py-0.5 rounded whitespace-nowrap">{b.plaqueta}</span>
+                        {!b.cadastro_completo && (
+                          <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-400 border border-amber-500/20 whitespace-nowrap">pendente</span>
+                        )}
+                      </div>
+                    </td>
+                    <td className="px-4 py-2.5 text-dim font-medium max-w-[200px]">
+                      <span className="block truncate">{b.descricao}</span>
+                    </td>
+                    <td className="px-4 py-2.5 text-muted whitespace-nowrap">{b.categoria?.nome}</td>
+                    <td className="px-4 py-2.5 text-muted whitespace-nowrap">{b.departamento?.nome}</td>
+                    <td className="px-4 py-2.5 text-muted whitespace-nowrap">{b.localizacao || '—'}</td>
+                    <td className="px-4 py-2.5 text-dim font-medium whitespace-nowrap text-right">
+                      {b.valor_aquisicao != null ? fmtR(b.valor_aquisicao) : '—'}
+                    </td>
+                    <td className="px-4 py-2.5"><SituacaoBadge s={b.situacao}/></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </div>
       )}
 
@@ -351,7 +378,7 @@ function BensTab({ categorias, departamentos, localizacoes }) {
                   className="text-xs text-muted"/>
               </div>
             </Field>
-            <div className="flex gap-3 pt-2 flex-wrap">
+            <div className="flex gap-3 pt-2 flex-wrap items-center">
               <button onClick={salvarEdicao} disabled={salvando}
                 className="bg-primary text-bg text-sm font-semibold px-5 py-2 rounded-lg hover:bg-primary/90 transition disabled:opacity-50">
                 {salvando ? 'Salvando…' : 'Salvar'}
@@ -364,7 +391,26 @@ function BensTab({ categorias, departamentos, localizacoes }) {
                 className="text-muted text-sm px-4 py-2 rounded-lg hover:bg-bg3 transition">
                 Cancelar
               </button>
+              <button onClick={() => setConfirmExcluir(true)} disabled={salvando}
+                className="ml-auto text-xs text-rose-400 border border-rose-500/20 px-3 py-1.5 rounded-lg hover:bg-rose-500/10 transition">
+                🗑️ Excluir bem
+              </button>
             </div>
+            {confirmExcluir && (
+              <div className="bg-rose-500/10 border border-rose-500/20 rounded-lg p-3 flex items-center justify-between gap-3">
+                <p className="text-sm text-rose-400">Confirmar exclusão de <strong>{bemSel.plaqueta}</strong>? Não pode ser desfeito.</p>
+                <div className="flex gap-2 flex-shrink-0">
+                  <button onClick={excluirBem} disabled={salvando}
+                    className="text-xs bg-rose-500 text-white px-3 py-1.5 rounded-lg hover:bg-rose-600 transition disabled:opacity-50">
+                    {salvando ? '…' : 'Excluir'}
+                  </button>
+                  <button onClick={() => setConfirmExcluir(false)}
+                    className="text-xs text-muted px-3 py-1.5 rounded-lg hover:bg-bg3 transition">
+                    Cancelar
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         </Modal>
       )}
@@ -694,9 +740,9 @@ function InventariosTab({ departamentos }) {
   const [criando, setCriando]     = useState(false)
   const [novoForm, setNovoForm]   = useState({ data: today(), local_area: '', responsavel: '', observacoes: '' })
   const [salvando, setSalvando]   = useState(false)
-  const [relatorio, setRelatorio] = useState(null)
-  const [invRelId, setInvRelId]   = useState(null)
+  const [relatorioModal, setRelatorioModal] = useState(null)
   const [loadingRel, setLoadingRel] = useState(false)
+  const [invRelId, setInvRelId] = useState(null)
 
   const carregar = async () => {
     setLoading(true)
@@ -718,9 +764,17 @@ function InventariosTab({ departamentos }) {
   const verRelatorio = async inv => {
     setInvRelId(inv.id)
     setLoadingRel(true)
-    setRelatorio(null)
-    try { const { data } = await api.get(`/imobilizado/inventarios/${inv.id}/relatorio/`); setRelatorio(data) }
-    finally { setLoadingRel(false) }
+    setRelatorioModal(null)
+    try {
+      const { data } = await api.get(`/imobilizado/inventarios/${inv.id}/relatorio/`)
+      setRelatorioModal(data)
+    } finally { setLoadingRel(false) }
+  }
+
+  const excluirInventario = async inv => {
+    if (!window.confirm(`Excluir inventário de ${fmtDt(inv.data)}? Todas as leituras serão removidas.`)) return
+    await api.delete(`/imobilizado/inventarios/${inv.id}/`)
+    carregar()
   }
 
   const finalizar = async inv => {
@@ -752,59 +806,75 @@ function InventariosTab({ departamentos }) {
           <p>Nenhum inventário. Crie o primeiro!</p>
         </div>
       ) : (
-        <div className="space-y-3">
-          {invs.map(inv => {
-            const c = STATUS_COR[inv.status] || STATUS_COR.ABERTO
-            return (
-              <div key={inv.id} className="bg-bg2 border border-white/[0.06] rounded-xl p-4">
-                <div className="flex items-start justify-between gap-3 flex-wrap">
-                  <div>
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <span className="font-semibold text-dim">{fmtDt(inv.data)}</span>
-                      {inv.local_area && <span className="text-xs text-muted">— {inv.local_area}</span>}
-                      <span className={`text-[11px] font-semibold px-2 py-0.5 rounded-full ${c.bg} ${c.text}`}>{c.label}</span>
-                    </div>
-                    <p className="text-xs text-muted mt-1">
-                      {inv.total_itens} leitura{inv.total_itens !== 1 ? 's' : ''}
-                      {inv.responsavel && ` · ${inv.responsavel}`}
-                    </p>
-                  </div>
-                  <div className="flex items-center gap-2 flex-wrap">
-                    {inv.status === 'ABERTO' && (
-                      <button onClick={() => navigate(`/imobilizado/${inv.id}/contagem`)}
-                        className="text-xs bg-primary/10 text-primary border border-primary/20 px-3 py-1.5 rounded-lg hover:bg-primary/20 transition font-medium">
-                        📱 Contagem
-                      </button>
-                    )}
-                    {inv.status === 'ABERTO' && (
-                      <button
-                        onClick={async () => {
-                          const url = `${window.location.origin}/imobilizado/${inv.id}/contagem`
-                          try { await navigator.clipboard.writeText(url) } catch { prompt('Copie o link:', url) }
-                        }}
-                        className="text-xs bg-bg3 border border-border text-muted px-3 py-1.5 rounded-lg hover:border-primary/40 hover:text-primary transition">
-                        🔗 Link
-                      </button>
-                    )}
-                    <button onClick={() => invRelId === inv.id && relatorio ? (setRelatorio(null), setInvRelId(null)) : verRelatorio(inv)}
-                      className="text-xs bg-bg3 border border-border text-dim px-3 py-1.5 rounded-lg hover:border-primary/40 hover:text-primary transition">
-                      {invRelId === inv.id && loadingRel ? '…' : '📊 Relatório'}
-                    </button>
-                    {inv.status === 'ABERTO' && (
-                      <button onClick={() => finalizar(inv)}
-                        className="text-xs bg-bg3 border border-border text-muted px-3 py-1.5 rounded-lg hover:border-amber-500/40 hover:text-amber-400 transition">
-                        Finalizar
-                      </button>
-                    )}
-                  </div>
-                </div>
-                {invRelId === inv.id && relatorio && (
-                  <RelatorioPanel relatorio={relatorio} onClose={() => { setRelatorio(null); setInvRelId(null) }}/>
-                )}
-              </div>
-            )
-          })}
+        <div className="bg-bg2 border border-white/[0.06] rounded-xl overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-border">
+                  {['Data', 'Área / Local', 'Responsável', 'Leituras', 'Status', 'Ações'].map(h => (
+                    <th key={h} className="text-left text-[10px] font-bold text-muted uppercase tracking-wider px-4 py-3 whitespace-nowrap">{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {invs.map(inv => {
+                  const c = STATUS_COR[inv.status] || STATUS_COR.ABERTO
+                  return (
+                    <tr key={inv.id} className="border-b border-border/40 last:border-0 hover:bg-bg3/20 transition">
+                      <td className="px-4 py-3 font-semibold text-dim whitespace-nowrap">{fmtDt(inv.data)}</td>
+                      <td className="px-4 py-3 text-muted">{inv.local_area || '—'}</td>
+                      <td className="px-4 py-3 text-muted">{inv.responsavel || '—'}</td>
+                      <td className="px-4 py-3 text-dim">{inv.total_itens}</td>
+                      <td className="px-4 py-3">
+                        <span className={`text-[11px] font-semibold px-2 py-0.5 rounded-full ${c.bg} ${c.text}`}>{c.label}</span>
+                      </td>
+                      <td className="px-4 py-3">
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          {inv.status === 'ABERTO' && (
+                            <button onClick={() => navigate(`/imobilizado/${inv.id}/contagem`)}
+                              className="text-xs bg-primary/10 text-primary border border-primary/20 px-2.5 py-1 rounded-lg hover:bg-primary/20 transition whitespace-nowrap">
+                              📱 Contar
+                            </button>
+                          )}
+                          {inv.status === 'ABERTO' && (
+                            <button onClick={async () => {
+                              const url = `${window.location.origin}/imobilizado/${inv.id}/contagem`
+                              try { await navigator.clipboard.writeText(url) } catch { prompt('Copie o link:', url) }
+                            }}
+                              className="text-xs bg-bg3 border border-border text-muted px-2.5 py-1 rounded-lg hover:border-primary/40 hover:text-primary transition">
+                              🔗
+                            </button>
+                          )}
+                          <button onClick={() => verRelatorio(inv)}
+                            className="text-xs bg-bg3 border border-border text-dim px-2.5 py-1 rounded-lg hover:border-primary/40 hover:text-primary transition">
+                            {invRelId === inv.id && loadingRel ? '…' : '📊'}
+                          </button>
+                          {inv.status === 'ABERTO' && (
+                            <button onClick={() => finalizar(inv)}
+                              className="text-xs bg-bg3 border border-border text-muted px-2.5 py-1 rounded-lg hover:border-amber-500/40 hover:text-amber-400 transition whitespace-nowrap">
+                              ✓ Finalizar
+                            </button>
+                          )}
+                          <button onClick={() => excluirInventario(inv)}
+                            className="text-xs text-rose-400 border border-rose-500/20 px-2.5 py-1 rounded-lg hover:bg-rose-500/10 transition">
+                            🗑️
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
         </div>
+      )}
+
+      {/* Modal de relatório */}
+      {relatorioModal && (
+        <Modal title="Relatório de Reconciliação" wide onClose={() => { setRelatorioModal(null); setInvRelId(null) }}>
+          <RelatorioPanel relatorio={relatorioModal} onClose={() => { setRelatorioModal(null); setInvRelId(null) }}/>
+        </Modal>
       )}
 
       {criando && (
