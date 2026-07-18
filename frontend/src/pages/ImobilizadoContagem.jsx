@@ -379,21 +379,22 @@ function CardConfirmacao({
 // PÁGINA PRINCIPAL DE CONTAGEM
 // ════════════════════════════════════════════════════════════════════════════════
 export default function ImobilizadoContagem() {
-  const { id }   = useParams()
-  const navigate = useNavigate()
+  const { token } = useParams()
+  const navigate  = useNavigate()
 
   const invApi = useMemo(() => {
     const BASE = import.meta.env.VITE_API_BASE_URL || ''
     return axios.create({
       baseURL: BASE + '/api',
-      headers: { 'Content-Type': 'application/json', 'X-Inventario-Id': id },
+      headers: { 'Content-Type': 'application/json', 'X-Inventario-Token': token },
     })
-  }, [id])
+  }, [token])
 
-  const [inventario, setInventario]   = useState(null)
-  const [loading, setLoading]         = useState(true)
-  const [itens, setItens]             = useState([])
-  const [categorias, setCategorias]   = useState([])
+  const [inventario, setInventario]       = useState(null)
+  const [invId, setInvId]                 = useState(null)
+  const [loading, setLoading]             = useState(true)
+  const [itens, setItens]                 = useState([])
+  const [categorias, setCategorias]       = useState([])
   const [departamentos, setDepartamentos] = useState([])
 
   const [step, setStep]               = useState('scan')
@@ -413,11 +414,12 @@ export default function ImobilizadoContagem() {
   const carregarInventario = useCallback(async () => {
     try {
       const [invRes, catRes, depRes] = await Promise.all([
-        invApi.get(`/imobilizado/inventarios/${id}/`),
+        invApi.get(`/imobilizado/inventarios/token/${token}/`),
         invApi.get('/imobilizado/categorias/'),
         invApi.get('/imobilizado/departamentos/'),
       ])
       setInventario(invRes.data)
+      setInvId(invRes.data.id)
       setItens([...(invRes.data.itens || [])].reverse())
       setCategorias(catRes.data)
       setDepartamentos(depRes.data)
@@ -426,7 +428,7 @@ export default function ImobilizadoContagem() {
     } finally {
       setLoading(false)
     }
-  }, [id, invApi])
+  }, [token, invApi])
 
   useEffect(() => { carregarInventario() }, [carregarInventario])
   useEffect(() => { if (operador) localStorage.setItem('imob_operador', operador) }, [operador])
@@ -468,7 +470,7 @@ export default function ImobilizadoContagem() {
       }
 
       // Registra a leitura (agora o bem existe se foi cadastrado)
-      const { data } = await invApi.post(`/imobilizado/inventarios/${id}/leitura/`, {
+      const { data } = await invApi.post(`/imobilizado/inventarios/${invId}/leitura/`, {
         plaqueta:               plq,
         localizacao_encontrada: localEncontrado.trim(),
         contado_por:            operador.trim(),
@@ -490,14 +492,14 @@ export default function ImobilizadoContagem() {
       setLocalEncontrado('')
       setStep('scan')
     }
-  }, [id, buscaResult, localEncontrado, operador, invApi])
+  }, [invId, buscaResult, localEncontrado, operador, invApi])
 
   const mostrarFlash = (f) => { setFlash(f); setTimeout(() => setFlash(null), 2200) }
   const onSubmit     = (e) => { e.preventDefault(); buscarPlaqueta(plaqueta) }
   const onQRDetected = useCallback((raw) => { setShowScanner(false); buscarPlaqueta(raw) }, [buscarPlaqueta])
 
   const copiarLink = async () => {
-    const url = `${window.location.origin}/imobilizado/${id}/contagem`
+    const url = `${window.location.origin}/imobilizado/${token}/contagem`
     try {
       await navigator.clipboard.writeText(url)
       setLinkCopiado(true)
@@ -508,9 +510,13 @@ export default function ImobilizadoContagem() {
   }
 
   const finalizarInventario = async () => {
-    if (!window.confirm('Finalizar inventário? Não aceitará mais leituras.')) return
-    await invApi.post(`/imobilizado/inventarios/${id}/finalizar/`)
-    await carregarInventario()
+    if (!window.confirm('Finalizar inventário? O link público será desativado.')) return
+    try {
+      await invApi.post(`/imobilizado/inventarios/${invId}/finalizar/`)
+      setInventario(prev => ({ ...prev, status: 'FINALIZADO' }))
+    } catch {
+      mostrarFlash({ bg: '#1c0a17', border: '#dc2626', text: '#f87171', msg: '✗ Erro ao finalizar' })
+    }
   }
 
   if (loading) {

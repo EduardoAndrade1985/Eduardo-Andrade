@@ -792,6 +792,12 @@ function InventariosTab({ departamentos }) {
     carregar()
   }
 
+  const novoLink = async inv => {
+    if (!window.confirm('Gerar novo link? O link atual deixará de funcionar.')) return
+    const { data } = await api.post(`/imobilizado/inventarios/${inv.id}/novo-link/`)
+    setInvs(prev => prev.map(i => i.id === inv.id ? { ...i, token: data.token } : i))
+  }
+
   const finalizar = async inv => {
     if (!window.confirm(`Finalizar inventário de ${fmtDt(inv.data)}?`)) return
     await api.post(`/imobilizado/inventarios/${inv.id}/finalizar/`)
@@ -846,18 +852,26 @@ function InventariosTab({ departamentos }) {
                       <td className="px-4 py-3">
                         <div className="flex items-center gap-1.5 flex-wrap">
                           {inv.status === 'ABERTO' && (
-                            <button onClick={() => navigate(`/imobilizado/${inv.id}/contagem`)}
+                            <button onClick={() => navigate(`/imobilizado/${inv.token}/contagem`)}
                               className="text-xs bg-primary/10 text-primary border border-primary/20 px-2.5 py-1 rounded-lg hover:bg-primary/20 transition whitespace-nowrap">
                               📱 Contar
                             </button>
                           )}
                           {inv.status === 'ABERTO' && (
                             <button onClick={async () => {
-                              const url = `${window.location.origin}/imobilizado/${inv.id}/contagem`
+                              const url = `${window.location.origin}/imobilizado/${inv.token}/contagem`
                               try { await navigator.clipboard.writeText(url) } catch { prompt('Copie o link:', url) }
                             }}
-                              className="text-xs bg-bg3 border border-border text-muted px-2.5 py-1 rounded-lg hover:border-primary/40 hover:text-primary transition">
+                              className="text-xs bg-bg3 border border-border text-muted px-2.5 py-1 rounded-lg hover:border-primary/40 hover:text-primary transition"
+                              title="Copiar link público">
                               🔗
+                            </button>
+                          )}
+                          {inv.status === 'ABERTO' && (
+                            <button onClick={() => novoLink(inv)}
+                              className="text-xs bg-bg3 border border-border text-muted px-2.5 py-1 rounded-lg hover:border-amber-500/40 hover:text-amber-400 transition"
+                              title="Gerar novo link (invalida o anterior)">
+                              🔄
                             </button>
                           )}
                           <button onClick={() => verRelatorio(inv)}

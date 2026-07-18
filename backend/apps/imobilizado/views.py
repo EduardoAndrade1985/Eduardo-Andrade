@@ -1,4 +1,5 @@
 import json
+import uuid
 from decimal import Decimal, InvalidOperation
 from django.db import transaction
 from django.db.models import Q
@@ -455,6 +456,7 @@ def api_inventarios(request):
         data = [
             {
                 'id':          inv.id,
+                'token':       str(inv.token),
                 'data':        inv.data.isoformat(),
                 'local_area':  inv.local_area,
                 'responsavel': inv.responsavel,
@@ -504,6 +506,7 @@ def api_inventario_detalhe(request, pk):
     itens = inv.itens.select_related('bem', 'bem__categoria', 'bem__departamento').all()
     return JsonResponse({
         'id':          inv.id,
+        'token':       str(inv.token),
         'data':        inv.data.isoformat(),
         'local_area':  inv.local_area,
         'responsavel': inv.responsavel,
@@ -582,6 +585,49 @@ def api_bem_buscar(request):
         return JsonResponse({'encontrado': True, 'bem': _bem_dict(bem, request)})
     except Bem.DoesNotExist:
         return JsonResponse({'encontrado': False, 'plaqueta': plaqueta})
+
+
+@csrf_exempt
+def api_inventario_por_token(request, token):
+    """Acesso público ao inventário via UUID token — só funciona se status=ABERTO."""
+    empresa = _empresa(request)
+    if not empresa:
+        return _err('Link inválido ou inventário já finalizado', 401)
+    try:
+        inv = Inventario.objects.get(token=token, empresa=empresa)
+    except Inventario.DoesNotExist:
+        return _err('Inventário não encontrado', 404)
+
+    itens = inv.itens.select_related('bem', 'bem__categoria', 'bem__departamento').all()
+    return JsonResponse({
+        'id':          inv.id,
+        'token':       str(inv.token),
+        'data':        inv.data.isoformat(),
+        'local_area':  inv.local_area,
+        'responsavel': inv.responsavel,
+        'status':      inv.status,
+        'observacoes': inv.observacoes,
+        'criado_em':   inv.criado_em.isoformat(),
+        'itens':       [_item_dict(i, request) for i in itens],
+    })
+
+
+@csrf_exempt
+def api_inventario_novo_link(request, pk):
+    """Gera um novo UUID token para o inventário, invalidando o link anterior."""
+    empresa = _empresa(request)
+    if not empresa:
+        return _err('Sem empresa ativa', 401)
+    if request.method != 'POST':
+        return _err('Método não permitido', 405)
+    try:
+        inv = Inventario.objects.get(pk=pk, empresa=empresa)
+    except Inventario.DoesNotExist:
+        return _err('Inventário não encontrado', 404)
+
+    inv.token = uuid.uuid4()
+    inv.save(update_fields=['token'])
+    return JsonResponse({'ok': True, 'token': str(inv.token)})
 
 
 def api_inventario_relatorio(request, pk):

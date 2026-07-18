@@ -1,3 +1,4 @@
+import uuid
 from django.db import models
 from apps.empresas.base import EmpresaBaseModel
 
@@ -111,6 +112,7 @@ class Inventario(EmpresaBaseModel):
         (FINALIZADO, 'Finalizado'),
     ]
 
+    token       = models.UUIDField(default=uuid.uuid4, unique=True, editable=False)
     data        = models.DateField()
     local_area  = models.CharField(max_length=120, blank=True)
     responsavel = models.CharField(max_length=120, blank=True)

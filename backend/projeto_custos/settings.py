@@ -170,7 +170,7 @@ CORS_ALLOW_HEADERS = [
     'x-csrftoken',
     'x-requested-with',
     'x-empresa-id',
-    'x-inventario-id',
+    'x-inventario-token',
 ]
 
 # ── CSRF ──────────────────────────────────────────────────────────────────────
