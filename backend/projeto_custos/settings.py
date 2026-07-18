@@ -111,6 +111,9 @@ STATIC_ROOT       = BASE_DIR / 'staticfiles'
 MEDIA_URL  = '/uploads/'
 MEDIA_ROOT = BASE_DIR / 'uploads'
 
+# Serve /assets/, /index.html etc. diretamente na raiz (para o build do React)
+WHITENOISE_ROOT = str(BASE_DIR / 'static')
+
 # ── Storage backends (Django 4.2+: usar STORAGES, não STATICFILES_STORAGE) ───
 _SUPABASE_URL        = os.environ.get('SUPABASE_S3_URL', '')
 _SUPABASE_KEY_ID     = os.environ.get('SUPABASE_S3_KEY_ID', '')
