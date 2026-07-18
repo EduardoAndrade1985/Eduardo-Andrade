@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
-import { useParams, useNavigate } from 'react-router-dom'
+import { useParams } from 'react-router-dom'
 import axios from 'axios'
 
 // ── paleta por situação ───────────────────────────────────────────────────────
@@ -159,13 +159,22 @@ function CardConfirmacao({
 }) {
   const { encontrado, bem, plaqueta } = busca
 
-  const [cadastrarPendente, setCadastrarPendente] = useState(false)
-  const [novaDesc, setNovaDesc]   = useState('')
-  const [novaCatId, setNovaCatId] = useState('')
-  const [novaDepId, setNovaDepId] = useState(() => {
+  const [novaDesc, setNovaDesc]       = useState('')
+  const [novaCatId, setNovaCatId]     = useState('')
+  const [novaDepId, setNovaDepId]     = useState(() => {
     const d = departamentos.find(d => d.nome === invDepartamentoNome)
     return d ? String(d.id) : ''
   })
+  const [foto, setFoto]               = useState(null)
+  const [fotoPreview, setFotoPreview] = useState(null)
+  const fotoRef = useRef(null)
+
+  const handleFoto = e => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    setFoto(file)
+    setFotoPreview(URL.createObjectURL(file))
+  }
 
   let situacaoPrevista = 'LOCALIZADO'
   if (!encontrado) {
@@ -258,74 +267,51 @@ function CardConfirmacao({
           </div>
         )}
 
-        {/* ── ITEM NÃO CADASTRADO: opção de cadastrar como pendente ── */}
+        {/* ── ITEM NÃO CADASTRADO: registrar pendente com foto ── */}
         {!encontrado && (
-          <div style={{ marginBottom: 14 }}>
-            {/* Toggle */}
-            <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
-              <button onClick={() => setCadastrarPendente(false)}
-                style={{
-                  flex: 1, padding: '9px', borderRadius: 10, fontSize: 13, fontWeight: 700, cursor: 'pointer',
-                  background: !cadastrarPendente ? '#9333ea22' : 'transparent',
-                  border: `1.5px solid ${!cadastrarPendente ? '#9333ea' : '#374151'}`,
-                  color: !cadastrarPendente ? '#c084fc' : '#6b7280',
-                }}>
-                🆕 Só registrar
-              </button>
-              <button onClick={() => setCadastrarPendente(true)}
-                style={{
-                  flex: 1, padding: '9px', borderRadius: 10, fontSize: 13, fontWeight: 700, cursor: 'pointer',
-                  background: cadastrarPendente ? '#2dd4a022' : 'transparent',
-                  border: `1.5px solid ${cadastrarPendente ? '#2dd4a0' : '#374151'}`,
-                  color: cadastrarPendente ? '#2dd4a0' : '#6b7280',
-                }}>
-                ✏️ Cadastrar pendente
-              </button>
-            </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 14 }}>
+            <p style={{ fontSize: 11, color: '#6b7280', textAlign: 'center' }}>
+              Preencha o mínimo — valor e NF completam no desktop depois.
+            </p>
 
-            {!cadastrarPendente && (
-              <p style={{ fontSize: 12, color: '#6b7280', textAlign: 'center' }}>
-                Será registrado como não catalogado. Trate depois no desktop.
-              </p>
-            )}
-
-            {/* Mini-formulário de cadastro rápido */}
-            {cadastrarPendente && (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-                <p style={{ fontSize: 11, color: '#6b7280', marginBottom: 2 }}>
-                  Preencha o mínimo — valor e NF completam no desktop depois.
-                </p>
-                <div>
-                  <label style={{ fontSize: 11, color: '#6b7280', textTransform: 'uppercase', letterSpacing: 1, display: 'block', marginBottom: 5 }}>
-                    Descrição *
-                  </label>
-                  <input
-                    value={novaDesc}
-                    onChange={e => setNovaDesc(e.target.value)}
-                    placeholder="Ex: Cadeira giratória preta"
-                    style={inpStyle()}
-                  />
-                </div>
-                <div>
-                  <label style={{ fontSize: 11, color: '#6b7280', textTransform: 'uppercase', letterSpacing: 1, display: 'block', marginBottom: 5 }}>
-                    Categoria *
-                  </label>
-                  <select value={novaCatId} onChange={e => setNovaCatId(e.target.value)} style={inpStyle()}>
-                    <option value="">Selecione…</option>
-                    {categorias.map(c => <option key={c.id} value={c.id}>{c.nome}</option>)}
-                  </select>
-                </div>
-                <div>
-                  <label style={{ fontSize: 11, color: '#6b7280', textTransform: 'uppercase', letterSpacing: 1, display: 'block', marginBottom: 5 }}>
-                    Departamento *
-                  </label>
-                  <select value={novaDepId} onChange={e => setNovaDepId(e.target.value)} style={inpStyle()}>
-                    <option value="">Selecione…</option>
-                    {departamentos.map(d => <option key={d.id} value={d.id}>{d.nome}</option>)}
-                  </select>
-                </div>
+            {/* Captura de foto */}
+            <input ref={fotoRef} type="file" accept="image/*" capture="environment" style={{ display: 'none' }} onChange={handleFoto} />
+            {fotoPreview ? (
+              <div style={{ position: 'relative' }}>
+                <img src={fotoPreview} alt="" style={{ width: '100%', height: 130, objectFit: 'cover', borderRadius: 10, border: '2px solid #9333ea' }} />
+                <button onClick={() => fotoRef.current?.click()} style={{ position: 'absolute', bottom: 6, right: 6, background: 'rgba(0,0,0,0.7)', border: 'none', color: '#d1d5db', fontSize: 11, padding: '4px 10px', borderRadius: 6, cursor: 'pointer' }}>
+                  📷 Trocar
+                </button>
               </div>
+            ) : (
+              <button onClick={() => fotoRef.current?.click()} style={{
+                width: '100%', padding: '14px', borderRadius: 10,
+                background: '#1f2937', border: '1.5px dashed #4b5563',
+                color: '#9ca3af', fontSize: 14, cursor: 'pointer',
+                display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+              }}>
+                📷 Tirar foto do item (recomendado)
+              </button>
             )}
+
+            <div>
+              <label style={{ fontSize: 11, color: '#6b7280', textTransform: 'uppercase', letterSpacing: 1, display: 'block', marginBottom: 5 }}>Descrição *</label>
+              <input value={novaDesc} onChange={e => setNovaDesc(e.target.value)} placeholder="Ex: Cadeira giratória preta" style={inpStyle()} />
+            </div>
+            <div>
+              <label style={{ fontSize: 11, color: '#6b7280', textTransform: 'uppercase', letterSpacing: 1, display: 'block', marginBottom: 5 }}>Categoria *</label>
+              <select value={novaCatId} onChange={e => setNovaCatId(e.target.value)} style={inpStyle()}>
+                <option value="">Selecione…</option>
+                {categorias.map(c => <option key={c.id} value={c.id}>{c.nome}</option>)}
+              </select>
+            </div>
+            <div>
+              <label style={{ fontSize: 11, color: '#6b7280', textTransform: 'uppercase', letterSpacing: 1, display: 'block', marginBottom: 5 }}>Departamento *</label>
+              <select value={novaDepId} onChange={e => setNovaDepId(e.target.value)} style={inpStyle()}>
+                <option value="">Selecione…</option>
+                {departamentos.map(d => <option key={d.id} value={d.id}>{d.nome}</option>)}
+              </select>
+            </div>
           </div>
         )}
 
@@ -345,18 +331,18 @@ function CardConfirmacao({
 
         {/* Confirmar */}
         <button
-          onClick={() => onConfirmar({ cadastrarPendente, novaDesc, novaCatId, novaDepId })}
-          disabled={salvando || (cadastrarPendente && !podeCadastrar)}
+          onClick={() => onConfirmar({ novaDesc, novaCatId, novaDepId, foto })}
+          disabled={salvando || (!encontrado && !podeCadastrar)}
           style={{
             width: '100%', padding: '15px', borderRadius: 14,
             background: cor.border, border: 'none',
             color: '#000', fontWeight: 900, fontSize: 17,
-            cursor: (salvando || (cadastrarPendente && !podeCadastrar)) ? 'not-allowed' : 'pointer',
-            opacity: (salvando || (cadastrarPendente && !podeCadastrar)) ? 0.5 : 1,
+            cursor: (salvando || (!encontrado && !podeCadastrar)) ? 'not-allowed' : 'pointer',
+            opacity: (salvando || (!encontrado && !podeCadastrar)) ? 0.5 : 1,
             marginBottom: 10,
           }}
         >
-          {salvando ? 'Registrando…' : (encontrado ? `${cor.emoji} Confirmar` : (cadastrarPendente ? '✏️ Cadastrar e confirmar' : '🆕 Registrar como não catalogado'))}
+          {salvando ? 'Registrando…' : (encontrado ? `${cor.emoji} Confirmar` : '🆕 Registrar pendente')}
         </button>
 
         <button
@@ -380,7 +366,6 @@ function CardConfirmacao({
 // ════════════════════════════════════════════════════════════════════════════════
 export default function ImobilizadoContagem() {
   const { token } = useParams()
-  const navigate  = useNavigate()
 
   const invApi = useMemo(() => {
     const BASE = import.meta.env.VITE_API_BASE_URL || ''
@@ -405,7 +390,6 @@ export default function ImobilizadoContagem() {
   const [salvando, setSalvando]       = useState(false)
   const [flash, setFlash]             = useState(null)
   const [showScanner, setShowScanner] = useState(false)
-  const [linkCopiado, setLinkCopiado] = useState(false)
 
   const inputRef = useRef(null)
   const temCamera = typeof window !== 'undefined' && 'BarcodeDetector' in window
@@ -452,19 +436,22 @@ export default function ImobilizadoContagem() {
   }, [invApi])
 
   // ── confirma leitura (com ou sem cadastro prévio) ────────────────────────────
-  const confirmar = useCallback(async ({ cadastrarPendente, novaDesc, novaCatId, novaDepId }) => {
+  const confirmar = useCallback(async ({ novaDesc, novaCatId, novaDepId, foto }) => {
     setSalvando(true)
     let plq = buscaResult.encontrado ? buscaResult.bem.plaqueta : buscaResult.plaqueta
 
     try {
-      // Se não cadastrado e usuário quer cadastrar como pendente → cria o Bem primeiro
-      if (!buscaResult.encontrado && cadastrarPendente) {
-        const { data: bemData } = await invApi.post('/imobilizado/bens/', {
-          plaqueta:        plq,
-          descricao:       novaDesc.trim(),
-          categoria_id:    novaCatId,
-          departamento_id: novaDepId,
-          localizacao:     localEncontrado.trim(),
+      // Item não cadastrado: sempre registra como pendente (com foto opcional)
+      if (!buscaResult.encontrado) {
+        const formData = new FormData()
+        formData.append('plaqueta',        plq)
+        formData.append('descricao',       novaDesc.trim())
+        formData.append('categoria_id',    novaCatId)
+        formData.append('departamento_id', novaDepId)
+        formData.append('localizacao',     localEncontrado.trim())
+        if (foto) formData.append('foto', foto)
+        const { data: bemData } = await invApi.post('/imobilizado/bens/', formData, {
+          headers: { 'Content-Type': undefined },
         })
         if (!bemData.ok) throw new Error('Falha ao cadastrar bem')
       }
@@ -497,17 +484,6 @@ export default function ImobilizadoContagem() {
   const mostrarFlash = (f) => { setFlash(f); setTimeout(() => setFlash(null), 2200) }
   const onSubmit     = (e) => { e.preventDefault(); buscarPlaqueta(plaqueta) }
   const onQRDetected = useCallback((raw) => { setShowScanner(false); buscarPlaqueta(raw) }, [buscarPlaqueta])
-
-  const copiarLink = async () => {
-    const url = `${window.location.origin}/imobilizado/${token}/contagem`
-    try {
-      await navigator.clipboard.writeText(url)
-      setLinkCopiado(true)
-      setTimeout(() => setLinkCopiado(false), 2500)
-    } catch {
-      prompt('Copie o link abaixo:', url)
-    }
-  }
 
   const finalizarInventario = async () => {
     if (!window.confirm('Finalizar inventário? O link público será desativado.')) return
@@ -548,7 +524,7 @@ export default function ImobilizadoContagem() {
     <div style={{ minHeight: '100dvh', background: '#0d1117', color: '#e2e8f0', fontFamily: 'system-ui,sans-serif', display: 'flex', flexDirection: 'column' }}>
 
       {/* ── Header ── */}
-      <div style={{ background: '#111827', borderBottom: '1px solid #1f2937', padding: '12px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, flexShrink: 0 }}>
+      <div style={{ background: '#111827', borderBottom: '1px solid #1f2937', padding: '10px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, flexShrink: 0 }}>
         <div>
           <p style={{ fontWeight: 800, fontSize: 16, color: '#f1f5f9' }}>
             {inventario.local_area || `Inventário ${inventario.data}`}
@@ -557,20 +533,18 @@ export default function ImobilizadoContagem() {
             {inventario.data} · {emAberto ? '🟢 Em andamento' : '🔒 Finalizado'}
           </p>
         </div>
-        <div style={{ display: 'flex', gap: 8 }}>
-          <button onClick={copiarLink}
-            style={{
-              color: linkCopiado ? '#2dd4a0' : '#9ca3af',
-              background: 'none', border: `1px solid ${linkCopiado ? '#2dd4a0' : '#374151'}`,
-              fontSize: 13, cursor: 'pointer', padding: '6px 10px', borderRadius: 8, transition: 'all .2s',
-            }}>
-            {linkCopiado ? '✓ Copiado' : '🔗 Link'}
-          </button>
-          <button onClick={() => navigate('/imobilizado')}
-            style={{ color: '#9ca3af', background: 'none', border: '1px solid #374151', fontSize: 13, cursor: 'pointer', padding: '6px 12px', borderRadius: 8 }}>
-            ← Voltar
-          </button>
-        </div>
+        <button
+          onClick={() => {
+            if (!document.fullscreenElement) {
+              document.documentElement.requestFullscreen?.().catch(() => {})
+            } else {
+              document.exitFullscreen?.().catch(() => {})
+            }
+          }}
+          style={{ color: '#6b7280', background: 'none', border: '1px solid #374151', fontSize: 20, cursor: 'pointer', padding: '4px 10px', borderRadius: 8, lineHeight: 1 }}
+          title="Tela cheia">
+          ⛶
+        </button>
       </div>
 
       {/* ── Contadores ── */}
@@ -597,30 +571,41 @@ export default function ImobilizadoContagem() {
             </div>
           ) : (
             <>
-              <form onSubmit={onSubmit}>
-                <input
-                  ref={inputRef}
-                  autoFocus
-                  value={plaqueta}
-                  onChange={e => setPlaqueta(e.target.value.toUpperCase())}
-                  placeholder="Digite ou escaneie a plaqueta…"
-                  disabled={step !== 'scan'}
-                  style={{
-                    width: '100%', boxSizing: 'border-box',
-                    background: '#1f2937', border: '1.5px solid #374151',
-                    borderRadius: 12, padding: '14px 16px',
-                    color: '#f1f5f9', fontSize: 18, outline: 'none',
-                    letterSpacing: 2, fontFamily: 'monospace', fontWeight: 700,
-                    textTransform: 'uppercase',
-                  }}
-                />
-              </form>
-              <div style={{ marginTop: 8, display: 'flex', gap: 8, alignItems: 'center' }}>
+              <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 8 }}>
                 <span style={{ fontSize: 12, color: '#6b7280', flexShrink: 0 }}>Operador:</span>
                 <input value={operador} onChange={e => setOperador(e.target.value)}
                   placeholder="Seu nome"
                   style={{ flex: 1, background: '#1f2937', border: '1px solid #374151', borderRadius: 8, padding: '7px 12px', color: '#9ca3af', fontSize: 13, outline: 'none' }}/>
               </div>
+              <form onSubmit={onSubmit}>
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <input
+                    ref={inputRef}
+                    autoFocus
+                    value={plaqueta}
+                    onChange={e => setPlaqueta(e.target.value.toUpperCase())}
+                    placeholder="Plaqueta…"
+                    disabled={step !== 'scan'}
+                    style={{
+                      flex: 1, boxSizing: 'border-box',
+                      background: '#1f2937', border: '1.5px solid #374151',
+                      borderRadius: 12, padding: '14px 16px',
+                      color: '#f1f5f9', fontSize: 18, outline: 'none',
+                      letterSpacing: 2, fontFamily: 'monospace', fontWeight: 700,
+                      textTransform: 'uppercase',
+                    }}
+                  />
+                  <button type="submit" disabled={step !== 'scan' || !plaqueta.trim()}
+                    style={{
+                      background: '#2dd4a0', border: 'none', borderRadius: 12,
+                      color: '#000', fontSize: 22, fontWeight: 900,
+                      padding: '0 16px', cursor: 'pointer', flexShrink: 0,
+                      opacity: (step !== 'scan' || !plaqueta.trim()) ? 0.35 : 1,
+                    }}>
+                    🔍
+                  </button>
+                </div>
+              </form>
               {temCamera && (
                 <button onClick={() => setShowScanner(true)}
                   style={{
