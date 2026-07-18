@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import api from '../services/api'
 
@@ -112,6 +112,9 @@ function BensTab({ categorias, departamentos, localizacoes }) {
   const [baixaForm, setBaixaForm] = useState({ motivo_baixa: '', data_baixa: today(), observacoes: '' })
   const [confirmExcluir, setConfirmExcluir] = useState(false)
   const [fotoZoom, setFotoZoom] = useState(null)
+  const [importando, setImportando] = useState(false)
+  const [importResult, setImportResult] = useState(null)
+  const importRef = useRef(null)
 
   const carregar = useCallback(async () => {
     setLoading(true)
@@ -185,6 +188,47 @@ function BensTab({ categorias, departamentos, localizacoes }) {
     }
   }
 
+  const exportar = async () => {
+    try {
+      const params = {}
+      if (filtros.q)               params.q               = filtros.q
+      if (filtros.situacao)        params.situacao        = filtros.situacao
+      if (filtros.categoria_id)    params.categoria_id    = filtros.categoria_id
+      if (filtros.departamento_id) params.departamento_id = filtros.departamento_id
+      if (filtros.pendente)        params.pendente        = '1'
+      const res = await api.get('/imobilizado/bens/exportar/', { params, responseType: 'blob' })
+      const url = URL.createObjectURL(res.data)
+      const a   = document.createElement('a')
+      a.href     = url
+      a.download = 'bens_imobilizado.xlsx'
+      a.click()
+      URL.revokeObjectURL(url)
+    } catch {
+      alert('Erro ao exportar lista de bens')
+    }
+  }
+
+  const handleImportar = async e => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    setImportando(true)
+    setImportResult(null)
+    try {
+      const fd = new FormData()
+      fd.append('arquivo', file)
+      const { data } = await api.post('/imobilizado/bens/importar/', fd, {
+        headers: { 'Content-Type': undefined },
+      })
+      setImportResult(data)
+      carregar()
+    } catch (err) {
+      setImportResult({ ok: false, erros: [err.response?.data?.erro || 'Erro ao importar'] })
+    } finally {
+      setImportando(false)
+      e.target.value = ''
+    }
+  }
+
   const executarBaixa = async () => {
     setSalvando(true)
     try {
@@ -206,6 +250,37 @@ function BensTab({ categorias, departamentos, localizacoes }) {
 
   return (
     <div className="space-y-4">
+      {/* Barra de ações */}
+      <div className="flex items-center justify-between gap-3 flex-wrap">
+        <p className="text-sm text-muted">{total} bem{total !== 1 ? 's' : ''} encontrado{total !== 1 ? 's' : ''}</p>
+        <div className="flex gap-2 items-center">
+          <button onClick={exportar}
+            className="text-xs bg-bg3 border border-border text-dim px-3 py-1.5 rounded-lg hover:border-primary/40 hover:text-primary transition whitespace-nowrap">
+            ⬇️ Exportar Excel
+          </button>
+          <input ref={importRef} type="file" accept=".xlsx,.xls,.csv" className="hidden" onChange={handleImportar}/>
+          <button onClick={() => importRef.current?.click()} disabled={importando}
+            className="text-xs bg-bg3 border border-border text-dim px-3 py-1.5 rounded-lg hover:border-teal-500/40 hover:text-teal-400 transition whitespace-nowrap disabled:opacity-50">
+            {importando ? '⏳ Importando…' : '⬆️ Importar Excel'}
+          </button>
+        </div>
+      </div>
+
+      {/* Resultado da importação */}
+      {importResult && (
+        <div className={`border rounded-xl p-3 text-sm ${importResult.ok ? 'bg-teal-500/10 border-teal-500/20 text-teal-400' : 'bg-rose-500/10 border-rose-500/20 text-rose-400'}`}>
+          {importResult.ok ? (
+            <p>✓ {importResult.criados} bem{importResult.criados !== 1 ? 's' : ''} criado{importResult.criados !== 1 ? 's' : ''}
+              {importResult.ignorados > 0 ? `, ${importResult.ignorados} ignorado${importResult.ignorados !== 1 ? 's' : ''} (já existiam)` : ''}.
+              {importResult.erros?.length > 0 && <span className="text-amber-400"> {importResult.erros.length} aviso{importResult.erros.length !== 1 ? 's' : ''}.</span>}
+            </p>
+          ) : (
+            importResult.erros?.map((e, i) => <p key={i}>{e}</p>)
+          )}
+          <button onClick={() => setImportResult(null)} className="mt-1 text-xs opacity-60 hover:opacity-100">✕ fechar</button>
+        </div>
+      )}
+
       {/* KPIs */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         {[
@@ -748,7 +823,281 @@ function RelatorioPanel({ relatorio: r, onClose }) {
   )
 }
 
-function InventariosTab({ departamentos }) {
+// ════════════════════════════════════════════════════════════════════════════════
+// MODAL DE CONCILIAÇÃO
+// ════════════════════════════════════════════════════════════════════════════════
+function ConciliacaoModal({ inv, categorias, departamentos, onConciliar, onClose }) {
+  const [relatorio, setRelatorio]   = useState(null)
+  const [loading, setLoading]       = useState(true)
+  const [decisoes, setDecisoes]     = useState({})   // {[id]: {acao, descricao, categoria_id, departamento_id, valor, nf}}
+  const [locUpdates, setLocUpdates] = useState({})   // {[id]: boolean}
+  const [conciliando, setConciliando] = useState(false)
+  const [erro, setErro]             = useState(null)
+
+  useEffect(() => {
+    api.get(`/imobilizado/inventarios/${inv.id}/relatorio/`)
+      .then(({ data }) => {
+        setRelatorio(data)
+        const dec = {}
+        data.nao_cadastrados.forEach(item => {
+          dec[item.id] = {
+            acao:           'incorporar',
+            descricao:      item.descricao_provisoria || '',
+            categoria_id:   item.categoria_provisoria_id   ? String(item.categoria_provisoria_id)   : '',
+            departamento_id: item.departamento_provisorio_id ? String(item.departamento_provisorio_id) : '',
+            valor:          '',
+            nf:             '',
+          }
+        })
+        setDecisoes(dec)
+      })
+      .catch(() => setErro('Erro ao carregar relatório'))
+      .finally(() => setLoading(false))
+  }, [inv.id])
+
+  const setDec = (id, campo, val) =>
+    setDecisoes(prev => ({ ...prev, [id]: { ...prev[id], [campo]: val } }))
+
+  const conciliar = async () => {
+    setConciliando(true)
+    setErro(null)
+    try {
+      await api.post(`/imobilizado/inventarios/${inv.id}/conciliar/`, {
+        nao_cadastrados: Object.entries(decisoes).map(([id, d]) => ({
+          item_id:        Number(id),
+          acao:           d.acao,
+          descricao:      d.descricao,
+          categoria_id:   d.categoria_id   ? Number(d.categoria_id)   : null,
+          departamento_id: d.departamento_id ? Number(d.departamento_id) : null,
+          valor_aquisicao: d.valor,
+          nota_fiscal:    d.nf,
+        })),
+        divergentes: Object.entries(locUpdates)
+          .filter(([, v]) => v)
+          .map(([id]) => ({ item_id: Number(id), atualizar_local: true })),
+      })
+      onConciliar()
+      onClose()
+    } catch (e) {
+      setErro(e.response?.data?.erro || 'Erro ao conciliar')
+    } finally {
+      setConciliando(false)
+    }
+  }
+
+  const temCamposFaltando = Object.values(decisoes).some(
+    d => d.acao === 'incorporar' && (!d.descricao.trim() || !d.categoria_id || !d.departamento_id)
+  )
+
+  const CardItem = ({ label, value, cor = 'text-muted' }) => (
+    <div className="bg-bg3 border border-border rounded-lg p-3 text-center">
+      <p className="text-xs text-muted">{label}</p>
+      <p className={`text-xl font-bold ${cor}`}>{value}</p>
+    </div>
+  )
+
+  return (
+    <Modal title={`Conciliação: ${fmtDt(inv.data)}${inv.local_area ? ' — ' + inv.local_area : ''}`} wide onClose={onClose}>
+      {loading && <p className="text-muted text-center py-8">Carregando…</p>}
+      {erro && !loading && <p className="text-rose-400 text-sm">{erro}</p>}
+
+      {relatorio && (
+        <div className="space-y-5">
+          {/* KPIs */}
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+            <CardItem label="Lidos"           value={relatorio.total_contados}        cor="text-dim"/>
+            <CardItem label="Não Cadastrados" value={relatorio.nao_cadastrados.length} cor="text-violet-400"/>
+            <CardItem label="Local Divergente" value={relatorio.divergentes.length}   cor="text-amber-400"/>
+            <CardItem label="Não Localizados" value={relatorio.fantasmas.length}       cor="text-rose-400"/>
+          </div>
+
+          {/* Não cadastrados */}
+          {relatorio.nao_cadastrados.length > 0 && (
+            <div>
+              <p className="text-[11px] font-bold text-violet-400 uppercase tracking-wider mb-3">
+                🆕 Não Cadastrados — definir ação para cada item
+              </p>
+              <div className="space-y-4">
+                {relatorio.nao_cadastrados.map(item => {
+                  const d = decisoes[item.id] || {}
+                  const incorporar = d.acao === 'incorporar'
+                  const ok = incorporar ? (d.descricao.trim() && d.categoria_id && d.departamento_id) : true
+                  return (
+                    <div key={item.id} className={`border rounded-xl p-4 space-y-3 transition ${incorporar ? 'border-violet-500/30 bg-violet-500/5' : 'border-border bg-bg3/30'}`}>
+                      <div className="flex items-start gap-3">
+                        {item.foto_provisoria_url ? (
+                          <img src={item.foto_provisoria_url} alt="" className="w-14 h-14 rounded-lg object-cover border border-border flex-shrink-0"/>
+                        ) : (
+                          <div className="w-14 h-14 rounded-lg bg-bg3 border border-border flex items-center justify-center text-xl flex-shrink-0">❓</div>
+                        )}
+                        <div className="flex-1 min-w-0">
+                          <p className="font-mono text-sm font-bold text-primary">{item.plaqueta_lida}</p>
+                          {item.descricao_provisoria && (
+                            <p className="text-sm text-dim mt-0.5">{item.descricao_provisoria}</p>
+                          )}
+                          {item.localizacao_encontrada && (
+                            <p className="text-xs text-muted mt-0.5">📍 {item.localizacao_encontrada}</p>
+                          )}
+                          {item.contado_por && (
+                            <p className="text-xs text-muted">👤 {item.contado_por}</p>
+                          )}
+                        </div>
+                        {/* Toggle incorporar/ignorar */}
+                        <div className="flex gap-1.5 flex-shrink-0">
+                          <button onClick={() => setDec(item.id, 'acao', 'incorporar')}
+                            className={`text-xs px-2.5 py-1 rounded-lg border font-semibold transition ${incorporar ? 'bg-violet-500/20 border-violet-500/40 text-violet-300' : 'border-border text-muted hover:border-violet-500/30 hover:text-violet-400'}`}>
+                            ✓ Incorporar
+                          </button>
+                          <button onClick={() => setDec(item.id, 'acao', 'ignorar')}
+                            className={`text-xs px-2.5 py-1 rounded-lg border font-semibold transition ${!incorporar ? 'bg-rose-500/15 border-rose-500/30 text-rose-400' : 'border-border text-muted hover:border-rose-500/20 hover:text-rose-400'}`}>
+                            ✗ Ignorar
+                          </button>
+                        </div>
+                      </div>
+
+                      {incorporar && (
+                        <div className="grid grid-cols-2 gap-2">
+                          <div className="col-span-2">
+                            <label className="text-[10px] font-bold text-muted uppercase tracking-wider block mb-1">Descrição *</label>
+                            <input className={`${inp} ${!d.descricao?.trim() ? 'border-rose-500/40' : ''}`}
+                              value={d.descricao || ''} onChange={e => setDec(item.id, 'descricao', e.target.value)}
+                              placeholder="Descrição do bem"/>
+                          </div>
+                          <div>
+                            <label className="text-[10px] font-bold text-muted uppercase tracking-wider block mb-1">Categoria *</label>
+                            <select className={`${sel} ${!d.categoria_id ? 'border-rose-500/40' : ''}`}
+                              value={d.categoria_id || ''} onChange={e => setDec(item.id, 'categoria_id', e.target.value)}>
+                              <option value="">Selecione…</option>
+                              {categorias.map(c => <option key={c.id} value={c.id}>{c.nome}</option>)}
+                            </select>
+                          </div>
+                          <div>
+                            <label className="text-[10px] font-bold text-muted uppercase tracking-wider block mb-1">Departamento *</label>
+                            <select className={`${sel} ${!d.departamento_id ? 'border-rose-500/40' : ''}`}
+                              value={d.departamento_id || ''} onChange={e => setDec(item.id, 'departamento_id', e.target.value)}>
+                              <option value="">Selecione…</option>
+                              {departamentos.map(d2 => <option key={d2.id} value={d2.id}>{d2.nome}</option>)}
+                            </select>
+                          </div>
+                          <div>
+                            <label className="text-[10px] font-bold text-muted uppercase tracking-wider block mb-1">Valor de Aquisição</label>
+                            <input className={inp} value={d.valor || ''} onChange={e => setDec(item.id, 'valor', e.target.value)}
+                              placeholder="Ex: 1.500,00"/>
+                          </div>
+                          <div>
+                            <label className="text-[10px] font-bold text-muted uppercase tracking-wider block mb-1">Nota Fiscal</label>
+                            <input className={inp} value={d.nf || ''} onChange={e => setDec(item.id, 'nf', e.target.value)}
+                              placeholder="Nº da NF"/>
+                          </div>
+                        </div>
+                      )}
+                      {incorporar && !ok && (
+                        <p className="text-[11px] text-rose-400">Preencha Descrição, Categoria e Departamento para incorporar.</p>
+                      )}
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
+          )}
+
+          {/* Local Divergente */}
+          {relatorio.divergentes.length > 0 && (
+            <div>
+              <p className="text-[11px] font-bold text-amber-400 uppercase tracking-wider mb-3">
+                ⚠️ Local Divergente — atualizar localização no sistema?
+              </p>
+              <div className="space-y-2">
+                {relatorio.divergentes.map(item => (
+                  <div key={item.id} className="flex items-center gap-3 bg-bg3 border border-border rounded-lg p-3">
+                    <input type="checkbox" checked={!!locUpdates[item.id]}
+                      onChange={e => setLocUpdates(prev => ({ ...prev, [item.id]: e.target.checked }))}
+                      className="accent-primary flex-shrink-0"/>
+                    <div className="flex-1 min-w-0">
+                      <p className="font-mono text-sm font-bold text-primary">{item.plaqueta_lida}</p>
+                      <p className="text-xs text-dim truncate">{item.bem?.descricao || '—'}</p>
+                      <p className="text-xs text-muted mt-0.5">
+                        <span className="line-through opacity-60">{item.bem?.localizacao || '—'}</span>
+                        {' → '}
+                        <span className="text-amber-400 font-semibold">{item.localizacao_encontrada}</span>
+                      </p>
+                    </div>
+                    <span className="text-xs text-amber-400">{locUpdates[item.id] ? '✓ Atualizar' : 'Manter'}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Fantasmas */}
+          {relatorio.fantasmas.length > 0 && (
+            <details>
+              <summary className="cursor-pointer text-sm font-semibold text-rose-400 flex items-center gap-2 py-1">
+                👻 Não Localizados
+                <span className="text-[11px] px-1.5 py-0.5 rounded-full bg-rose-500/10 ml-1">{relatorio.fantasmas.length}</span>
+                <span className="text-xs text-muted font-normal">(referência apenas)</span>
+              </summary>
+              <div className="mt-2 space-y-1 pl-4">
+                {relatorio.fantasmas.map((b, i) => (
+                  <div key={i} className="flex items-center gap-2 text-xs text-dim py-1 border-b border-border/30 last:border-0">
+                    <span className="font-mono text-primary font-bold w-24 flex-shrink-0">{b.plaqueta}</span>
+                    <span className="flex-1 truncate text-muted">{b.descricao}</span>
+                    {b.localizacao && <span className="text-muted">📍 {b.localizacao}</span>}
+                    {b.valor_aquisicao != null && <span className="text-muted">{fmtR(b.valor_aquisicao)}</span>}
+                  </div>
+                ))}
+              </div>
+            </details>
+          )}
+
+          {/* Localizados (colapsado) */}
+          {relatorio.localizados.length > 0 && (
+            <details>
+              <summary className="cursor-pointer text-sm font-semibold text-teal-400 flex items-center gap-2 py-1">
+                ✅ Localizados
+                <span className="text-[11px] px-1.5 py-0.5 rounded-full bg-teal-500/10 ml-1">{relatorio.localizados.length}</span>
+              </summary>
+              <div className="mt-2 space-y-1 pl-4">
+                {relatorio.localizados.slice(0, 30).map((item, i) => (
+                  <div key={i} className="flex items-center gap-2 text-xs py-1 border-b border-border/30 last:border-0">
+                    <span className="font-mono text-primary font-bold w-24 flex-shrink-0">{item.plaqueta_lida}</span>
+                    <span className="flex-1 truncate text-muted">{item.bem?.descricao || '—'}</span>
+                  </div>
+                ))}
+                {relatorio.localizados.length > 30 && (
+                  <p className="text-xs text-muted italic">… e mais {relatorio.localizados.length - 30}</p>
+                )}
+              </div>
+            </details>
+          )}
+
+          {/* Footer */}
+          <div className="border-t border-border/50 pt-4 space-y-3">
+            {erro && <p className="text-sm text-rose-400">{erro}</p>}
+            {temCamposFaltando && (
+              <p className="text-sm text-amber-400">Preencha os campos obrigatórios nos itens marcados como "Incorporar".</p>
+            )}
+            <div className="flex gap-3">
+              <button onClick={conciliar} disabled={conciliando || temCamposFaltando}
+                className="bg-primary text-bg text-sm font-semibold px-6 py-2.5 rounded-lg hover:bg-primary/90 transition disabled:opacity-50">
+                {conciliando ? 'Processando…' : '✓ Encerrar Inventário'}
+              </button>
+              <button onClick={onClose} disabled={conciliando}
+                className="text-muted text-sm px-4 py-2 rounded-lg hover:bg-bg3 transition">
+                Cancelar
+              </button>
+            </div>
+            <p className="text-[10px] text-muted italic">
+              Itens ignorados não criam bens. Após encerrar, o inventário fica disponível somente para consulta.
+            </p>
+          </div>
+        </div>
+      )}
+    </Modal>
+  )
+}
+
+function InventariosTab({ categorias, departamentos }) {
   const navigate = useNavigate()
   const [invs, setInvs]           = useState([])
   const [loading, setLoading]     = useState(true)
@@ -758,6 +1107,7 @@ function InventariosTab({ departamentos }) {
   const [relatorioModal, setRelatorioModal] = useState(null)
   const [loadingRel, setLoadingRel] = useState(false)
   const [invRelId, setInvRelId] = useState(null)
+  const [conciliandoInv, setConciliandoInv] = useState(null)
 
   const carregar = async () => {
     setLoading(true)
@@ -805,8 +1155,9 @@ function InventariosTab({ departamentos }) {
   }
 
   const STATUS_COR = {
-    ABERTO:     { bg: 'bg-teal-500/10', text: 'text-teal-400', label: 'Aberto'     },
-    FINALIZADO: { bg: 'bg-bg3',         text: 'text-muted',    label: 'Finalizado' },
+    ABERTO:     { bg: 'bg-teal-500/10',   text: 'text-teal-400',   label: 'Aberto'                  },
+    AGUARDANDO: { bg: 'bg-violet-500/10', text: 'text-violet-400', label: 'Aguardando Conciliação'  },
+    FINALIZADO: { bg: 'bg-bg3',           text: 'text-muted',      label: 'Finalizado'              },
   }
 
   return (
@@ -884,6 +1235,12 @@ function InventariosTab({ departamentos }) {
                               ✓ Finalizar
                             </button>
                           )}
+                          {inv.status === 'AGUARDANDO' && (
+                            <button onClick={() => setConciliandoInv(inv)}
+                              className="text-xs bg-violet-500/10 text-violet-400 border border-violet-500/30 px-2.5 py-1 rounded-lg hover:bg-violet-500/20 transition whitespace-nowrap">
+                              📋 Conciliar
+                            </button>
+                          )}
                           <button onClick={() => excluirInventario(inv)}
                             className="text-xs text-rose-400 border border-rose-500/20 px-2.5 py-1 rounded-lg hover:bg-rose-500/10 transition">
                             🗑️
@@ -904,6 +1261,17 @@ function InventariosTab({ departamentos }) {
         <Modal title="Relatório de Reconciliação" wide onClose={() => { setRelatorioModal(null); setInvRelId(null) }}>
           <RelatorioPanel relatorio={relatorioModal} onClose={() => { setRelatorioModal(null); setInvRelId(null) }}/>
         </Modal>
+      )}
+
+      {/* Modal de conciliação */}
+      {conciliandoInv && (
+        <ConciliacaoModal
+          inv={conciliandoInv}
+          categorias={categorias}
+          departamentos={departamentos}
+          onConciliar={carregar}
+          onClose={() => setConciliandoInv(null)}
+        />
       )}
 
       {criando && (
@@ -1040,7 +1408,7 @@ export default function Imobilizado() {
           onSucesso={() => setAba('bens')}
         />
       )}
-      {aba === 'inventarios' && <InventariosTab departamentos={departamentos}/>}
+      {aba === 'inventarios' && <InventariosTab categorias={categorias} departamentos={departamentos}/>}
 
       {/* Modal de configuração */}
       {showConfig && (

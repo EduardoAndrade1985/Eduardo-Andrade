@@ -2,7 +2,11 @@ from decimal import Decimal
 from .models import Bem, ItemInventario
 
 
-def registrar_leitura(inventario, plaqueta, localizacao_encontrada='', contado_por='', observacao=''):
+def registrar_leitura(
+    inventario, plaqueta, localizacao_encontrada='', contado_por='', observacao='',
+    descricao_provisoria='', foto_provisoria=None,
+    categoria_provisoria_id=None, departamento_provisorio_id=None,
+):
     plaqueta = plaqueta.strip().upper()
 
     try:
@@ -18,17 +22,30 @@ def registrar_leitura(inventario, plaqueta, localizacao_encontrada='', contado_p
     else:
         situacao = ItemInventario.LOCALIZADO
 
+    defaults = {
+        'bem': bem,
+        'situacao': situacao,
+        'localizacao_encontrada': localizacao_encontrada,
+        'contado_por': contado_por,
+        'observacao': observacao,
+    }
+    if situacao == ItemInventario.NAO_CADASTRADO:
+        defaults.update({
+            'descricao_provisoria':      descricao_provisoria,
+            'categoria_provisoria_id':   categoria_provisoria_id,
+            'departamento_provisorio_id': departamento_provisorio_id,
+        })
+
     item, created = ItemInventario.objects.update_or_create(
         inventario=inventario,
         plaqueta_lida=plaqueta,
-        defaults={
-            'bem': bem,
-            'situacao': situacao,
-            'localizacao_encontrada': localizacao_encontrada,
-            'contado_por': contado_por,
-            'observacao': observacao,
-        }
+        defaults=defaults,
     )
+
+    if situacao == ItemInventario.NAO_CADASTRADO and foto_provisoria:
+        item.foto_provisoria = foto_provisoria
+        item.save(update_fields=['foto_provisoria'])
+
     return item, created
 
 

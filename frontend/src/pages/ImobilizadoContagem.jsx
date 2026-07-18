@@ -438,31 +438,35 @@ export default function ImobilizadoContagem() {
   // ── confirma leitura (com ou sem cadastro prévio) ────────────────────────────
   const confirmar = useCallback(async ({ novaDesc, novaCatId, novaDepId, foto }) => {
     setSalvando(true)
-    let plq = buscaResult.encontrado ? buscaResult.bem.plaqueta : buscaResult.plaqueta
+    const plq = buscaResult.encontrado ? buscaResult.bem.plaqueta : buscaResult.plaqueta
 
     try {
-      // Item não cadastrado: sempre registra como pendente (com foto opcional)
+      let leituraData
+
       if (!buscaResult.encontrado) {
+        // NAO_CADASTRADO: envia dados provisionais direto na leitura (sem criar Bem agora)
         const formData = new FormData()
-        formData.append('plaqueta',        plq)
-        formData.append('descricao',       novaDesc.trim())
-        formData.append('categoria_id',    novaCatId)
-        formData.append('departamento_id', novaDepId)
-        formData.append('localizacao',     localEncontrado.trim())
-        if (foto) formData.append('foto', foto)
-        const { data: bemData } = await invApi.post('/imobilizado/bens/', formData, {
+        formData.append('plaqueta',                  plq)
+        formData.append('localizacao_encontrada',    localEncontrado.trim())
+        formData.append('contado_por',               operador.trim())
+        if (novaDesc)  formData.append('descricao_provisoria',      novaDesc.trim())
+        if (novaCatId) formData.append('categoria_provisoria_id',   novaCatId)
+        if (novaDepId) formData.append('departamento_provisorio_id', novaDepId)
+        if (foto)      formData.append('foto_provisoria',           foto)
+        const { data } = await invApi.post(`/imobilizado/inventarios/${invId}/leitura/`, formData, {
           headers: { 'Content-Type': undefined },
         })
-        if (!bemData.ok) throw new Error('Falha ao cadastrar bem')
+        leituraData = data
+      } else {
+        const { data } = await invApi.post(`/imobilizado/inventarios/${invId}/leitura/`, {
+          plaqueta:               plq,
+          localizacao_encontrada: localEncontrado.trim(),
+          contado_por:            operador.trim(),
+        })
+        leituraData = data
       }
 
-      // Registra a leitura (agora o bem existe se foi cadastrado)
-      const { data } = await invApi.post(`/imobilizado/inventarios/${invId}/leitura/`, {
-        plaqueta:               plq,
-        localizacao_encontrada: localEncontrado.trim(),
-        contado_por:            operador.trim(),
-      })
-      const item = data.item
+      const item = leituraData.item
       setItens(prev => {
         const idx = prev.findIndex(i => i.plaqueta_lida === item.plaqueta_lida)
         if (idx >= 0) { const n = [...prev]; n[idx] = item; return n }
@@ -486,10 +490,10 @@ export default function ImobilizadoContagem() {
   const onQRDetected = useCallback((raw) => { setShowScanner(false); buscarPlaqueta(raw) }, [buscarPlaqueta])
 
   const finalizarInventario = async () => {
-    if (!window.confirm('Finalizar inventário? O link público será desativado.')) return
+    if (!window.confirm('Finalizar contagem? A conciliação e encerramento são feitos pelo administrador no desktop.')) return
     try {
       await invApi.post(`/imobilizado/inventarios/${invId}/finalizar/`)
-      setInventario(prev => ({ ...prev, status: 'FINALIZADO' }))
+      setInventario(prev => ({ ...prev, status: 'AGUARDANDO' }))
     } catch {
       mostrarFlash({ bg: '#1c0a17', border: '#dc2626', text: '#f87171', msg: '✗ Erro ao finalizar' })
     }
@@ -504,17 +508,16 @@ export default function ImobilizadoContagem() {
   }
   if (!inventario) {
     return (
-      <div style={{ minHeight: '100dvh', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', background: '#0d1117', gap: 16, padding: 24 }}>
-        <p style={{ color: '#f87171', fontSize: 16 }}>Inventário não encontrado.</p>
-        <button onClick={() => navigate('/imobilizado')}
-          style={{ color: '#2dd4a0', background: 'none', border: '1px solid #2dd4a0', padding: '8px 20px', borderRadius: 8, cursor: 'pointer', fontSize: 14 }}>
-          ← Voltar
-        </button>
+      <div style={{ minHeight: '100dvh', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', background: '#0d1117', gap: 12, padding: 24 }}>
+        <p style={{ fontSize: 40, lineHeight: 1 }}>🔒</p>
+        <p style={{ color: '#f87171', fontSize: 16, fontWeight: 700, textAlign: 'center' }}>Link de contagem inativo</p>
+        <p style={{ color: '#6b7280', fontSize: 13, textAlign: 'center' }}>A contagem pode ter sido finalizada ou o link foi alterado pelo administrador.</p>
       </div>
     )
   }
 
-  const emAberto    = inventario.status === 'ABERTO'
+  const emAberto     = inventario.status === 'ABERTO'
+  const aguardando   = inventario.status === 'AGUARDANDO'
   const totalLidos  = itens.length
   const localizados = itens.filter(i => i.situacao === 'LOCALIZADO').length
   const divergentes = itens.filter(i => i.situacao === 'LOCAL_DIVERGENTE').length
@@ -530,7 +533,7 @@ export default function ImobilizadoContagem() {
             {inventario.local_area || `Inventário ${inventario.data}`}
           </p>
           <p style={{ fontSize: 12, color: '#6b7280', marginTop: 2 }}>
-            {inventario.data} · {emAberto ? '🟢 Em andamento' : '🔒 Finalizado'}
+            {inventario.data} · {emAberto ? '🟢 Em andamento' : aguardando ? '⏳ Aguardando conciliação' : '🔒 Encerrado'}
           </p>
         </div>
         <button
@@ -627,9 +630,14 @@ export default function ImobilizadoContagem() {
         </div>
       )}
 
-      {!emAberto && (
+      {aguardando && (
+        <div style={{ padding: '12px 16px', background: '#1e1b3a', borderBottom: '1px solid #4338ca', textAlign: 'center', flexShrink: 0 }}>
+          <p style={{ color: '#818cf8', fontSize: 14, fontWeight: 700 }}>⏳ Contagem finalizada — administrador fará a conciliação no desktop</p>
+        </div>
+      )}
+      {!emAberto && !aguardando && (
         <div style={{ padding: '12px 16px', background: '#431407', borderBottom: '1px solid #92400e', textAlign: 'center', flexShrink: 0 }}>
-          <p style={{ color: '#fbbf24', fontSize: 14, fontWeight: 700 }}>🔒 Inventário finalizado — somente visualização</p>
+          <p style={{ color: '#fbbf24', fontSize: 14, fontWeight: 700 }}>🔒 Inventário encerrado — somente visualização</p>
         </div>
       )}
 
@@ -689,7 +697,7 @@ export default function ImobilizadoContagem() {
               background: '#1f2937', border: '1px solid #374151',
               borderRadius: 12, color: '#9ca3af', fontWeight: 700, fontSize: 14, cursor: 'pointer',
             }}>
-            Finalizar Inventário ({totalLidos} leitura{totalLidos !== 1 ? 's' : ''})
+            Finalizar Contagem ({totalLidos} leitura{totalLidos !== 1 ? 's' : ''})
           </button>
         </div>
       )}

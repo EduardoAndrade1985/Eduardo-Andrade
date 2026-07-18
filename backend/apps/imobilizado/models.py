@@ -106,9 +106,11 @@ class Bem(EmpresaBaseModel):
 
 class Inventario(EmpresaBaseModel):
     ABERTO     = 'ABERTO'
+    AGUARDANDO = 'AGUARDANDO'
     FINALIZADO = 'FINALIZADO'
     STATUS_CHOICES = [
         (ABERTO,     'Aberto'),
+        (AGUARDANDO, 'Aguardando Conciliação'),
         (FINALIZADO, 'Finalizado'),
     ]
 
@@ -140,14 +142,18 @@ class ItemInventario(models.Model):
         (NAO_CADASTRADO,   'Não Cadastrado'),
     ]
 
-    inventario             = models.ForeignKey(Inventario, on_delete=models.CASCADE, related_name='itens')
-    bem                    = models.ForeignKey(Bem, on_delete=models.SET_NULL, null=True, blank=True, related_name='leituras')
-    plaqueta_lida          = models.CharField(max_length=40)
-    situacao               = models.CharField(max_length=20, choices=SITUACAO_CHOICES)
-    localizacao_encontrada = models.CharField(max_length=120, blank=True)
-    contado_por            = models.CharField(max_length=120, blank=True)
-    contado_em             = models.DateTimeField(auto_now=True)
-    observacao             = models.CharField(max_length=200, blank=True)
+    inventario               = models.ForeignKey(Inventario, on_delete=models.CASCADE, related_name='itens')
+    bem                      = models.ForeignKey(Bem, on_delete=models.SET_NULL, null=True, blank=True, related_name='leituras')
+    plaqueta_lida            = models.CharField(max_length=40)
+    situacao                 = models.CharField(max_length=20, choices=SITUACAO_CHOICES)
+    localizacao_encontrada   = models.CharField(max_length=120, blank=True)
+    contado_por              = models.CharField(max_length=120, blank=True)
+    contado_em               = models.DateTimeField(auto_now=True)
+    observacao               = models.CharField(max_length=200, blank=True)
+    descricao_provisoria     = models.CharField(max_length=200, blank=True)
+    foto_provisoria          = models.ImageField(upload_to='imobilizado/fotos/', null=True, blank=True)
+    categoria_provisoria_id  = models.IntegerField(null=True, blank=True)
+    departamento_provisorio_id = models.IntegerField(null=True, blank=True)
 
     class Meta:
         unique_together     = [('inventario', 'plaqueta_lida')]

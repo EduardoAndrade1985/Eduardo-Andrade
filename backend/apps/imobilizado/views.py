@@ -1,9 +1,10 @@
+import io
 import json
 import uuid
 from decimal import Decimal, InvalidOperation
 from django.db import transaction
 from django.db.models import Q
-from django.http import JsonResponse
+from django.http import JsonResponse, HttpResponse
 from django.views.decorators.csrf import csrf_exempt
 from django.utils import timezone
 
@@ -77,15 +78,27 @@ def _item_dict(item, request=None):
             'localizacao': b.localizacao,
             'foto_url':    foto_url,
         }
+
+    foto_prov_url = None
+    if request and item.foto_provisoria:
+        try:
+            foto_prov_url = request.build_absolute_uri(item.foto_provisoria.url)
+        except Exception:
+            pass
+
     return {
-        'id':                    item.id,
-        'plaqueta_lida':         item.plaqueta_lida,
-        'situacao':              item.situacao,
-        'bem':                   bem_data,
-        'localizacao_encontrada': item.localizacao_encontrada,
-        'contado_por':           item.contado_por,
-        'contado_em':            item.contado_em.isoformat(),
-        'observacao':            item.observacao,
+        'id':                       item.id,
+        'plaqueta_lida':            item.plaqueta_lida,
+        'situacao':                 item.situacao,
+        'bem':                      bem_data,
+        'localizacao_encontrada':   item.localizacao_encontrada,
+        'contado_por':              item.contado_por,
+        'contado_em':               item.contado_em.isoformat(),
+        'observacao':               item.observacao,
+        'descricao_provisoria':     item.descricao_provisoria,
+        'foto_provisoria_url':      foto_prov_url,
+        'categoria_provisoria_id':  item.categoria_provisoria_id,
+        'departamento_provisorio_id': item.departamento_provisorio_id,
     }
 
 
@@ -530,7 +543,7 @@ def api_inventario_finalizar(request, pk):
     except Inventario.DoesNotExist:
         return _err('Inventário não encontrado', 404)
 
-    inv.status = Inventario.FINALIZADO
+    inv.status = Inventario.AGUARDANDO
     inv.save(update_fields=['status'])
     return JsonResponse({'ok': True})
 
@@ -548,24 +561,35 @@ def api_inventario_leitura(request, pk):
     except Inventario.DoesNotExist:
         return _err('Inventário não encontrado', 404)
 
-    if inv.status == Inventario.FINALIZADO:
-        return _err('Inventário já finalizado')
+    if inv.status != Inventario.ABERTO:
+        return _err('Inventário não está aberto para leituras')
 
-    try:
-        data = json.loads(request.body)
-    except Exception:
-        return _err('JSON inválido')
+    is_multi = request.content_type and 'multipart' in request.content_type
+    if is_multi:
+        data = request.POST
+    else:
+        try:
+            data = json.loads(request.body)
+        except Exception:
+            return _err('JSON inválido')
 
     plaqueta = (data.get('plaqueta') or '').strip()
     if not plaqueta:
         return _err('Plaqueta obrigatória')
 
+    cat_id = data.get('categoria_provisoria_id')
+    dep_id = data.get('departamento_provisorio_id')
+
     item, created = registrar_leitura(
-        inventario             = inv,
-        plaqueta               = plaqueta,
-        localizacao_encontrada = data.get('localizacao_encontrada', ''),
-        contado_por            = data.get('contado_por', ''),
-        observacao             = data.get('observacao', ''),
+        inventario                = inv,
+        plaqueta                  = plaqueta,
+        localizacao_encontrada    = data.get('localizacao_encontrada', ''),
+        contado_por               = data.get('contado_por', ''),
+        observacao                = data.get('observacao', ''),
+        descricao_provisoria      = data.get('descricao_provisoria', ''),
+        foto_provisoria           = request.FILES.get('foto_provisoria') if is_multi else None,
+        categoria_provisoria_id   = int(cat_id) if cat_id else None,
+        departamento_provisorio_id = int(dep_id) if dep_id else None,
     )
     return JsonResponse({'ok': True, 'criado': created, 'item': _item_dict(item, request)})
 
@@ -628,6 +652,224 @@ def api_inventario_novo_link(request, pk):
     inv.token = uuid.uuid4()
     inv.save(update_fields=['token'])
     return JsonResponse({'ok': True, 'token': str(inv.token)})
+
+
+@csrf_exempt
+def api_inventario_conciliar(request, pk):
+    empresa = _empresa(request)
+    if not empresa:
+        return _err('Sem empresa ativa', 401)
+    if request.method != 'POST':
+        return _err('Método não permitido', 405)
+
+    try:
+        inv = Inventario.objects.get(pk=pk, empresa=empresa)
+    except Inventario.DoesNotExist:
+        return _err('Inventário não encontrado', 404)
+
+    if inv.status == Inventario.FINALIZADO:
+        return _err('Inventário já finalizado')
+
+    try:
+        data = json.loads(request.body)
+    except Exception:
+        return _err('JSON inválido')
+
+    with transaction.atomic():
+        for dec in data.get('nao_cadastrados', []):
+            try:
+                item = ItemInventario.objects.select_related('bem').get(
+                    pk=dec['item_id'], inventario=inv
+                )
+            except (ItemInventario.DoesNotExist, KeyError):
+                continue
+
+            if dec.get('acao') != 'incorporar':
+                continue
+
+            descricao = (dec.get('descricao') or item.descricao_provisoria or '').strip()
+            cat_id    = dec.get('categoria_id') or item.categoria_provisoria_id
+            dep_id    = dec.get('departamento_id') or item.departamento_provisorio_id
+
+            if not descricao or not cat_id or not dep_id:
+                continue
+
+            try:
+                cat = CategoriaBem.objects.get(id=cat_id, empresa=empresa)
+                dep = Departamento.objects.get(id=dep_id, empresa=empresa)
+            except (CategoriaBem.DoesNotExist, Departamento.DoesNotExist):
+                continue
+
+            if Bem.objects.filter(plaqueta=item.plaqueta_lida).exists():
+                continue
+
+            bem = Bem(
+                empresa         = empresa,
+                plaqueta        = item.plaqueta_lida,
+                descricao       = descricao,
+                categoria       = cat,
+                departamento    = dep,
+                localizacao     = item.localizacao_encontrada,
+                nota_fiscal     = (dec.get('nota_fiscal') or '').strip(),
+                valor_aquisicao = _parse_valor(str(dec.get('valor_aquisicao') or '')),
+            )
+            if item.foto_provisoria:
+                bem.foto = item.foto_provisoria
+            bem.save()
+
+            item.bem      = bem
+            item.situacao = ItemInventario.LOCALIZADO
+            item.save(update_fields=['bem', 'situacao'])
+
+        for dec in data.get('divergentes', []):
+            if not dec.get('atualizar_local'):
+                continue
+            try:
+                item = ItemInventario.objects.get(pk=dec['item_id'], inventario=inv)
+            except (ItemInventario.DoesNotExist, KeyError):
+                continue
+            if item.bem_id and item.localizacao_encontrada:
+                Bem.objects.filter(pk=item.bem_id).update(localizacao=item.localizacao_encontrada)
+
+        inv.status = Inventario.FINALIZADO
+        inv.save(update_fields=['status'])
+
+    return JsonResponse({'ok': True})
+
+
+@csrf_exempt
+def api_bens_exportar(request):
+    empresa = _empresa(request)
+    if not empresa:
+        return _err('Sem empresa ativa', 401)
+    if request.method != 'GET':
+        return _err('Método não permitido', 405)
+
+    import pandas as pd
+
+    qs = Bem.objects.filter(empresa=empresa).select_related('categoria', 'departamento')
+
+    situacao = request.GET.get('situacao')
+    cat_id   = request.GET.get('categoria_id')
+    dep_id   = request.GET.get('departamento_id')
+    q        = request.GET.get('q', '').strip()
+    pendente = request.GET.get('pendente')
+
+    if situacao:  qs = qs.filter(situacao=situacao)
+    if cat_id:    qs = qs.filter(categoria_id=cat_id)
+    if dep_id:    qs = qs.filter(departamento_id=dep_id)
+    if q:         qs = qs.filter(Q(plaqueta__icontains=q) | Q(descricao__icontains=q) | Q(nota_fiscal__icontains=q))
+    if pendente == '1':
+        qs = qs.filter(Q(valor_aquisicao__isnull=True) | Q(nota_fiscal=''))
+
+    rows = []
+    for b in qs:
+        rows.append({
+            'Plaqueta':       b.plaqueta,
+            'Descrição':      b.descricao,
+            'Categoria':      b.categoria.nome if b.categoria_id else '',
+            'Departamento':   b.departamento.nome if b.departamento_id else '',
+            'Localização':    b.localizacao,
+            'Responsável':    b.responsavel,
+            'Nota Fiscal':    b.nota_fiscal,
+            'Fornecedor':     b.fornecedor,
+            'Data Aquisição': b.data_aquisicao.isoformat() if b.data_aquisicao else '',
+            'Valor Aquisição': float(b.valor_aquisicao) if b.valor_aquisicao is not None else '',
+            'Situação':       dict(Bem.SITUACAO_CHOICES).get(b.situacao, b.situacao),
+        })
+
+    df  = pd.DataFrame(rows) if rows else pd.DataFrame(columns=[
+        'Plaqueta', 'Descrição', 'Categoria', 'Departamento', 'Localização',
+        'Responsável', 'Nota Fiscal', 'Fornecedor', 'Data Aquisição', 'Valor Aquisição', 'Situação',
+    ])
+    buf = io.BytesIO()
+    with pd.ExcelWriter(buf, engine='openpyxl') as writer:
+        df.to_excel(writer, index=False, sheet_name='Bens')
+    buf.seek(0)
+
+    resp = HttpResponse(
+        buf.read(),
+        content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    )
+    resp['Content-Disposition'] = 'attachment; filename="bens_imobilizado.xlsx"'
+    return resp
+
+
+@csrf_exempt
+def api_bens_importar(request):
+    empresa = _empresa(request)
+    if not empresa:
+        return _err('Sem empresa ativa', 401)
+    if request.method != 'POST':
+        return _err('Método não permitido', 405)
+
+    arquivo = request.FILES.get('arquivo')
+    if not arquivo:
+        return _err('Arquivo obrigatório')
+
+    import pandas as pd
+
+    try:
+        df = pd.read_excel(arquivo)
+    except Exception as exc:
+        return _err(f'Erro ao ler arquivo: {exc}')
+
+    erros   = []
+    criados = 0
+    ignorados = 0
+
+    with transaction.atomic():
+        for idx, row in df.iterrows():
+            linha = idx + 2
+            plaqueta  = str(row.get('Plaqueta') or '').strip().upper()
+            descricao = str(row.get('Descrição') or '').strip()
+            if not plaqueta or not descricao:
+                erros.append(f'Linha {linha}: Plaqueta e Descrição são obrigatórias')
+                continue
+
+            if Bem.objects.filter(plaqueta=plaqueta).exists():
+                ignorados += 1
+                continue
+
+            cat_nome = str(row.get('Categoria') or '').strip()
+            dep_nome = str(row.get('Departamento') or '').strip()
+
+            cat, _ = CategoriaBem.objects.get_or_create(
+                empresa=empresa, nome=cat_nome or 'Outros', defaults={'ativo': True}
+            )
+            dep, _ = Departamento.objects.get_or_create(
+                empresa=empresa, nome=dep_nome or 'Geral', defaults={'ativo': True}
+            )
+
+            valor = None
+            raw_val = row.get('Valor Aquisição')
+            if raw_val is not None and str(raw_val).strip() not in ('', 'nan'):
+                valor = _parse_valor(str(raw_val).replace(',', '.'))
+
+            data_aq = None
+            raw_dt = row.get('Data Aquisição')
+            if raw_dt is not None and str(raw_dt).strip() not in ('', 'nan'):
+                try:
+                    data_aq = pd.to_datetime(raw_dt).date()
+                except Exception:
+                    pass
+
+            Bem.objects.create(
+                empresa         = empresa,
+                plaqueta        = plaqueta,
+                descricao       = descricao,
+                categoria       = cat,
+                departamento    = dep,
+                localizacao     = str(row.get('Localização') or '').strip(),
+                responsavel     = str(row.get('Responsável') or '').strip(),
+                nota_fiscal     = str(row.get('Nota Fiscal') or '').strip(),
+                fornecedor      = str(row.get('Fornecedor') or '').strip(),
+                data_aquisicao  = data_aq,
+                valor_aquisicao = valor,
+            )
+            criados += 1
+
+    return JsonResponse({'ok': True, 'criados': criados, 'ignorados': ignorados, 'erros': erros})
 
 
 def api_inventario_relatorio(request, pk):
