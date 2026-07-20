@@ -16,6 +16,7 @@ urlpatterns = [
     path('inventarios/token/<uuid:token>/',          views.api_inventario_por_token),
     path('inventarios/<int:pk>/',                    views.api_inventario_detalhe),
     path('inventarios/<int:pk>/finalizar/',          views.api_inventario_finalizar),
+    path('inventarios/<int:pk>/reabrir/',            views.api_inventario_reabrir),
     path('inventarios/<int:pk>/leitura/',            views.api_inventario_leitura),
     path('inventarios/<int:pk>/relatorio/',          views.api_inventario_relatorio),
     path('inventarios/<int:pk>/relatorio/exportar/', views.api_inventario_relatorio_exportar),

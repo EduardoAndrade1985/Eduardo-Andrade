@@ -1355,6 +1355,12 @@ function InventariosTab({ categorias, departamentos }) {
     carregar()
   }
 
+  const reabrir = async inv => {
+    if (!window.confirm(`Reabrir inventário de ${fmtDt(inv.data)} para ajustes? O status voltará para "Aguardando Conciliação".`)) return
+    await api.post(`/imobilizado/inventarios/${inv.id}/reabrir/`)
+    carregar()
+  }
+
   const STATUS_COR = {
     ABERTO:     { bg: 'bg-teal-500/10',   text: 'text-teal-400',   label: 'Aberto'                  },
     AGUARDANDO: { bg: 'bg-violet-500/10', text: 'text-violet-400', label: 'Aguardando Conciliação'  },
@@ -1440,6 +1446,12 @@ function InventariosTab({ categorias, departamentos }) {
                             <button onClick={() => setConciliandoInv(inv)}
                               className="text-xs bg-violet-500/10 text-violet-400 border border-violet-500/30 px-2.5 py-1 rounded-lg hover:bg-violet-500/20 transition whitespace-nowrap">
                               📋 Conciliar
+                            </button>
+                          )}
+                          {inv.status === 'FINALIZADO' && (
+                            <button onClick={() => reabrir(inv)}
+                              className="text-xs bg-amber-500/10 text-amber-400 border border-amber-500/30 px-2.5 py-1 rounded-lg hover:bg-amber-500/20 transition whitespace-nowrap">
+                              🔓 Reabrir
                             </button>
                           )}
                           <button onClick={() => excluirInventario(inv)}

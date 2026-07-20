@@ -561,6 +561,25 @@ def api_inventario_finalizar(request, pk):
 
 
 @csrf_exempt
+def api_inventario_reabrir(request, pk):
+    """Reabre um inventário FINALIZADO para ajustes (volta para AGUARDANDO)."""
+    empresa = _empresa(request)
+    if not empresa:
+        return _err('Sem empresa ativa', 401)
+    if request.method != 'POST':
+        return _err('Método não permitido', 405)
+    try:
+        inv = Inventario.objects.get(pk=pk, empresa=empresa)
+    except Inventario.DoesNotExist:
+        return _err('Inventário não encontrado', 404)
+    if inv.status != Inventario.FINALIZADO:
+        return _err('Somente inventários finalizados podem ser reabertos')
+    inv.status = Inventario.AGUARDANDO
+    inv.save(update_fields=['status'])
+    return JsonResponse({'ok': True})
+
+
+@csrf_exempt
 def api_inventario_leitura(request, pk):
     empresa = _empresa(request)
     if not empresa:
