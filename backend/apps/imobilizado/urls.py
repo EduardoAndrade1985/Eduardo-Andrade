@@ -20,6 +20,8 @@ urlpatterns = [
     path('inventarios/<int:pk>/leitura/',            views.api_inventario_leitura),
     path('inventarios/<int:pk>/relatorio/',          views.api_inventario_relatorio),
     path('inventarios/<int:pk>/relatorio/exportar/', views.api_inventario_relatorio_exportar),
+    path('inventarios/<int:pk>/itens/<int:item_pk>/', views.api_inventario_item),
     path('inventarios/<int:pk>/conciliar/',          views.api_inventario_conciliar),
+    path('comparativo/',                             views.api_comparativo),
     path('inventarios/<int:pk>/novo-link/',          views.api_inventario_novo_link),
 ]

@@ -1024,3 +1024,96 @@ def api_inventario_relatorio(request, pk):
         'indice_localizacao': r['indice_localizacao'],
         'valor_fantasmas':    r['valor_fantasmas'],
     })
+
+
+@csrf_exempt
+def api_inventario_item(request, pk, item_pk):
+    """PATCH: edita campos do ItemInventario. DELETE: remove item do inventário."""
+    empresa = _empresa(request)
+    if not empresa:
+        return _err('Sem empresa ativa', 401)
+    try:
+        inv = Inventario.objects.get(pk=pk, empresa=empresa)
+    except Inventario.DoesNotExist:
+        return _err('Inventário não encontrado', 404)
+    if inv.status == Inventario.FINALIZADO:
+        return _err('Inventário finalizado não pode ser editado')
+    try:
+        item = ItemInventario.objects.get(pk=item_pk, inventario=inv)
+    except ItemInventario.DoesNotExist:
+        return _err('Item não encontrado', 404)
+
+    if request.method == 'DELETE':
+        item.delete()
+        return JsonResponse({'ok': True})
+
+    if request.method == 'PATCH':
+        try:
+            data = json.loads(request.body)
+        except Exception:
+            return _err('JSON inválido')
+        campos = ['localizacao_encontrada', 'contado_por', 'observacao']
+        update_fields = []
+        for c in campos:
+            if c in data:
+                setattr(item, c, str(data[c]).strip())
+                update_fields.append(c)
+        if update_fields:
+            item.save(update_fields=update_fields)
+        return JsonResponse({'ok': True, 'item': _item_dict(item, request)})
+
+    return _err('Método não permitido', 405)
+
+
+def api_comparativo(request):
+    """GET: reconciliação do inventário FINALIZADO mais recente."""
+    empresa = _empresa(request)
+    if not empresa:
+        return _err('Sem empresa ativa', 401)
+    inv_id = request.GET.get('inventario_id')
+    if inv_id:
+        try:
+            inv = Inventario.objects.get(pk=inv_id, empresa=empresa, status=Inventario.FINALIZADO)
+        except Inventario.DoesNotExist:
+            return _err('Inventário não encontrado', 404)
+    else:
+        inv = Inventario.objects.filter(empresa=empresa, status=Inventario.FINALIZADO).order_by('-data', '-criado_em').first()
+        if not inv:
+            return JsonResponse({'inventario': None, 'localizados': [], 'divergentes': [],
+                                 'nao_cadastrados': [], 'fantasmas': [],
+                                 'total_esperados': 0, 'total_contados': 0,
+                                 'indice_localizacao': 0.0, 'valor_fantasmas': 0.0,
+                                 'inventarios_finalizados': []})
+
+    r = reconciliar(inv)
+
+    def _b(b):
+        return {
+            'id': b.id, 'plaqueta': b.plaqueta, 'descricao': b.descricao,
+            'categoria': b.categoria.nome if b.categoria_id else '',
+            'departamento': b.departamento.nome if b.departamento_id else '',
+            'localizacao': b.localizacao,
+            'valor_aquisicao': float(b.valor_aquisicao) if b.valor_aquisicao else None,
+        }
+
+    # lista de todos os inventários finalizados para o seletor
+    finalizados = list(
+        Inventario.objects.filter(empresa=empresa, status=Inventario.FINALIZADO)
+        .order_by('-data', '-criado_em')
+        .values('id', 'data', 'local_area', 'responsavel')
+    )
+    for f in finalizados:
+        f['data'] = f['data'].isoformat()
+
+    return JsonResponse({
+        'inventario':         {'id': inv.id, 'data': inv.data.isoformat(), 'local_area': inv.local_area, 'responsavel': inv.responsavel},
+        'localizados':        [_item_dict(i, request) for i in r['localizados']],
+        'divergentes':        [_item_dict(i, request) for i in r['divergentes']],
+        'nao_cadastrados':    [_item_dict(i, request) for i in r['nao_cadastrados']],
+        'fantasmas':          [_b(b) for b in r['fantasmas']],
+        'total_esperados':    r['total_esperados'],
+        'total_contados':     r['total_contados'],
+        'indice_localizacao': r['indice_localizacao'],
+        'valor_fantasmas':    r['valor_fantasmas'],
+        'inventarios_finalizados': finalizados,
+    })

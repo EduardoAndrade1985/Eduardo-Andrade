@@ -750,12 +750,27 @@ function LancamentoTab({ categorias, departamentos, localizacoes, onSucesso }) {
 }
 
 // ════════════════════════════════════════════════════════════════════════════════
-// ABA INVENTÁRIOS
+// PAINEL DE RELATÓRIO — tela cheia
 // ════════════════════════════════════════════════════════════════════════════════
-function RelatorioPanel({ relatorio: r, invId, onClose }) {
-  const [exportando, setExportando] = useState(false)
+const SIT_INFO = {
+  LOCALIZADO:       { label: 'Localizado',      emoji: '✅', cor: 'text-teal-400',   bg: 'bg-teal-500/10'   },
+  LOCAL_DIVERGENTE: { label: 'Local Divergente', emoji: '⚠️', cor: 'text-amber-400',  bg: 'bg-amber-500/10'  },
+  NAO_CADASTRADO:   { label: 'Não Cadastrado',   emoji: '🆕', cor: 'text-violet-400', bg: 'bg-violet-500/10' },
+  NAO_LOCALIZADO:   { label: 'Não Localizado',   emoji: '👻', cor: 'text-rose-400',   bg: 'bg-rose-500/10'   },
+}
+
+function TabelaRelatorio({ relatorio: r, invId, invStatus, onRefresh }) {
+  const [exportando, setExportando]   = useState(false)
+  const [filtroSit, setFiltroSit]     = useState('TODOS')
+  const [editandoId, setEditandoId]   = useState(null)   // _itemId do row em edição
+  const [editForm, setEditForm]       = useState({})
+  const [salvandoEdit, setSalvandoEdit] = useState(false)
+  const [excluindoId, setExcluindoId] = useState(null)
+
+  const podeEditar = invStatus && invStatus !== 'FINALIZADO'
 
   const exportarRelatorio = async () => {
+    if (!invId) return
     setExportando(true)
     try {
       const res = await api.get(`/imobilizado/inventarios/${invId}/relatorio/exportar/`, { responseType: 'blob' })
@@ -766,22 +781,50 @@ function RelatorioPanel({ relatorio: r, invId, onClose }) {
     finally { setExportando(false) }
   }
 
-  const SIT_INFO = {
-    LOCALIZADO:       { label: 'Localizado',      emoji: '✅', cor: 'text-teal-400',   bg: 'bg-teal-500/10'   },
-    LOCAL_DIVERGENTE: { label: 'Local Divergente', emoji: '⚠️', cor: 'text-amber-400',  bg: 'bg-amber-500/10'  },
-    NAO_CADASTRADO:   { label: 'Não Cadastrado',   emoji: '🆕', cor: 'text-violet-400', bg: 'bg-violet-500/10' },
-    NAO_LOCALIZADO:   { label: 'Não Localizado',   emoji: '👻', cor: 'text-rose-400',   bg: 'bg-rose-500/10'   },
-  }
-
-  const rows = [
-    ...r.localizados.map(i     => ({ _sit: 'LOCALIZADO',       plq: i.plaqueta_lida,  desc: i.bem?.descricao || '—',            locSist: i.bem?.localizacao || '—',  locEnc: i.localizacao_encontrada || '—', valor: i.bem?.valor_aquisicao, op: i.contado_por })),
-    ...r.divergentes.map(i     => ({ _sit: 'LOCAL_DIVERGENTE',  plq: i.plaqueta_lida,  desc: i.bem?.descricao || '—',            locSist: i.bem?.localizacao || '—',  locEnc: i.localizacao_encontrada || '—', valor: i.bem?.valor_aquisicao, op: i.contado_por })),
-    ...r.nao_cadastrados.map(i => ({ _sit: 'NAO_CADASTRADO',    plq: i.plaqueta_lida,  desc: i.descricao_provisoria || '—',      locSist: '—',                         locEnc: i.localizacao_encontrada || '—', valor: null,                   op: i.contado_por })),
-    ...r.fantasmas.map(b       => ({ _sit: 'NAO_LOCALIZADO',    plq: b.plaqueta,        desc: b.descricao,                        locSist: b.localizacao || '—',       locEnc: '—',                             valor: b.valor_aquisicao,      op: '—' })),
+  const allRows = [
+    ...r.localizados.map(i     => ({ _sit: 'LOCALIZADO',      plq: i.plaqueta_lida, desc: i.bem?.descricao || '—', locSist: i.bem?.localizacao || '—', locEnc: i.localizacao_encontrada || '—', valor: i.bem?.valor_aquisicao, op: i.contado_por, _itemId: i.id, _bemId: i.bem?.id, _locEnc: i.localizacao_encontrada, _op: i.contado_por, _obs: i.observacao })),
+    ...r.divergentes.map(i     => ({ _sit: 'LOCAL_DIVERGENTE', plq: i.plaqueta_lida, desc: i.bem?.descricao || '—', locSist: i.bem?.localizacao || '—', locEnc: i.localizacao_encontrada || '—', valor: i.bem?.valor_aquisicao, op: i.contado_por, _itemId: i.id, _bemId: i.bem?.id, _locEnc: i.localizacao_encontrada, _op: i.contado_por, _obs: i.observacao })),
+    ...r.nao_cadastrados.map(i => ({ _sit: 'NAO_CADASTRADO',   plq: i.plaqueta_lida, desc: i.descricao_provisoria || '—', locSist: '—', locEnc: i.localizacao_encontrada || '—', valor: null, op: i.contado_por, _itemId: i.id, _bemId: null, _locEnc: i.localizacao_encontrada, _op: i.contado_por, _obs: i.observacao })),
+    ...r.fantasmas.map(b       => ({ _sit: 'NAO_LOCALIZADO',   plq: b.plaqueta,      desc: b.descricao,              locSist: b.localizacao || '—', locEnc: '—', valor: b.valor_aquisicao, op: '—', _itemId: null, _bemId: b.id, _locEnc: '', _op: '', _obs: '' })),
   ]
 
+  const rows = filtroSit === 'TODOS' ? allRows : allRows.filter(r => r._sit === filtroSit)
+
+  const abrirEdit = row => {
+    setEditandoId(row._itemId)
+    setEditForm({ localizacao_encontrada: row._locEnc || '', contado_por: row._op || '', observacao: row._obs || '' })
+  }
+
+  const salvarEdit = async row => {
+    setSalvandoEdit(true)
+    try {
+      await api.patch(`/imobilizado/inventarios/${invId}/itens/${row._itemId}/`, editForm)
+      setEditandoId(null)
+      onRefresh?.()
+    } catch { alert('Erro ao salvar') }
+    finally { setSalvandoEdit(false) }
+  }
+
+  const excluirItem = async row => {
+    if (!window.confirm(`Remover "${row.plq}" da contagem? A leitura será apagada.`)) return
+    setExcluindoId(row._itemId)
+    try {
+      await api.delete(`/imobilizado/inventarios/${invId}/itens/${row._itemId}/`)
+      onRefresh?.()
+    } catch { alert('Erro ao remover item') }
+    finally { setExcluindoId(null) }
+  }
+
   const th = 'text-left text-[10px] font-bold text-muted uppercase tracking-wider px-3 py-2.5 whitespace-nowrap border-b border-border'
-  const td = 'px-3 py-2 text-xs'
+  const td = 'px-3 py-2 text-xs align-middle'
+
+  const FILTROS = [
+    { id: 'TODOS', label: 'Todos', n: allRows.length },
+    { id: 'LOCALIZADO',      label: '✅ Localizados',     n: r.localizados.length      },
+    { id: 'LOCAL_DIVERGENTE',label: '⚠️ Divergentes',     n: r.divergentes.length      },
+    { id: 'NAO_CADASTRADO',  label: '🆕 Não Cadastrados', n: r.nao_cadastrados.length  },
+    { id: 'NAO_LOCALIZADO',  label: '👻 Não Localizados', n: r.fantasmas.length        },
+  ]
 
   return (
     <div className="space-y-4">
@@ -800,44 +843,108 @@ function RelatorioPanel({ relatorio: r, invId, onClose }) {
         ))}
       </div>
 
-      {/* Barra de ações */}
-      <div className="flex items-center justify-between">
-        <p className="text-xs text-muted">{rows.length} item{rows.length !== 1 ? 's' : ''} no total</p>
-        <button onClick={exportarRelatorio} disabled={exportando}
-          className="text-xs bg-bg3 border border-border text-dim px-3 py-1.5 rounded-lg hover:border-primary/40 hover:text-primary transition disabled:opacity-50">
-          {exportando ? '⏳ Exportando…' : '⬇️ Exportar Excel'}
-        </button>
+      {/* Filtros + ações */}
+      <div className="flex items-center justify-between gap-3 flex-wrap">
+        <div className="flex items-center gap-1 flex-wrap">
+          {FILTROS.map(f => (
+            <button key={f.id} onClick={() => setFiltroSit(f.id)}
+              className={`text-xs px-2.5 py-1 rounded-full border transition ${filtroSit === f.id ? 'bg-primary/10 border-primary/40 text-primary font-semibold' : 'border-border text-muted hover:text-dim'}`}>
+              {f.label} <span className="opacity-60">({f.n})</span>
+            </button>
+          ))}
+        </div>
+        {invId && (
+          <button onClick={exportarRelatorio} disabled={exportando}
+            className="text-xs bg-bg3 border border-border text-dim px-3 py-1.5 rounded-lg hover:border-primary/40 hover:text-primary transition disabled:opacity-50 whitespace-nowrap">
+            {exportando ? '⏳ Exportando…' : '⬇️ Exportar Excel'}
+          </button>
+        )}
       </div>
 
-      {/* Tabela unificada */}
+      {/* Tabela */}
       {rows.length > 0 ? (
         <div className="border border-border rounded-xl overflow-hidden">
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
                 <tr>
-                  {['Situação', 'Plaqueta', 'Descrição', 'Local Sistema', 'Local Encontrado', 'Valor', 'Operador'].map(h => (
-                    <th key={h} className={th}>{h}</th>
-                  ))}
+                  {['Situação','Plaqueta','Descrição','Local Sistema','Local Encontrado','Valor','Operador',
+                    ...(podeEditar ? ['Ações'] : [])
+                  ].map(h => <th key={h} className={th}>{h}</th>)}
                 </tr>
               </thead>
               <tbody>
                 {rows.map((row, i) => {
                   const s = SIT_INFO[row._sit]
+                  const isEditing = editandoId === row._itemId && row._itemId != null
                   return (
-                    <tr key={i} className="border-b border-border/40 last:border-0 hover:bg-bg3/50 transition">
-                      <td className={td}>
-                        <span className={`inline-flex items-center gap-1 text-[11px] font-semibold px-2 py-0.5 rounded-full ${s.bg} ${s.cor} whitespace-nowrap`}>
-                          {s.emoji} {s.label}
-                        </span>
-                      </td>
-                      <td className={`${td} font-mono font-bold text-primary whitespace-nowrap`}>{row.plq}</td>
-                      <td className={`${td} text-dim max-w-[180px]`}><span className="block truncate">{row.desc}</span></td>
-                      <td className={`${td} text-muted whitespace-nowrap`}>{row.locSist}</td>
-                      <td className={`${td} whitespace-nowrap ${row._sit === 'LOCAL_DIVERGENTE' ? 'text-amber-400 font-semibold' : 'text-muted'}`}>{row.locEnc}</td>
-                      <td className={`${td} text-dim whitespace-nowrap text-right`}>{row.valor != null ? fmtR(row.valor) : '—'}</td>
-                      <td className={`${td} text-muted whitespace-nowrap`}>{row.op || '—'}</td>
-                    </tr>
+                    <>
+                      <tr key={i} className={`border-b border-border/40 last:border-0 transition ${isEditing ? 'bg-primary/5' : 'hover:bg-bg3/50'}`}>
+                        <td className={td}>
+                          <span className={`inline-flex items-center gap-1 text-[11px] font-semibold px-2 py-0.5 rounded-full ${s.bg} ${s.cor} whitespace-nowrap`}>
+                            {s.emoji} {s.label}
+                          </span>
+                        </td>
+                        <td className={`${td} font-mono font-bold text-primary whitespace-nowrap`}>{row.plq}</td>
+                        <td className={`${td} text-dim max-w-[180px]`}><span className="block truncate">{row.desc}</span></td>
+                        <td className={`${td} text-muted whitespace-nowrap`}>{row.locSist}</td>
+                        <td className={`${td} whitespace-nowrap ${row._sit === 'LOCAL_DIVERGENTE' ? 'text-amber-400 font-semibold' : 'text-muted'}`}>{row.locEnc}</td>
+                        <td className={`${td} text-dim whitespace-nowrap text-right`}>{row.valor != null ? fmtR(row.valor) : '—'}</td>
+                        <td className={`${td} text-muted whitespace-nowrap`}>{row.op || '—'}</td>
+                        {podeEditar && (
+                          <td className={`${td} whitespace-nowrap`}>
+                            {row._itemId != null && (
+                              <div className="flex items-center gap-1">
+                                <button onClick={() => isEditing ? setEditandoId(null) : abrirEdit(row)}
+                                  className={`text-[11px] px-2 py-0.5 rounded border transition ${isEditing ? 'bg-primary/10 border-primary/30 text-primary' : 'border-border text-muted hover:border-primary/30 hover:text-primary'}`}>
+                                  ✏️
+                                </button>
+                                <button onClick={() => excluirItem(row)} disabled={excluindoId === row._itemId}
+                                  className="text-[11px] px-2 py-0.5 rounded border border-rose-500/20 text-rose-400 hover:bg-rose-500/10 transition disabled:opacity-50">
+                                  {excluindoId === row._itemId ? '…' : '🗑️'}
+                                </button>
+                              </div>
+                            )}
+                          </td>
+                        )}
+                      </tr>
+                      {isEditing && (
+                        <tr key={`edit-${i}`} className="bg-primary/5 border-b border-border/40">
+                          <td colSpan={podeEditar ? 8 : 7} className="px-4 py-3">
+                            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                              <div>
+                                <label className="text-[10px] font-bold text-muted uppercase tracking-wider block mb-1">Local Encontrado</label>
+                                <input className={inp} value={editForm.localizacao_encontrada}
+                                  onChange={e => setEditForm(f => ({ ...f, localizacao_encontrada: e.target.value }))}
+                                  placeholder="Local onde foi encontrado"/>
+                              </div>
+                              <div>
+                                <label className="text-[10px] font-bold text-muted uppercase tracking-wider block mb-1">Operador</label>
+                                <input className={inp} value={editForm.contado_por}
+                                  onChange={e => setEditForm(f => ({ ...f, contado_por: e.target.value }))}
+                                  placeholder="Nome do operador"/>
+                              </div>
+                              <div>
+                                <label className="text-[10px] font-bold text-muted uppercase tracking-wider block mb-1">Observação</label>
+                                <input className={inp} value={editForm.observacao}
+                                  onChange={e => setEditForm(f => ({ ...f, observacao: e.target.value }))}
+                                  placeholder="Observação opcional"/>
+                              </div>
+                            </div>
+                            <div className="flex gap-2 mt-3">
+                              <button onClick={() => salvarEdit(row)} disabled={salvandoEdit}
+                                className="text-xs bg-primary text-bg font-semibold px-4 py-1.5 rounded-lg hover:bg-primary/90 transition disabled:opacity-50">
+                                {salvandoEdit ? 'Salvando…' : '✓ Salvar'}
+                              </button>
+                              <button onClick={() => setEditandoId(null)}
+                                className="text-xs text-muted px-3 py-1.5 rounded-lg hover:bg-bg3 transition">
+                                Cancelar
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      )}
+                    </>
                   )
                 })}
               </tbody>
@@ -845,8 +952,104 @@ function RelatorioPanel({ relatorio: r, invId, onClose }) {
           </div>
         </div>
       ) : (
-        <p className="text-center text-muted py-8 text-sm">Nenhum item registrado neste inventário.</p>
+        <p className="text-center text-muted py-8 text-sm">Nenhum item {filtroSit !== 'TODOS' ? 'nessa categoria' : 'registrado neste inventário'}.</p>
       )}
+    </div>
+  )
+}
+
+function RelatorioPanel({ relatorio: r, invId, invStatus, onClose, onRefresh }) {
+  const titulo = r.inventario
+    ? `${fmtDt(r.inventario.data)}${r.inventario.local_area ? ' — ' + r.inventario.local_area : ''}`
+    : 'Inventário'
+  return (
+    <div className="fixed inset-0 z-50 bg-bg flex flex-col">
+      {/* Header */}
+      <div className="flex items-center gap-3 px-5 py-3.5 border-b border-border bg-bg2 flex-shrink-0">
+        <button onClick={onClose}
+          className="text-muted hover:text-dim p-1.5 rounded-lg hover:bg-bg3 transition flex-shrink-0">
+          ← Voltar
+        </button>
+        <div className="flex-1 min-w-0">
+          <p className="text-sm font-bold text-dim truncate">Relatório de Reconciliação</p>
+          <p className="text-xs text-muted truncate">{titulo}</p>
+        </div>
+      </div>
+      {/* Conteúdo scrollável */}
+      <div className="flex-1 overflow-y-auto p-5 md:p-8">
+        <TabelaRelatorio relatorio={r} invId={invId} invStatus={invStatus} onRefresh={onRefresh}/>
+      </div>
+    </div>
+  )
+}
+
+// ════════════════════════════════════════════════════════════════════════════════
+// ABA DIFERENÇAS
+// ════════════════════════════════════════════════════════════════════════════════
+function DiferencasTab() {
+  const [dados, setDados]         = useState(null)
+  const [loading, setLoading]     = useState(true)
+  const [invSelecionado, setInvSelecionado] = useState(null)
+
+  const carregar = async (invId) => {
+    setLoading(true)
+    try {
+      const params = invId ? { inventario_id: invId } : {}
+      const { data } = await api.get('/imobilizado/comparativo/', { params })
+      setDados(data)
+      if (data.inventario) setInvSelecionado(data.inventario.id)
+    } catch { setDados(null) }
+    finally { setLoading(false) }
+  }
+
+  useEffect(() => { carregar(null) }, [])
+
+  if (loading) return <div className="text-center py-12 text-muted text-sm">Carregando…</div>
+
+  if (!dados?.inventario) {
+    return (
+      <div className="text-center py-16 text-muted">
+        <p className="text-4xl mb-3">📊</p>
+        <p className="font-semibold text-dim mb-1">Nenhum inventário finalizado</p>
+        <p className="text-sm">Finalize um inventário para ver as diferenças em relação ao patrimônio atual.</p>
+      </div>
+    )
+  }
+
+  const finalizados = dados.inventarios_finalizados || []
+
+  return (
+    <div className="space-y-4">
+      {/* Seletor de inventário */}
+      <div className="flex items-center gap-3 flex-wrap">
+        <div className="flex-1 min-w-0">
+          <label className="text-[10px] font-bold text-muted uppercase tracking-wider block mb-1">Comparar com inventário</label>
+          <select
+            className={`${sel} max-w-xs`}
+            value={invSelecionado || ''}
+            onChange={e => { setInvSelecionado(Number(e.target.value)); carregar(e.target.value) }}
+          >
+            {finalizados.map(f => (
+              <option key={f.id} value={f.id}>
+                {fmtDt(f.data)}{f.local_area ? ` — ${f.local_area}` : ''}{f.responsavel ? ` (${f.responsavel})` : ''}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div className="pt-5">
+          <button onClick={() => carregar(invSelecionado)}
+            className="text-xs bg-bg3 border border-border text-dim px-3 py-2 rounded-lg hover:border-primary/40 hover:text-primary transition">
+            🔄 Atualizar
+          </button>
+        </div>
+      </div>
+
+      <TabelaRelatorio
+        relatorio={dados}
+        invId={null}
+        invStatus={null}
+        onRefresh={() => carregar(invSelecionado)}
+      />
     </div>
   )
 }
@@ -1305,9 +1508,10 @@ function InventariosTab({ categorias, departamentos }) {
   const [criando, setCriando]     = useState(false)
   const [novoForm, setNovoForm]   = useState({ data: today(), local_area: '', responsavel: '', observacoes: '' })
   const [salvando, setSalvando]   = useState(false)
-  const [relatorioModal, setRelatorioModal] = useState(null)
-  const [loadingRel, setLoadingRel] = useState(false)
-  const [invRelId, setInvRelId] = useState(null)
+  const [relatorioModal, setRelatorioModal] = useState(null)   // dados do relatório
+  const [relatorioInv, setRelatorioInv]     = useState(null)   // objeto inv completo (para status)
+  const [loadingRel, setLoadingRel]         = useState(false)
+  const [invRelId, setInvRelId]             = useState(null)
   const [conciliandoInv, setConciliandoInv] = useState(null)
 
   const carregar = async () => {
@@ -1329,12 +1533,21 @@ function InventariosTab({ categorias, departamentos }) {
 
   const verRelatorio = async inv => {
     setInvRelId(inv.id)
+    setRelatorioInv(inv)
     setLoadingRel(true)
     setRelatorioModal(null)
     try {
       const { data } = await api.get(`/imobilizado/inventarios/${inv.id}/relatorio/`)
       setRelatorioModal(data)
     } finally { setLoadingRel(false) }
+  }
+
+  const recarregarRelatorio = async () => {
+    if (!invRelId) return
+    try {
+      const { data } = await api.get(`/imobilizado/inventarios/${invRelId}/relatorio/`)
+      setRelatorioModal(data)
+    } catch { /* silencioso */ }
   }
 
   const excluirInventario = async inv => {
@@ -1469,11 +1682,15 @@ function InventariosTab({ categorias, departamentos }) {
         </div>
       )}
 
-      {/* Modal de relatório */}
+      {/* Relatório full-screen */}
       {relatorioModal && (
-        <Modal title="Relatório de Reconciliação" wide onClose={() => { setRelatorioModal(null); setInvRelId(null) }}>
-          <RelatorioPanel relatorio={relatorioModal} invId={invRelId} onClose={() => { setRelatorioModal(null); setInvRelId(null) }}/>
-        </Modal>
+        <RelatorioPanel
+          relatorio={relatorioModal}
+          invId={invRelId}
+          invStatus={relatorioInv?.status}
+          onClose={() => { setRelatorioModal(null); setInvRelId(null); setRelatorioInv(null) }}
+          onRefresh={recarregarRelatorio}
+        />
       )}
 
       {/* Modal de conciliação */}
@@ -1580,6 +1797,7 @@ export default function Imobilizado() {
     { id: 'bens',        label: '📦 Bens'        },
     { id: 'lancamento',  label: '📝 Lançamento'  },
     { id: 'inventarios', label: '📋 Inventários' },
+    { id: 'diferencas',  label: '📊 Diferenças'  },
   ]
 
   return (
@@ -1622,6 +1840,7 @@ export default function Imobilizado() {
         />
       )}
       {aba === 'inventarios' && <InventariosTab categorias={categorias} departamentos={departamentos}/>}
+      {aba === 'diferencas'  && <DiferencasTab/>}
 
       {/* Modal de configuração */}
       {showConfig && (
