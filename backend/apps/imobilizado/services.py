@@ -4,8 +4,9 @@ from .models import Bem, ItemInventario
 
 def registrar_leitura(
     inventario, plaqueta, localizacao_encontrada='', contado_por='', observacao='',
-    descricao_provisoria='', foto_provisoria=None,
+    descricao_provisoria='', foto_provisoria=None, foto_leitura=None,
     categoria_provisoria_id=None, departamento_provisorio_id=None,
+    quantidade=1,
 ):
     plaqueta = plaqueta.strip().upper()
 
@@ -28,6 +29,7 @@ def registrar_leitura(
         'localizacao_encontrada': localizacao_encontrada,
         'contado_por': contado_por,
         'observacao': observacao,
+        'quantidade': max(1, int(quantidade or 1)),
     }
     if situacao == ItemInventario.NAO_CADASTRADO:
         defaults.update({
@@ -45,6 +47,10 @@ def registrar_leitura(
     if situacao == ItemInventario.NAO_CADASTRADO and foto_provisoria:
         item.foto_provisoria = foto_provisoria
         item.save(update_fields=['foto_provisoria'])
+
+    if foto_leitura and situacao != ItemInventario.NAO_CADASTRADO:
+        item.foto_leitura = foto_leitura
+        item.save(update_fields=['foto_leitura'])
 
     return item, created
 

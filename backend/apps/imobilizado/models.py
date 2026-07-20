@@ -150,9 +150,11 @@ class ItemInventario(models.Model):
     contado_por              = models.CharField(max_length=120, blank=True)
     contado_em               = models.DateTimeField(auto_now=True)
     observacao               = models.CharField(max_length=200, blank=True)
-    descricao_provisoria     = models.CharField(max_length=200, blank=True)
-    foto_provisoria          = models.ImageField(upload_to='imobilizado/fotos/', null=True, blank=True)
-    categoria_provisoria_id  = models.IntegerField(null=True, blank=True)
+    quantidade                 = models.PositiveIntegerField(default=1)
+    descricao_provisoria       = models.CharField(max_length=200, blank=True)
+    foto_provisoria            = models.ImageField(upload_to='imobilizado/fotos/', null=True, blank=True)
+    foto_leitura               = models.ImageField(upload_to='imobilizado/fotos/', null=True, blank=True)
+    categoria_provisoria_id    = models.IntegerField(null=True, blank=True)
     departamento_provisorio_id = models.IntegerField(null=True, blank=True)
 
     class Meta:

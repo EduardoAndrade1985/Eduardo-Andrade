@@ -869,12 +869,14 @@ function ConciliacaoModal({ inv, categorias, departamentos, onConciliar, onClose
         const dec = {}
         data.nao_cadastrados.forEach(item => {
           dec[item.id] = {
-            acao:           'incorporar',
-            descricao:      item.descricao_provisoria || '',
-            categoria_id:   item.categoria_provisoria_id   ? String(item.categoria_provisoria_id)   : '',
+            acao:            'incorporar',
+            descricao:       item.descricao_provisoria || '',
+            categoria_id:    item.categoria_provisoria_id    ? String(item.categoria_provisoria_id)    : '',
             departamento_id: item.departamento_provisorio_id ? String(item.departamento_provisorio_id) : '',
-            valor:          '',
-            nf:             '',
+            valor:           '',
+            nf:              '',
+            // para sobras (quantidade > 1): lista de plaquetas a atribuir (texto, uma por linha)
+            plaquetasTexto:  '',
           }
         })
         setDecisoes(dec)
@@ -890,16 +892,26 @@ function ConciliacaoModal({ inv, categorias, departamentos, onConciliar, onClose
     setConciliando(true)
     setErro(null)
     try {
+      // monta lista de plaquetas para itens de sobra (quantidade > 1)
+      const naoCAd = relatorio.nao_cadastrados
       await api.post(`/imobilizado/inventarios/${inv.id}/conciliar/`, {
-        nao_cadastrados: Object.entries(decisoes).map(([id, d]) => ({
-          item_id:        Number(id),
-          acao:           d.acao,
-          descricao:      d.descricao,
-          categoria_id:   d.categoria_id   ? Number(d.categoria_id)   : null,
-          departamento_id: d.departamento_id ? Number(d.departamento_id) : null,
-          valor_aquisicao: d.valor,
-          nota_fiscal:    d.nf,
-        })),
+        nao_cadastrados: Object.entries(decisoes).map(([id, d]) => {
+          const item = naoCAd.find(i => i.id === Number(id))
+          const isSobra = item && (item.quantidade || 1) > 1
+          const plaquetas = isSobra
+            ? d.plaquetasTexto.split('\n').map(p => p.trim().toUpperCase()).filter(Boolean)
+            : []
+          return {
+            item_id:         Number(id),
+            acao:            d.acao,
+            descricao:       d.descricao,
+            categoria_id:    d.categoria_id    ? Number(d.categoria_id)    : null,
+            departamento_id: d.departamento_id ? Number(d.departamento_id) : null,
+            valor_aquisicao: d.valor,
+            nota_fiscal:     d.nf,
+            ...(plaquetas.length > 0 ? { plaquetas } : {}),
+          }
+        }),
         divergentes: Object.entries(locUpdates)
           .filter(([, v]) => v)
           .map(([id]) => ({ item_id: Number(id), atualizar_local: true })),
@@ -913,9 +925,12 @@ function ConciliacaoModal({ inv, categorias, departamentos, onConciliar, onClose
     }
   }
 
-  const temCamposFaltando = Object.values(decisoes).some(
-    d => d.acao === 'incorporar' && (!d.descricao.trim() || !d.categoria_id || !d.departamento_id)
-  )
+  const temCamposFaltando = relatorio
+    ? relatorio.nao_cadastrados.some(item => {
+        const d = decisoes[item.id] || {}
+        return d.acao === 'incorporar' && (!d.descricao?.trim() || !d.categoria_id || !d.departamento_id)
+      })
+    : false
 
   const th = 'text-left text-[10px] font-bold text-muted uppercase tracking-wider px-2 py-2 whitespace-nowrap border-b border-border'
   const tc = 'px-2 py-2 text-xs align-middle'
@@ -942,112 +957,203 @@ function ConciliacaoModal({ inv, categorias, departamentos, onConciliar, onClose
             ))}
           </div>
 
-          {/* Não cadastrados — tabela */}
-          {relatorio.nao_cadastrados.length > 0 && (
-            <div>
-              <p className="text-[11px] font-bold text-violet-400 uppercase tracking-wider mb-2">
-                🆕 Não Cadastrados — definir ação para cada item
-              </p>
-              <div className="overflow-x-auto rounded-xl border border-violet-500/20">
-                <table className="w-full min-w-[860px] border-collapse text-sm">
-                  <thead className="bg-bg3/60">
-                    <tr>
-                      <th className={th}>Foto</th>
-                      <th className={th}>Plaqueta</th>
-                      <th className={th}>Local Enc.</th>
-                      <th className={`${th} min-w-[160px]`}>Descrição *</th>
-                      <th className={`${th} min-w-[130px]`}>Categoria *</th>
-                      <th className={`${th} min-w-[130px]`}>Departamento *</th>
-                      <th className={`${th} min-w-[100px]`}>Valor Aquis.</th>
-                      <th className={`${th} min-w-[90px]`}>NF</th>
-                      <th className={th}>Ação</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {relatorio.nao_cadastrados.map(item => {
-                      const d = decisoes[item.id] || {}
-                      const ignorar = d.acao === 'ignorar'
-                      const faltando = !ignorar && (!d.descricao?.trim() || !d.categoria_id || !d.departamento_id)
-                      return (
-                        <tr key={item.id} className={`border-b border-border/40 last:border-0 transition ${ignorar ? 'opacity-40' : 'hover:bg-bg3/40'}`}>
-                          <td className={tc}>
-                            {item.foto_provisoria_url
-                              ? <img src={item.foto_provisoria_url} alt="" className="w-10 h-10 rounded-lg object-cover border border-border"/>
-                              : <div className="w-10 h-10 rounded-lg bg-bg3 border border-border flex items-center justify-center text-base">❓</div>
-                            }
-                          </td>
-                          <td className={`${tc} font-mono font-bold text-primary whitespace-nowrap`}>{item.plaqueta_lida}</td>
-                          <td className={`${tc} text-muted whitespace-nowrap`}>{item.localizacao_encontrada || '—'}</td>
-                          <td className={tc}>
-                            <input
-                              className={`${inp} text-xs py-1 ${faltando && !d.descricao?.trim() ? 'border-rose-500/50' : ''}`}
-                              value={d.descricao || ''}
-                              onChange={e => setDec(item.id, 'descricao', e.target.value)}
-                              placeholder="Descrição do bem"
-                              disabled={ignorar}
-                            />
-                          </td>
-                          <td className={tc}>
-                            <select
-                              className={`${sel} text-xs py-1 ${faltando && !d.categoria_id ? 'border-rose-500/50' : ''}`}
-                              value={d.categoria_id || ''}
-                              onChange={e => setDec(item.id, 'categoria_id', e.target.value)}
-                              disabled={ignorar}
-                            >
-                              <option value="">Selecione…</option>
-                              {categorias.map(c => <option key={c.id} value={c.id}>{c.nome}</option>)}
-                            </select>
-                          </td>
-                          <td className={tc}>
-                            <select
-                              className={`${sel} text-xs py-1 ${faltando && !d.departamento_id ? 'border-rose-500/50' : ''}`}
-                              value={d.departamento_id || ''}
-                              onChange={e => setDec(item.id, 'departamento_id', e.target.value)}
-                              disabled={ignorar}
-                            >
-                              <option value="">Selecione…</option>
-                              {departamentos.map(dep => <option key={dep.id} value={dep.id}>{dep.nome}</option>)}
-                            </select>
-                          </td>
-                          <td className={tc}>
-                            <input
-                              className={`${inp} text-xs py-1`}
-                              value={d.valor || ''}
-                              onChange={e => setDec(item.id, 'valor', e.target.value)}
-                              placeholder="0,00"
-                              disabled={ignorar}
-                            />
-                          </td>
-                          <td className={tc}>
-                            <input
-                              className={`${inp} text-xs py-1`}
-                              value={d.nf || ''}
-                              onChange={e => setDec(item.id, 'nf', e.target.value)}
-                              placeholder="Nº NF"
-                              disabled={ignorar}
-                            />
-                          </td>
-                          <td className={tc}>
-                            <select
-                              className={`${sel} text-xs py-1 ${ignorar ? 'border-rose-500/30 text-rose-400' : 'border-violet-500/30 text-violet-300'}`}
-                              value={d.acao || 'incorporar'}
-                              onChange={e => setDec(item.id, 'acao', e.target.value)}
-                            >
-                              <option value="incorporar">✓ Incorporar</option>
-                              <option value="ignorar">✗ Ignorar</option>
-                            </select>
-                          </td>
-                        </tr>
-                      )
-                    })}
-                  </tbody>
-                </table>
+          {/* Não cadastrados unitários (quantidade = 1) — tabela */}
+          {relatorio.nao_cadastrados.filter(i => (i.quantidade || 1) === 1).length > 0 && (() => {
+            const unitarios = relatorio.nao_cadastrados.filter(i => (i.quantidade || 1) === 1)
+            return (
+              <div>
+                <p className="text-[11px] font-bold text-violet-400 uppercase tracking-wider mb-2">
+                  🆕 Não Cadastrados — definir ação para cada item
+                </p>
+                <div className="overflow-x-auto rounded-xl border border-violet-500/20">
+                  <table className="w-full min-w-[860px] border-collapse text-sm">
+                    <thead className="bg-bg3/60">
+                      <tr>
+                        <th className={th}>Foto</th>
+                        <th className={th}>Plaqueta</th>
+                        <th className={th}>Local Enc.</th>
+                        <th className={`${th} min-w-[160px]`}>Descrição *</th>
+                        <th className={`${th} min-w-[130px]`}>Categoria *</th>
+                        <th className={`${th} min-w-[130px]`}>Departamento *</th>
+                        <th className={`${th} min-w-[100px]`}>Valor Aquis.</th>
+                        <th className={`${th} min-w-[90px]`}>NF</th>
+                        <th className={th}>Ação</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {unitarios.map(item => {
+                        const d = decisoes[item.id] || {}
+                        const ignorar = d.acao === 'ignorar'
+                        const faltando = !ignorar && (!d.descricao?.trim() || !d.categoria_id || !d.departamento_id)
+                        return (
+                          <tr key={item.id} className={`border-b border-border/40 last:border-0 transition ${ignorar ? 'opacity-40' : 'hover:bg-bg3/40'}`}>
+                            <td className={tc}>
+                              {item.foto_provisoria_url
+                                ? <img src={item.foto_provisoria_url} alt="" className="w-10 h-10 rounded-lg object-cover border border-border"/>
+                                : <div className="w-10 h-10 rounded-lg bg-bg3 border border-border flex items-center justify-center text-base">❓</div>
+                              }
+                            </td>
+                            <td className={`${tc} font-mono font-bold text-primary whitespace-nowrap`}>{item.plaqueta_lida}</td>
+                            <td className={`${tc} text-muted whitespace-nowrap`}>{item.localizacao_encontrada || '—'}</td>
+                            <td className={tc}>
+                              <input className={`${inp} text-xs py-1 ${faltando && !d.descricao?.trim() ? 'border-rose-500/50' : ''}`}
+                                value={d.descricao || ''} onChange={e => setDec(item.id, 'descricao', e.target.value)}
+                                placeholder="Descrição do bem" disabled={ignorar}/>
+                            </td>
+                            <td className={tc}>
+                              <select className={`${sel} text-xs py-1 ${faltando && !d.categoria_id ? 'border-rose-500/50' : ''}`}
+                                value={d.categoria_id || ''} onChange={e => setDec(item.id, 'categoria_id', e.target.value)} disabled={ignorar}>
+                                <option value="">Selecione…</option>
+                                {categorias.map(c => <option key={c.id} value={c.id}>{c.nome}</option>)}
+                              </select>
+                            </td>
+                            <td className={tc}>
+                              <select className={`${sel} text-xs py-1 ${faltando && !d.departamento_id ? 'border-rose-500/50' : ''}`}
+                                value={d.departamento_id || ''} onChange={e => setDec(item.id, 'departamento_id', e.target.value)} disabled={ignorar}>
+                                <option value="">Selecione…</option>
+                                {departamentos.map(dep => <option key={dep.id} value={dep.id}>{dep.nome}</option>)}
+                              </select>
+                            </td>
+                            <td className={tc}>
+                              <input className={`${inp} text-xs py-1`} value={d.valor || ''}
+                                onChange={e => setDec(item.id, 'valor', e.target.value)} placeholder="0,00" disabled={ignorar}/>
+                            </td>
+                            <td className={tc}>
+                              <input className={`${inp} text-xs py-1`} value={d.nf || ''}
+                                onChange={e => setDec(item.id, 'nf', e.target.value)} placeholder="Nº NF" disabled={ignorar}/>
+                            </td>
+                            <td className={tc}>
+                              <select className={`${sel} text-xs py-1 ${ignorar ? 'border-rose-500/30 text-rose-400' : 'border-violet-500/30 text-violet-300'}`}
+                                value={d.acao || 'incorporar'} onChange={e => setDec(item.id, 'acao', e.target.value)}>
+                                <option value="incorporar">✓ Incorporar</option>
+                                <option value="ignorar">✗ Ignorar</option>
+                              </select>
+                            </td>
+                          </tr>
+                        )
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+                {temCamposFaltando && (
+                  <p className="text-[11px] text-rose-400 mt-1.5">⚠ Preencha Descrição, Categoria e Departamento para todos os itens marcados como "Incorporar".</p>
+                )}
               </div>
-              {temCamposFaltando && (
-                <p className="text-[11px] text-rose-400 mt-1.5">⚠ Preencha Descrição, Categoria e Departamento para todos os itens marcados como "Incorporar".</p>
-              )}
-            </div>
-          )}
+            )
+          })()}
+
+          {/* Sobras / Pendentes (quantidade > 1) */}
+          {relatorio.nao_cadastrados.filter(i => (i.quantidade || 1) > 1).length > 0 && (() => {
+            const sobras = relatorio.nao_cadastrados.filter(i => (i.quantidade || 1) > 1)
+            return (
+              <div>
+                <p className="text-[11px] font-bold text-orange-400 uppercase tracking-wider mb-2">
+                  📦 Sobras / Pendentes — lotes sem plaqueta individual
+                </p>
+                <div className="overflow-x-auto rounded-xl border border-orange-500/20">
+                  <table className="w-full min-w-[900px] border-collapse text-sm">
+                    <thead className="bg-bg3/60">
+                      <tr>
+                        <th className={th}>Foto</th>
+                        <th className={th}>Ref. / Grupo</th>
+                        <th className={th}>Local Enc.</th>
+                        <th className={`${th} min-w-[150px]`}>Descrição *</th>
+                        <th className={`${th} min-w-[120px]`}>Categoria *</th>
+                        <th className={`${th} min-w-[120px]`}>Departamento *</th>
+                        <th className={`${th} min-w-[90px]`}>Valor Unit.</th>
+                        <th className={`${th} min-w-[80px]`}>NF</th>
+                        <th className={`${th} text-center`}>Qtd Enc.</th>
+                        <th className={`${th} min-w-[160px]`}>Plaquetas (1/linha)</th>
+                        <th className={th}>Ação</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {sobras.map(item => {
+                        const d = decisoes[item.id] || {}
+                        const ignorar = d.acao === 'ignorar'
+                        const qtdEncontrada = item.quantidade || 1
+                        const plqs = (d.plaquetasTexto || '').split('\n').map(p => p.trim().toUpperCase()).filter(Boolean)
+                        const atribuidas = plqs.length
+                        const faltando = !ignorar && (!d.descricao?.trim() || !d.categoria_id || !d.departamento_id)
+                        return (
+                          <tr key={item.id} className={`border-b border-border/40 last:border-0 transition ${ignorar ? 'opacity-40' : 'hover:bg-bg3/40'}`}>
+                            <td className={tc}>
+                              {item.foto_provisoria_url
+                                ? <img src={item.foto_provisoria_url} alt="" className="w-10 h-10 rounded-lg object-cover border border-border"/>
+                                : <div className="w-10 h-10 rounded-lg bg-bg3 border border-border flex items-center justify-center text-base">📦</div>
+                              }
+                            </td>
+                            <td className={`${tc} font-mono font-bold text-orange-400 whitespace-nowrap`}>{item.plaqueta_lida}</td>
+                            <td className={`${tc} text-muted whitespace-nowrap`}>{item.localizacao_encontrada || '—'}</td>
+                            <td className={tc}>
+                              <input className={`${inp} text-xs py-1 ${faltando && !d.descricao?.trim() ? 'border-rose-500/50' : ''}`}
+                                value={d.descricao || ''} onChange={e => setDec(item.id, 'descricao', e.target.value)}
+                                placeholder="Ex: Cadeira giratória" disabled={ignorar}/>
+                            </td>
+                            <td className={tc}>
+                              <select className={`${sel} text-xs py-1 ${faltando && !d.categoria_id ? 'border-rose-500/50' : ''}`}
+                                value={d.categoria_id || ''} onChange={e => setDec(item.id, 'categoria_id', e.target.value)} disabled={ignorar}>
+                                <option value="">Selecione…</option>
+                                {categorias.map(c => <option key={c.id} value={c.id}>{c.nome}</option>)}
+                              </select>
+                            </td>
+                            <td className={tc}>
+                              <select className={`${sel} text-xs py-1 ${faltando && !d.departamento_id ? 'border-rose-500/50' : ''}`}
+                                value={d.departamento_id || ''} onChange={e => setDec(item.id, 'departamento_id', e.target.value)} disabled={ignorar}>
+                                <option value="">Selecione…</option>
+                                {departamentos.map(dep => <option key={dep.id} value={dep.id}>{dep.nome}</option>)}
+                              </select>
+                            </td>
+                            <td className={tc}>
+                              <input className={`${inp} text-xs py-1`} value={d.valor || ''}
+                                onChange={e => setDec(item.id, 'valor', e.target.value)} placeholder="0,00" disabled={ignorar}/>
+                            </td>
+                            <td className={tc}>
+                              <input className={`${inp} text-xs py-1`} value={d.nf || ''}
+                                onChange={e => setDec(item.id, 'nf', e.target.value)} placeholder="Nº NF" disabled={ignorar}/>
+                            </td>
+                            <td className={`${tc} text-center`}>
+                              <span className="inline-flex flex-col items-center gap-0.5">
+                                <span className="text-orange-400 font-bold text-sm">{qtdEncontrada}</span>
+                                <span className="text-[10px] text-muted">un.</span>
+                              </span>
+                            </td>
+                            <td className={tc}>
+                              {!ignorar && (
+                                <div>
+                                  <textarea
+                                    className={`${inp} text-xs py-1 font-mono resize-none`}
+                                    style={{ minHeight: 72 }}
+                                    value={d.plaquetasTexto || ''}
+                                    onChange={e => setDec(item.id, 'plaquetasTexto', e.target.value)}
+                                    placeholder={`P001\nP002\n...`}
+                                    disabled={ignorar}
+                                  />
+                                  <p className={`text-[10px] mt-0.5 ${atribuidas >= qtdEncontrada ? 'text-teal-400' : atribuidas > 0 ? 'text-amber-400' : 'text-muted'}`}>
+                                    {atribuidas}/{qtdEncontrada} atribuídas
+                                  </p>
+                                </div>
+                              )}
+                            </td>
+                            <td className={tc}>
+                              <select className={`${sel} text-xs py-1 ${ignorar ? 'border-rose-500/30 text-rose-400' : 'border-orange-500/30 text-orange-300'}`}
+                                value={d.acao || 'incorporar'} onChange={e => setDec(item.id, 'acao', e.target.value)}>
+                                <option value="incorporar">✓ Incorporar</option>
+                                <option value="ignorar">✗ Ignorar</option>
+                              </select>
+                            </td>
+                          </tr>
+                        )
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+                <p className="text-[11px] text-muted mt-1.5">
+                  💡 Insira as plaquetas definitivas (uma por linha) para criar os bens. Plaquetas já existentes serão ignoradas.
+                </p>
+              </div>
+            )
+          })()}
 
           {/* Local Divergente — tabela */}
           {relatorio.divergentes.length > 0 && (

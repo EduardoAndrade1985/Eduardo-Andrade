@@ -89,18 +89,27 @@ def _item_dict(item, request=None):
         except Exception:
             pass
 
+    foto_leitura_url = None
+    if request and item.foto_leitura:
+        try:
+            foto_leitura_url = request.build_absolute_uri(item.foto_leitura.url)
+        except Exception:
+            pass
+
     return {
-        'id':                       item.id,
-        'plaqueta_lida':            item.plaqueta_lida,
-        'situacao':                 item.situacao,
-        'bem':                      bem_data,
-        'localizacao_encontrada':   item.localizacao_encontrada,
-        'contado_por':              item.contado_por,
-        'contado_em':               item.contado_em.isoformat(),
-        'observacao':               item.observacao,
-        'descricao_provisoria':     item.descricao_provisoria,
-        'foto_provisoria_url':      foto_prov_url,
-        'categoria_provisoria_id':  item.categoria_provisoria_id,
+        'id':                         item.id,
+        'plaqueta_lida':              item.plaqueta_lida,
+        'situacao':                   item.situacao,
+        'bem':                        bem_data,
+        'localizacao_encontrada':     item.localizacao_encontrada,
+        'contado_por':                item.contado_por,
+        'contado_em':                 item.contado_em.isoformat(),
+        'observacao':                 item.observacao,
+        'quantidade':                 item.quantidade,
+        'descricao_provisoria':       item.descricao_provisoria,
+        'foto_provisoria_url':        foto_prov_url,
+        'foto_leitura_url':           foto_leitura_url,
+        'categoria_provisoria_id':    item.categoria_provisoria_id,
         'departamento_provisorio_id': item.departamento_provisorio_id,
     }
 
@@ -582,17 +591,20 @@ def api_inventario_leitura(request, pk):
 
     cat_id = data.get('categoria_provisoria_id')
     dep_id = data.get('departamento_provisorio_id')
+    qtd    = data.get('quantidade', 1)
 
     item, created = registrar_leitura(
-        inventario                = inv,
-        plaqueta                  = plaqueta,
-        localizacao_encontrada    = data.get('localizacao_encontrada', ''),
-        contado_por               = data.get('contado_por', ''),
-        observacao                = data.get('observacao', ''),
-        descricao_provisoria      = data.get('descricao_provisoria', ''),
-        foto_provisoria           = request.FILES.get('foto_provisoria') if is_multi else None,
-        categoria_provisoria_id   = int(cat_id) if cat_id else None,
+        inventario                 = inv,
+        plaqueta                   = plaqueta,
+        localizacao_encontrada     = data.get('localizacao_encontrada', ''),
+        contado_por                = data.get('contado_por', ''),
+        observacao                 = data.get('observacao', ''),
+        descricao_provisoria       = data.get('descricao_provisoria', ''),
+        foto_provisoria            = request.FILES.get('foto_provisoria') if is_multi else None,
+        foto_leitura               = request.FILES.get('foto_leitura') if is_multi else None,
+        categoria_provisoria_id    = int(cat_id) if cat_id else None,
         departamento_provisorio_id = int(dep_id) if dep_id else None,
+        quantidade                 = int(qtd) if qtd else 1,
     )
     return JsonResponse({'ok': True, 'criado': created, 'item': _item_dict(item, request)})
 
@@ -703,26 +715,53 @@ def api_inventario_conciliar(request, pk):
             except (CategoriaBem.DoesNotExist, Departamento.DoesNotExist):
                 continue
 
-            if Bem.objects.filter(plaqueta=item.plaqueta_lida).exists():
-                continue
+            valor_aq  = _parse_valor(str(dec.get('valor_aquisicao') or ''))
+            nota_fisc = (dec.get('nota_fiscal') or '').strip()
+            plaquetas_list = [p.strip().upper() for p in (dec.get('plaquetas') or []) if str(p).strip()]
 
-            bem = Bem(
-                empresa         = empresa,
-                plaqueta        = item.plaqueta_lida,
-                descricao       = descricao,
-                categoria       = cat,
-                departamento    = dep,
-                localizacao     = item.localizacao_encontrada,
-                nota_fiscal     = (dec.get('nota_fiscal') or '').strip(),
-                valor_aquisicao = _parse_valor(str(dec.get('valor_aquisicao') or '')),
-            )
-            if item.foto_provisoria:
-                bem.foto = item.foto_provisoria
-            bem.save()
-
-            item.bem      = bem
-            item.situacao = ItemInventario.LOCALIZADO
-            item.save(update_fields=['bem', 'situacao'])
+            if plaquetas_list:
+                # Lote de sobras: cria um Bem para cada plaqueta informada
+                ultimo_bem = None
+                for plq in plaquetas_list:
+                    if Bem.objects.filter(plaqueta=plq).exists():
+                        continue
+                    b = Bem(
+                        empresa         = empresa,
+                        plaqueta        = plq,
+                        descricao       = descricao,
+                        categoria       = cat,
+                        departamento    = dep,
+                        localizacao     = item.localizacao_encontrada,
+                        nota_fiscal     = nota_fisc,
+                        valor_aquisicao = valor_aq,
+                    )
+                    if item.foto_provisoria:
+                        b.foto = item.foto_provisoria
+                    b.save()
+                    ultimo_bem = b
+                item.bem      = ultimo_bem
+                item.situacao = ItemInventario.LOCALIZADO
+                item.save(update_fields=['bem', 'situacao'])
+            else:
+                # Item unitário (quantidade=1): usa plaqueta_lida como plaqueta
+                if Bem.objects.filter(plaqueta=item.plaqueta_lida).exists():
+                    continue
+                bem = Bem(
+                    empresa         = empresa,
+                    plaqueta        = item.plaqueta_lida,
+                    descricao       = descricao,
+                    categoria       = cat,
+                    departamento    = dep,
+                    localizacao     = item.localizacao_encontrada,
+                    nota_fiscal     = nota_fisc,
+                    valor_aquisicao = valor_aq,
+                )
+                if item.foto_provisoria:
+                    bem.foto = item.foto_provisoria
+                bem.save()
+                item.bem      = bem
+                item.situacao = ItemInventario.LOCALIZADO
+                item.save(update_fields=['bem', 'situacao'])
 
         for dec in data.get('divergentes', []):
             if not dec.get('atualizar_local'):

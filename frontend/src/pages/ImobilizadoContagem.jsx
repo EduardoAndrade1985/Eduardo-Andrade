@@ -165,15 +165,26 @@ function CardConfirmacao({
     const d = departamentos.find(d => d.nome === invDepartamentoNome)
     return d ? String(d.id) : ''
   })
-  const [foto, setFoto]               = useState(null)
-  const [fotoPreview, setFotoPreview] = useState(null)
-  const fotoRef = useRef(null)
+  const [quantidade, setQuantidade]       = useState(1)
+  const [foto, setFoto]                   = useState(null)
+  const [fotoPreview, setFotoPreview]     = useState(null)
+  const [fotoLeitura, setFotoLeitura]         = useState(null)
+  const [fotoLeituraPreview, setFotoLeituraPreview] = useState(null)
+  const fotoRef        = useRef(null)
+  const fotoLeituraRef = useRef(null)
 
   const handleFoto = e => {
     const file = e.target.files?.[0]
     if (!file) return
     setFoto(file)
     setFotoPreview(URL.createObjectURL(file))
+  }
+
+  const handleFotoLeitura = e => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    setFotoLeitura(file)
+    setFotoLeituraPreview(URL.createObjectURL(file))
   }
 
   let situacaoPrevista = 'LOCALIZADO'
@@ -204,17 +215,44 @@ function CardConfirmacao({
 
         {/* Foto + plaqueta */}
         <div style={{ display: 'flex', alignItems: 'flex-start', gap: 14, marginBottom: 14 }}>
+          {/* input de foto para itens encontrados sem foto no sistema */}
+          <input ref={fotoLeituraRef} type="file" accept="image/*" capture="environment"
+            style={{ display: 'none' }} onChange={handleFotoLeitura} />
+
           {encontrado && bem.foto_url ? (
             <img src={bem.foto_url} alt=""
               style={{ width: 76, height: 76, borderRadius: 12, objectFit: 'cover', border: `2px solid ${cor.border}`, flexShrink: 0 }}/>
+          ) : encontrado && !bem.foto_url ? (
+            /* item encontrado mas sem foto — clicável para tirar foto */
+            fotoLeituraPreview ? (
+              <div style={{ position: 'relative', flexShrink: 0 }}>
+                <img src={fotoLeituraPreview} alt=""
+                  style={{ width: 76, height: 76, borderRadius: 12, objectFit: 'cover', border: `2px solid ${cor.border}` }}/>
+                <button onClick={() => fotoLeituraRef.current?.click()} style={{
+                  position: 'absolute', bottom: 2, right: 2,
+                  background: 'rgba(0,0,0,0.75)', border: 'none',
+                  color: '#e2e8f0', fontSize: 10, padding: '2px 5px',
+                  borderRadius: 5, cursor: 'pointer', lineHeight: 1.4,
+                }}>📷</button>
+              </div>
+            ) : (
+              <button onClick={() => fotoLeituraRef.current?.click()} style={{
+                width: 76, height: 76, borderRadius: 12, flexShrink: 0,
+                background: '#1f2937', border: `2px dashed ${cor.border}`,
+                display: 'flex', flexDirection: 'column', alignItems: 'center',
+                justifyContent: 'center', gap: 2, cursor: 'pointer',
+              }}>
+                <span style={{ fontSize: 24 }}>📷</span>
+                <span style={{ fontSize: 9, color: '#6b7280' }}>+ Foto</span>
+              </button>
+            )
           ) : (
+            /* NAO_CADASTRADO — placeholder fixo (foto capturada na seção abaixo) */
             <div style={{
               width: 76, height: 76, borderRadius: 12, flexShrink: 0,
               background: '#1f2937', border: `2px solid ${cor.border}`,
               display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 30,
-            }}>
-              {encontrado ? '📦' : '❓'}
-            </div>
+            }}>❓</div>
           )}
 
           <div style={{ flex: 1, minWidth: 0 }}>
@@ -312,6 +350,28 @@ function CardConfirmacao({
                 {departamentos.map(d => <option key={d.id} value={d.id}>{d.nome}</option>)}
               </select>
             </div>
+            <div>
+              <label style={{ fontSize: 11, color: '#6b7280', textTransform: 'uppercase', letterSpacing: 1, display: 'block', marginBottom: 5 }}>
+                Quantidade encontrada
+              </label>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <button onClick={() => setQuantidade(q => Math.max(1, q - 1))}
+                  style={{ width: 40, height: 40, borderRadius: 10, background: '#374151', border: 'none', color: '#e2e8f0', fontSize: 20, cursor: 'pointer', flexShrink: 0 }}>−</button>
+                <input
+                  type="number" min="1" max="999"
+                  value={quantidade}
+                  onChange={e => setQuantidade(Math.max(1, parseInt(e.target.value) || 1))}
+                  style={{ ...inpStyle(), textAlign: 'center', fontWeight: 800, fontSize: 18, flex: 1 }}
+                />
+                <button onClick={() => setQuantidade(q => q + 1)}
+                  style={{ width: 40, height: 40, borderRadius: 10, background: '#374151', border: 'none', color: '#e2e8f0', fontSize: 20, cursor: 'pointer', flexShrink: 0 }}>+</button>
+              </div>
+              {quantidade > 1 && (
+                <p style={{ fontSize: 11, color: '#c084fc', marginTop: 4 }}>
+                  ⚠ {quantidade} unidades — plaquetas serão atribuídas na conciliação
+                </p>
+              )}
+            </div>
           </div>
         )}
 
@@ -331,7 +391,7 @@ function CardConfirmacao({
 
         {/* Confirmar */}
         <button
-          onClick={() => onConfirmar({ novaDesc, novaCatId, novaDepId, foto })}
+          onClick={() => onConfirmar({ novaDesc, novaCatId, novaDepId, foto, quantidade, fotoLeitura })}
           disabled={salvando || (!encontrado && !podeCadastrar)}
           style={{
             width: '100%', padding: '15px', borderRadius: 14,
@@ -436,7 +496,7 @@ export default function ImobilizadoContagem() {
   }, [invApi])
 
   // ── confirma leitura (com ou sem cadastro prévio) ────────────────────────────
-  const confirmar = useCallback(async ({ novaDesc, novaCatId, novaDepId, foto }) => {
+  const confirmar = useCallback(async ({ novaDesc, novaCatId, novaDepId, foto, quantidade, fotoLeitura }) => {
     setSalvando(true)
     const plq = buscaResult.encontrado ? buscaResult.bem.plaqueta : buscaResult.plaqueta
 
@@ -444,15 +504,27 @@ export default function ImobilizadoContagem() {
       let leituraData
 
       if (!buscaResult.encontrado) {
-        // NAO_CADASTRADO: envia dados provisionais direto na leitura (sem criar Bem agora)
+        // NAO_CADASTRADO: envia dados provisionais via FormData
         const formData = new FormData()
         formData.append('plaqueta',                  plq)
         formData.append('localizacao_encontrada',    localEncontrado.trim())
         formData.append('contado_por',               operador.trim())
-        if (novaDesc)  formData.append('descricao_provisoria',      novaDesc.trim())
-        if (novaCatId) formData.append('categoria_provisoria_id',   novaCatId)
-        if (novaDepId) formData.append('departamento_provisorio_id', novaDepId)
-        if (foto)      formData.append('foto_provisoria',           foto)
+        if (novaDesc)       formData.append('descricao_provisoria',       novaDesc.trim())
+        if (novaCatId)      formData.append('categoria_provisoria_id',    novaCatId)
+        if (novaDepId)      formData.append('departamento_provisorio_id', novaDepId)
+        if (foto)           formData.append('foto_provisoria',            foto)
+        if (quantidade > 1) formData.append('quantidade',                 quantidade)
+        const { data } = await invApi.post(`/imobilizado/inventarios/${invId}/leitura/`, formData, {
+          headers: { 'Content-Type': undefined },
+        })
+        leituraData = data
+      } else if (fotoLeitura) {
+        // LOCALIZADO/DIVERGENTE com foto tirada no ato — envia como FormData
+        const formData = new FormData()
+        formData.append('plaqueta',               plq)
+        formData.append('localizacao_encontrada', localEncontrado.trim())
+        formData.append('contado_por',            operador.trim())
+        formData.append('foto_leitura',           fotoLeitura)
         const { data } = await invApi.post(`/imobilizado/inventarios/${invId}/leitura/`, formData, {
           headers: { 'Content-Type': undefined },
         })
