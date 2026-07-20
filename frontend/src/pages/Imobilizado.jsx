@@ -752,32 +752,46 @@ function LancamentoTab({ categorias, departamentos, localizacoes, onSucesso }) {
 // ════════════════════════════════════════════════════════════════════════════════
 // ABA INVENTÁRIOS
 // ════════════════════════════════════════════════════════════════════════════════
-function RelatorioPanel({ relatorio: r, onClose }) {
-  const grupos = [
-    { key: 'localizados',     cor: 'teal',  emoji: '✅', label: 'Localizados',     items: r.localizados     },
-    { key: 'divergentes',     cor: 'amber', emoji: '⚠️', label: 'Local Divergente',items: r.divergentes     },
-    { key: 'nao_cadastrados', cor: 'blue',  emoji: '🆕', label: 'Não Cadastrados', items: r.nao_cadastrados },
-    { key: 'fantasmas',       cor: 'rose',  emoji: '👻', label: 'Não Localizados', items: r.fantasmas       },
-  ]
-  const corMap = {
-    teal:  { text: 'text-teal-400',  bg: 'bg-teal-500/10'  },
-    amber: { text: 'text-amber-400', bg: 'bg-amber-500/10' },
-    blue:  { text: 'text-blue-400',  bg: 'bg-blue-500/10'  },
-    rose:  { text: 'text-rose-400',  bg: 'bg-rose-500/10'  },
+function RelatorioPanel({ relatorio: r, invId, onClose }) {
+  const [exportando, setExportando] = useState(false)
+
+  const exportarRelatorio = async () => {
+    setExportando(true)
+    try {
+      const res = await api.get(`/imobilizado/inventarios/${invId}/relatorio/exportar/`, { responseType: 'blob' })
+      const url = URL.createObjectURL(res.data)
+      const a = document.createElement('a'); a.href = url; a.download = `relatorio_inventario.xlsx`; a.click()
+      URL.revokeObjectURL(url)
+    } catch { alert('Erro ao exportar relatório') }
+    finally { setExportando(false) }
   }
 
+  const SIT_INFO = {
+    LOCALIZADO:       { label: 'Localizado',      emoji: '✅', cor: 'text-teal-400',   bg: 'bg-teal-500/10'   },
+    LOCAL_DIVERGENTE: { label: 'Local Divergente', emoji: '⚠️', cor: 'text-amber-400',  bg: 'bg-amber-500/10'  },
+    NAO_CADASTRADO:   { label: 'Não Cadastrado',   emoji: '🆕', cor: 'text-violet-400', bg: 'bg-violet-500/10' },
+    NAO_LOCALIZADO:   { label: 'Não Localizado',   emoji: '👻', cor: 'text-rose-400',   bg: 'bg-rose-500/10'   },
+  }
+
+  const rows = [
+    ...r.localizados.map(i     => ({ _sit: 'LOCALIZADO',       plq: i.plaqueta_lida,  desc: i.bem?.descricao || '—',            locSist: i.bem?.localizacao || '—',  locEnc: i.localizacao_encontrada || '—', valor: i.bem?.valor_aquisicao, op: i.contado_por })),
+    ...r.divergentes.map(i     => ({ _sit: 'LOCAL_DIVERGENTE',  plq: i.plaqueta_lida,  desc: i.bem?.descricao || '—',            locSist: i.bem?.localizacao || '—',  locEnc: i.localizacao_encontrada || '—', valor: i.bem?.valor_aquisicao, op: i.contado_por })),
+    ...r.nao_cadastrados.map(i => ({ _sit: 'NAO_CADASTRADO',    plq: i.plaqueta_lida,  desc: i.descricao_provisoria || '—',      locSist: '—',                         locEnc: i.localizacao_encontrada || '—', valor: null,                   op: i.contado_por })),
+    ...r.fantasmas.map(b       => ({ _sit: 'NAO_LOCALIZADO',    plq: b.plaqueta,        desc: b.descricao,                        locSist: b.localizacao || '—',       locEnc: '—',                             valor: b.valor_aquisicao,      op: '—' })),
+  ]
+
+  const th = 'text-left text-[10px] font-bold text-muted uppercase tracking-wider px-3 py-2.5 whitespace-nowrap border-b border-border'
+  const td = 'px-3 py-2 text-xs'
+
   return (
-    <div className="mt-4 pt-4 border-t border-border/50 space-y-4">
-      <div className="flex items-center justify-between">
-        <p className="text-[11px] font-bold text-muted uppercase tracking-wider">Relatório de Reconciliação</p>
-        <button onClick={onClose} className="text-xs text-muted hover:text-dim px-2 py-1 rounded hover:bg-bg3 transition">✕ fechar</button>
-      </div>
+    <div className="space-y-4">
+      {/* KPIs */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
         {[
-          { l: 'Esperados',  v: r.total_esperados,    c: 'text-dim'      },
-          { l: 'Contados',   v: r.total_contados,     c: 'text-teal-400' },
-          { l: 'Índice',     v: `${r.indice_localizacao}%`, c: 'text-primary' },
-          { l: 'Val. Fantasmas', v: fmtR(r.valor_fantasmas), c: 'text-rose-400' },
+          { l: 'Esperados',      v: r.total_esperados,          c: 'text-dim'      },
+          { l: 'Contados',       v: r.total_contados,           c: 'text-teal-400' },
+          { l: 'Índice',         v: `${r.indice_localizacao}%`, c: 'text-primary'  },
+          { l: 'Val. Fantasmas', v: fmtR(r.valor_fantasmas),    c: 'text-rose-400' },
         ].map(k => (
           <div key={k.l} className="bg-bg3 border border-border rounded-lg p-3 text-center">
             <p className="text-xs text-muted">{k.l}</p>
@@ -785,40 +799,54 @@ function RelatorioPanel({ relatorio: r, onClose }) {
           </div>
         ))}
       </div>
-      <div className="space-y-3">
-        {grupos.map(g => {
-          if (!g.items.length) return null
-          const c = corMap[g.cor]
-          return (
-            <details key={g.key} open={g.key !== 'localizados'}>
-              <summary className={`cursor-pointer text-sm font-semibold ${c.text} flex items-center gap-2 py-1`}>
-                {g.emoji} {g.label}
-                <span className={`text-[11px] px-1.5 py-0.5 rounded-full ${c.bg} ml-1`}>{g.items.length}</span>
-              </summary>
-              <div className="mt-2 space-y-1 pl-5">
-                {g.items.map((item, i) => {
-                  const isBem = !!item.plaqueta
-                  const plq   = isBem ? item.plaqueta : item.plaqueta_lida
-                  const desc  = isBem ? item.descricao : (item.bem?.descricao || '—')
-                  const loc   = isBem ? item.localizacao : item.localizacao_encontrada
-                  const val   = isBem ? item.valor_aquisicao : null
+
+      {/* Barra de ações */}
+      <div className="flex items-center justify-between">
+        <p className="text-xs text-muted">{rows.length} item{rows.length !== 1 ? 's' : ''} no total</p>
+        <button onClick={exportarRelatorio} disabled={exportando}
+          className="text-xs bg-bg3 border border-border text-dim px-3 py-1.5 rounded-lg hover:border-primary/40 hover:text-primary transition disabled:opacity-50">
+          {exportando ? '⏳ Exportando…' : '⬇️ Exportar Excel'}
+        </button>
+      </div>
+
+      {/* Tabela unificada */}
+      {rows.length > 0 ? (
+        <div className="border border-border rounded-xl overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr>
+                  {['Situação', 'Plaqueta', 'Descrição', 'Local Sistema', 'Local Encontrado', 'Valor', 'Operador'].map(h => (
+                    <th key={h} className={th}>{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {rows.map((row, i) => {
+                  const s = SIT_INFO[row._sit]
                   return (
-                    <div key={i} className="flex items-center gap-2 text-xs text-dim py-1 border-b border-border/30 last:border-0">
-                      <span className="font-mono text-primary font-bold w-20 flex-shrink-0">{plq}</span>
-                      <span className="flex-1 truncate text-muted">{desc}</span>
-                      {loc && <span className="text-muted truncate max-w-[100px]">📍 {loc}</span>}
-                      {val != null && <span className="text-muted">{fmtR(val)}</span>}
-                    </div>
+                    <tr key={i} className="border-b border-border/40 last:border-0 hover:bg-bg3/50 transition">
+                      <td className={td}>
+                        <span className={`inline-flex items-center gap-1 text-[11px] font-semibold px-2 py-0.5 rounded-full ${s.bg} ${s.cor} whitespace-nowrap`}>
+                          {s.emoji} {s.label}
+                        </span>
+                      </td>
+                      <td className={`${td} font-mono font-bold text-primary whitespace-nowrap`}>{row.plq}</td>
+                      <td className={`${td} text-dim max-w-[180px]`}><span className="block truncate">{row.desc}</span></td>
+                      <td className={`${td} text-muted whitespace-nowrap`}>{row.locSist}</td>
+                      <td className={`${td} whitespace-nowrap ${row._sit === 'LOCAL_DIVERGENTE' ? 'text-amber-400 font-semibold' : 'text-muted'}`}>{row.locEnc}</td>
+                      <td className={`${td} text-dim whitespace-nowrap text-right`}>{row.valor != null ? fmtR(row.valor) : '—'}</td>
+                      <td className={`${td} text-muted whitespace-nowrap`}>{row.op || '—'}</td>
+                    </tr>
                   )
                 })}
-              </div>
-            </details>
-          )
-        })}
-      </div>
-      <p className="text-[10px] text-muted italic">
-        * Baixa e incorporação são sempre decisões manuais — o relatório apenas propõe.
-      </p>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      ) : (
+        <p className="text-center text-muted py-8 text-sm">Nenhum item registrado neste inventário.</p>
+      )}
     </div>
   )
 }
@@ -889,12 +917,8 @@ function ConciliacaoModal({ inv, categorias, departamentos, onConciliar, onClose
     d => d.acao === 'incorporar' && (!d.descricao.trim() || !d.categoria_id || !d.departamento_id)
   )
 
-  const CardItem = ({ label, value, cor = 'text-muted' }) => (
-    <div className="bg-bg3 border border-border rounded-lg p-3 text-center">
-      <p className="text-xs text-muted">{label}</p>
-      <p className={`text-xl font-bold ${cor}`}>{value}</p>
-    </div>
-  )
+  const th = 'text-left text-[10px] font-bold text-muted uppercase tracking-wider px-2 py-2 whitespace-nowrap border-b border-border'
+  const tc = 'px-2 py-2 text-xs align-middle'
 
   return (
     <Modal title={`Conciliação: ${fmtDt(inv.data)}${inv.local_area ? ' — ' + inv.local_area : ''}`} wide onClose={onClose}>
@@ -905,168 +929,239 @@ function ConciliacaoModal({ inv, categorias, departamentos, onConciliar, onClose
         <div className="space-y-5">
           {/* KPIs */}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
-            <CardItem label="Lidos"           value={relatorio.total_contados}        cor="text-dim"/>
-            <CardItem label="Não Cadastrados" value={relatorio.nao_cadastrados.length} cor="text-violet-400"/>
-            <CardItem label="Local Divergente" value={relatorio.divergentes.length}   cor="text-amber-400"/>
-            <CardItem label="Não Localizados" value={relatorio.fantasmas.length}       cor="text-rose-400"/>
+            {[
+              { label: 'Lidos',            value: relatorio.total_contados,          cor: 'text-dim' },
+              { label: 'Não Cadastrados',  value: relatorio.nao_cadastrados.length,  cor: 'text-violet-400' },
+              { label: 'Local Divergente', value: relatorio.divergentes.length,      cor: 'text-amber-400' },
+              { label: 'Não Localizados',  value: relatorio.fantasmas.length,        cor: 'text-rose-400' },
+            ].map(({ label, value, cor }) => (
+              <div key={label} className="bg-bg3 border border-border rounded-lg p-3 text-center">
+                <p className="text-xs text-muted">{label}</p>
+                <p className={`text-xl font-bold ${cor}`}>{value}</p>
+              </div>
+            ))}
           </div>
 
-          {/* Não cadastrados */}
+          {/* Não cadastrados — tabela */}
           {relatorio.nao_cadastrados.length > 0 && (
             <div>
-              <p className="text-[11px] font-bold text-violet-400 uppercase tracking-wider mb-3">
+              <p className="text-[11px] font-bold text-violet-400 uppercase tracking-wider mb-2">
                 🆕 Não Cadastrados — definir ação para cada item
               </p>
-              <div className="space-y-4">
-                {relatorio.nao_cadastrados.map(item => {
-                  const d = decisoes[item.id] || {}
-                  const incorporar = d.acao === 'incorporar'
-                  const ok = incorporar ? (d.descricao.trim() && d.categoria_id && d.departamento_id) : true
-                  return (
-                    <div key={item.id} className={`border rounded-xl p-4 space-y-3 transition ${incorporar ? 'border-violet-500/30 bg-violet-500/5' : 'border-border bg-bg3/30'}`}>
-                      <div className="flex items-start gap-3">
-                        {item.foto_provisoria_url ? (
-                          <img src={item.foto_provisoria_url} alt="" className="w-14 h-14 rounded-lg object-cover border border-border flex-shrink-0"/>
-                        ) : (
-                          <div className="w-14 h-14 rounded-lg bg-bg3 border border-border flex items-center justify-center text-xl flex-shrink-0">❓</div>
-                        )}
-                        <div className="flex-1 min-w-0">
-                          <p className="font-mono text-sm font-bold text-primary">{item.plaqueta_lida}</p>
-                          {item.descricao_provisoria && (
-                            <p className="text-sm text-dim mt-0.5">{item.descricao_provisoria}</p>
-                          )}
-                          {item.localizacao_encontrada && (
-                            <p className="text-xs text-muted mt-0.5">📍 {item.localizacao_encontrada}</p>
-                          )}
-                          {item.contado_por && (
-                            <p className="text-xs text-muted">👤 {item.contado_por}</p>
-                          )}
-                        </div>
-                        {/* Toggle incorporar/ignorar */}
-                        <div className="flex gap-1.5 flex-shrink-0">
-                          <button onClick={() => setDec(item.id, 'acao', 'incorporar')}
-                            className={`text-xs px-2.5 py-1 rounded-lg border font-semibold transition ${incorporar ? 'bg-violet-500/20 border-violet-500/40 text-violet-300' : 'border-border text-muted hover:border-violet-500/30 hover:text-violet-400'}`}>
-                            ✓ Incorporar
-                          </button>
-                          <button onClick={() => setDec(item.id, 'acao', 'ignorar')}
-                            className={`text-xs px-2.5 py-1 rounded-lg border font-semibold transition ${!incorporar ? 'bg-rose-500/15 border-rose-500/30 text-rose-400' : 'border-border text-muted hover:border-rose-500/20 hover:text-rose-400'}`}>
-                            ✗ Ignorar
-                          </button>
-                        </div>
-                      </div>
-
-                      {incorporar && (
-                        <div className="grid grid-cols-2 gap-2">
-                          <div className="col-span-2">
-                            <label className="text-[10px] font-bold text-muted uppercase tracking-wider block mb-1">Descrição *</label>
-                            <input className={`${inp} ${!d.descricao?.trim() ? 'border-rose-500/40' : ''}`}
-                              value={d.descricao || ''} onChange={e => setDec(item.id, 'descricao', e.target.value)}
-                              placeholder="Descrição do bem"/>
-                          </div>
-                          <div>
-                            <label className="text-[10px] font-bold text-muted uppercase tracking-wider block mb-1">Categoria *</label>
-                            <select className={`${sel} ${!d.categoria_id ? 'border-rose-500/40' : ''}`}
-                              value={d.categoria_id || ''} onChange={e => setDec(item.id, 'categoria_id', e.target.value)}>
+              <div className="overflow-x-auto rounded-xl border border-violet-500/20">
+                <table className="w-full min-w-[860px] border-collapse text-sm">
+                  <thead className="bg-bg3/60">
+                    <tr>
+                      <th className={th}>Foto</th>
+                      <th className={th}>Plaqueta</th>
+                      <th className={th}>Local Enc.</th>
+                      <th className={`${th} min-w-[160px]`}>Descrição *</th>
+                      <th className={`${th} min-w-[130px]`}>Categoria *</th>
+                      <th className={`${th} min-w-[130px]`}>Departamento *</th>
+                      <th className={`${th} min-w-[100px]`}>Valor Aquis.</th>
+                      <th className={`${th} min-w-[90px]`}>NF</th>
+                      <th className={th}>Ação</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {relatorio.nao_cadastrados.map(item => {
+                      const d = decisoes[item.id] || {}
+                      const ignorar = d.acao === 'ignorar'
+                      const faltando = !ignorar && (!d.descricao?.trim() || !d.categoria_id || !d.departamento_id)
+                      return (
+                        <tr key={item.id} className={`border-b border-border/40 last:border-0 transition ${ignorar ? 'opacity-40' : 'hover:bg-bg3/40'}`}>
+                          <td className={tc}>
+                            {item.foto_provisoria_url
+                              ? <img src={item.foto_provisoria_url} alt="" className="w-10 h-10 rounded-lg object-cover border border-border"/>
+                              : <div className="w-10 h-10 rounded-lg bg-bg3 border border-border flex items-center justify-center text-base">❓</div>
+                            }
+                          </td>
+                          <td className={`${tc} font-mono font-bold text-primary whitespace-nowrap`}>{item.plaqueta_lida}</td>
+                          <td className={`${tc} text-muted whitespace-nowrap`}>{item.localizacao_encontrada || '—'}</td>
+                          <td className={tc}>
+                            <input
+                              className={`${inp} text-xs py-1 ${faltando && !d.descricao?.trim() ? 'border-rose-500/50' : ''}`}
+                              value={d.descricao || ''}
+                              onChange={e => setDec(item.id, 'descricao', e.target.value)}
+                              placeholder="Descrição do bem"
+                              disabled={ignorar}
+                            />
+                          </td>
+                          <td className={tc}>
+                            <select
+                              className={`${sel} text-xs py-1 ${faltando && !d.categoria_id ? 'border-rose-500/50' : ''}`}
+                              value={d.categoria_id || ''}
+                              onChange={e => setDec(item.id, 'categoria_id', e.target.value)}
+                              disabled={ignorar}
+                            >
                               <option value="">Selecione…</option>
                               {categorias.map(c => <option key={c.id} value={c.id}>{c.nome}</option>)}
                             </select>
-                          </div>
-                          <div>
-                            <label className="text-[10px] font-bold text-muted uppercase tracking-wider block mb-1">Departamento *</label>
-                            <select className={`${sel} ${!d.departamento_id ? 'border-rose-500/40' : ''}`}
-                              value={d.departamento_id || ''} onChange={e => setDec(item.id, 'departamento_id', e.target.value)}>
+                          </td>
+                          <td className={tc}>
+                            <select
+                              className={`${sel} text-xs py-1 ${faltando && !d.departamento_id ? 'border-rose-500/50' : ''}`}
+                              value={d.departamento_id || ''}
+                              onChange={e => setDec(item.id, 'departamento_id', e.target.value)}
+                              disabled={ignorar}
+                            >
                               <option value="">Selecione…</option>
-                              {departamentos.map(d2 => <option key={d2.id} value={d2.id}>{d2.nome}</option>)}
+                              {departamentos.map(dep => <option key={dep.id} value={dep.id}>{dep.nome}</option>)}
                             </select>
-                          </div>
-                          <div>
-                            <label className="text-[10px] font-bold text-muted uppercase tracking-wider block mb-1">Valor de Aquisição</label>
-                            <input className={inp} value={d.valor || ''} onChange={e => setDec(item.id, 'valor', e.target.value)}
-                              placeholder="Ex: 1.500,00"/>
-                          </div>
-                          <div>
-                            <label className="text-[10px] font-bold text-muted uppercase tracking-wider block mb-1">Nota Fiscal</label>
-                            <input className={inp} value={d.nf || ''} onChange={e => setDec(item.id, 'nf', e.target.value)}
-                              placeholder="Nº da NF"/>
-                          </div>
-                        </div>
-                      )}
-                      {incorporar && !ok && (
-                        <p className="text-[11px] text-rose-400">Preencha Descrição, Categoria e Departamento para incorporar.</p>
-                      )}
-                    </div>
-                  )
-                })}
+                          </td>
+                          <td className={tc}>
+                            <input
+                              className={`${inp} text-xs py-1`}
+                              value={d.valor || ''}
+                              onChange={e => setDec(item.id, 'valor', e.target.value)}
+                              placeholder="0,00"
+                              disabled={ignorar}
+                            />
+                          </td>
+                          <td className={tc}>
+                            <input
+                              className={`${inp} text-xs py-1`}
+                              value={d.nf || ''}
+                              onChange={e => setDec(item.id, 'nf', e.target.value)}
+                              placeholder="Nº NF"
+                              disabled={ignorar}
+                            />
+                          </td>
+                          <td className={tc}>
+                            <select
+                              className={`${sel} text-xs py-1 ${ignorar ? 'border-rose-500/30 text-rose-400' : 'border-violet-500/30 text-violet-300'}`}
+                              value={d.acao || 'incorporar'}
+                              onChange={e => setDec(item.id, 'acao', e.target.value)}
+                            >
+                              <option value="incorporar">✓ Incorporar</option>
+                              <option value="ignorar">✗ Ignorar</option>
+                            </select>
+                          </td>
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                </table>
               </div>
+              {temCamposFaltando && (
+                <p className="text-[11px] text-rose-400 mt-1.5">⚠ Preencha Descrição, Categoria e Departamento para todos os itens marcados como "Incorporar".</p>
+              )}
             </div>
           )}
 
-          {/* Local Divergente */}
+          {/* Local Divergente — tabela */}
           {relatorio.divergentes.length > 0 && (
             <div>
-              <p className="text-[11px] font-bold text-amber-400 uppercase tracking-wider mb-3">
+              <p className="text-[11px] font-bold text-amber-400 uppercase tracking-wider mb-2">
                 ⚠️ Local Divergente — atualizar localização no sistema?
               </p>
-              <div className="space-y-2">
-                {relatorio.divergentes.map(item => (
-                  <div key={item.id} className="flex items-center gap-3 bg-bg3 border border-border rounded-lg p-3">
-                    <input type="checkbox" checked={!!locUpdates[item.id]}
-                      onChange={e => setLocUpdates(prev => ({ ...prev, [item.id]: e.target.checked }))}
-                      className="accent-primary flex-shrink-0"/>
-                    <div className="flex-1 min-w-0">
-                      <p className="font-mono text-sm font-bold text-primary">{item.plaqueta_lida}</p>
-                      <p className="text-xs text-dim truncate">{item.bem?.descricao || '—'}</p>
-                      <p className="text-xs text-muted mt-0.5">
-                        <span className="line-through opacity-60">{item.bem?.localizacao || '—'}</span>
-                        {' → '}
-                        <span className="text-amber-400 font-semibold">{item.localizacao_encontrada}</span>
-                      </p>
-                    </div>
-                    <span className="text-xs text-amber-400">{locUpdates[item.id] ? '✓ Atualizar' : 'Manter'}</span>
-                  </div>
-                ))}
+              <div className="overflow-x-auto rounded-xl border border-amber-500/20">
+                <table className="w-full border-collapse text-sm">
+                  <thead className="bg-bg3/60">
+                    <tr>
+                      <th className={th}>Plaqueta</th>
+                      <th className={th}>Descrição</th>
+                      <th className={th}>Local no Sistema</th>
+                      <th className={`${th} text-center`}>→</th>
+                      <th className={th}>Local Encontrado</th>
+                      <th className={`${th} text-center`}>Atualizar?</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {relatorio.divergentes.map(item => (
+                      <tr key={item.id} className="border-b border-border/40 last:border-0 hover:bg-bg3/40 transition">
+                        <td className={`${tc} font-mono font-bold text-primary whitespace-nowrap`}>{item.plaqueta_lida}</td>
+                        <td className={`${tc} text-dim max-w-[180px]`}><span className="block truncate">{item.bem?.descricao || '—'}</span></td>
+                        <td className={`${tc} text-muted whitespace-nowrap line-through opacity-60`}>{item.bem?.localizacao || '—'}</td>
+                        <td className={`${tc} text-center text-muted`}>→</td>
+                        <td className={`${tc} text-amber-400 font-semibold whitespace-nowrap`}>{item.localizacao_encontrada}</td>
+                        <td className={`${tc} text-center`}>
+                          <label className="flex items-center justify-center gap-1.5 cursor-pointer">
+                            <input
+                              type="checkbox"
+                              checked={!!locUpdates[item.id]}
+                              onChange={e => setLocUpdates(prev => ({ ...prev, [item.id]: e.target.checked }))}
+                              className="accent-primary w-4 h-4"
+                            />
+                            <span className={`text-xs font-semibold ${locUpdates[item.id] ? 'text-amber-400' : 'text-muted'}`}>
+                              {locUpdates[item.id] ? 'Sim' : 'Não'}
+                            </span>
+                          </label>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
               </div>
             </div>
           )}
 
-          {/* Fantasmas */}
+          {/* Fantasmas — tabela colapsável */}
           {relatorio.fantasmas.length > 0 && (
-            <details>
-              <summary className="cursor-pointer text-sm font-semibold text-rose-400 flex items-center gap-2 py-1">
+            <details className="group">
+              <summary className="cursor-pointer text-sm font-semibold text-rose-400 flex items-center gap-2 py-1 select-none">
                 👻 Não Localizados
                 <span className="text-[11px] px-1.5 py-0.5 rounded-full bg-rose-500/10 ml-1">{relatorio.fantasmas.length}</span>
                 <span className="text-xs text-muted font-normal">(referência apenas)</span>
               </summary>
-              <div className="mt-2 space-y-1 pl-4">
-                {relatorio.fantasmas.map((b, i) => (
-                  <div key={i} className="flex items-center gap-2 text-xs text-dim py-1 border-b border-border/30 last:border-0">
-                    <span className="font-mono text-primary font-bold w-24 flex-shrink-0">{b.plaqueta}</span>
-                    <span className="flex-1 truncate text-muted">{b.descricao}</span>
-                    {b.localizacao && <span className="text-muted">📍 {b.localizacao}</span>}
-                    {b.valor_aquisicao != null && <span className="text-muted">{fmtR(b.valor_aquisicao)}</span>}
-                  </div>
-                ))}
+              <div className="mt-2 overflow-x-auto rounded-xl border border-rose-500/15">
+                <table className="w-full border-collapse text-sm">
+                  <thead className="bg-bg3/60">
+                    <tr>
+                      <th className={th}>Plaqueta</th>
+                      <th className={th}>Descrição</th>
+                      <th className={th}>Localização</th>
+                      <th className={`${th} text-right`}>Valor</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {relatorio.fantasmas.map((b, i) => (
+                      <tr key={i} className="border-b border-border/40 last:border-0 hover:bg-bg3/30 transition">
+                        <td className={`${tc} font-mono font-bold text-primary whitespace-nowrap`}>{b.plaqueta}</td>
+                        <td className={`${tc} text-dim max-w-[200px]`}><span className="block truncate">{b.descricao}</span></td>
+                        <td className={`${tc} text-muted whitespace-nowrap`}>{b.localizacao || '—'}</td>
+                        <td className={`${tc} text-right text-muted whitespace-nowrap`}>{b.valor_aquisicao != null ? fmtR(b.valor_aquisicao) : '—'}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
               </div>
             </details>
           )}
 
-          {/* Localizados (colapsado) */}
+          {/* Localizados — apenas contagem */}
           {relatorio.localizados.length > 0 && (
-            <details>
-              <summary className="cursor-pointer text-sm font-semibold text-teal-400 flex items-center gap-2 py-1">
-                ✅ Localizados
+            <details className="group">
+              <summary className="cursor-pointer text-sm font-semibold text-teal-400 flex items-center gap-2 py-1 select-none">
+                ✅ Localizados corretamente
                 <span className="text-[11px] px-1.5 py-0.5 rounded-full bg-teal-500/10 ml-1">{relatorio.localizados.length}</span>
               </summary>
-              <div className="mt-2 space-y-1 pl-4">
-                {relatorio.localizados.slice(0, 30).map((item, i) => (
-                  <div key={i} className="flex items-center gap-2 text-xs py-1 border-b border-border/30 last:border-0">
-                    <span className="font-mono text-primary font-bold w-24 flex-shrink-0">{item.plaqueta_lida}</span>
-                    <span className="flex-1 truncate text-muted">{item.bem?.descricao || '—'}</span>
-                  </div>
-                ))}
-                {relatorio.localizados.length > 30 && (
-                  <p className="text-xs text-muted italic">… e mais {relatorio.localizados.length - 30}</p>
-                )}
+              <div className="mt-2 overflow-x-auto rounded-xl border border-teal-500/15">
+                <table className="w-full border-collapse text-sm">
+                  <thead className="bg-bg3/60">
+                    <tr>
+                      <th className={th}>Plaqueta</th>
+                      <th className={th}>Descrição</th>
+                      <th className={th}>Localização</th>
+                      <th className={th}>Operador</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {relatorio.localizados.slice(0, 50).map((item, i) => (
+                      <tr key={i} className="border-b border-border/40 last:border-0 hover:bg-bg3/30 transition">
+                        <td className={`${tc} font-mono font-bold text-primary whitespace-nowrap`}>{item.plaqueta_lida}</td>
+                        <td className={`${tc} text-dim max-w-[200px]`}><span className="block truncate">{item.bem?.descricao || '—'}</span></td>
+                        <td className={`${tc} text-muted whitespace-nowrap`}>{item.localizacao_encontrada || '—'}</td>
+                        <td className={`${tc} text-muted whitespace-nowrap`}>{item.contado_por || '—'}</td>
+                      </tr>
+                    ))}
+                    {relatorio.localizados.length > 50 && (
+                      <tr>
+                        <td colSpan={4} className="text-center text-xs text-muted italic py-2">… e mais {relatorio.localizados.length - 50} itens</td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
               </div>
             </details>
           )}
@@ -1259,7 +1354,7 @@ function InventariosTab({ categorias, departamentos }) {
       {/* Modal de relatório */}
       {relatorioModal && (
         <Modal title="Relatório de Reconciliação" wide onClose={() => { setRelatorioModal(null); setInvRelId(null) }}>
-          <RelatorioPanel relatorio={relatorioModal} onClose={() => { setRelatorioModal(null); setInvRelId(null) }}/>
+          <RelatorioPanel relatorio={relatorioModal} invId={invRelId} onClose={() => { setRelatorioModal(null); setInvRelId(null) }}/>
         </Modal>
       )}
 

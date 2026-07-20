@@ -72,11 +72,14 @@ def _item_dict(item, request=None):
             except Exception:
                 pass
         bem_data = {
-            'id':          b.id,
-            'plaqueta':    b.plaqueta,
-            'descricao':   b.descricao,
-            'localizacao': b.localizacao,
-            'foto_url':    foto_url,
+            'id':            b.id,
+            'plaqueta':      b.plaqueta,
+            'descricao':     b.descricao,
+            'localizacao':   b.localizacao,
+            'foto_url':      foto_url,
+            'categoria':     {'id': b.categoria_id, 'nome': b.categoria.nome} if b.categoria_id else None,
+            'departamento':  {'id': b.departamento_id, 'nome': b.departamento.nome} if b.departamento_id else None,
+            'valor_aquisicao': float(b.valor_aquisicao) if b.valor_aquisicao is not None else None,
         }
 
     foto_prov_url = None
@@ -870,6 +873,63 @@ def api_bens_importar(request):
             criados += 1
 
     return JsonResponse({'ok': True, 'criados': criados, 'ignorados': ignorados, 'erros': erros})
+
+
+def api_inventario_relatorio_exportar(request, pk):
+    empresa = _empresa(request)
+    if not empresa:
+        return _err('Sem empresa ativa', 401)
+
+    try:
+        inv = Inventario.objects.get(pk=pk, empresa=empresa)
+    except Inventario.DoesNotExist:
+        return _err('Inventário não encontrado', 404)
+
+    import pandas as pd
+
+    r = reconciliar(inv)
+    rows = []
+
+    def add_item(item, sit_label):
+        bem = item.bem
+        rows.append({
+            'Situação':         sit_label,
+            'Plaqueta':         item.plaqueta_lida,
+            'Descrição':        bem.descricao if bem else (item.descricao_provisoria or '—'),
+            'Categoria':        (bem.categoria.nome if bem and bem.categoria_id else None) or '—',
+            'Departamento':     (bem.departamento.nome if bem and bem.departamento_id else None) or '—',
+            'Local no Sistema': (bem.localizacao if bem else None) or '—',
+            'Local Encontrado': item.localizacao_encontrada or '—',
+            'Valor':            float(bem.valor_aquisicao) if bem and bem.valor_aquisicao else None,
+            'Contado Por':      item.contado_por or '—',
+        })
+
+    for item in r['localizados']:     add_item(item, 'Localizado')
+    for item in r['divergentes']:     add_item(item, 'Local Divergente')
+    for item in r['nao_cadastrados']: add_item(item, 'Não Cadastrado')
+    for b in r['fantasmas']:
+        rows.append({
+            'Situação':         'Não Localizado',
+            'Plaqueta':         b.plaqueta,
+            'Descrição':        b.descricao,
+            'Categoria':        b.categoria.nome if b.categoria_id else '—',
+            'Departamento':     b.departamento.nome if b.departamento_id else '—',
+            'Local no Sistema': b.localizacao or '—',
+            'Local Encontrado': '—',
+            'Valor':            float(b.valor_aquisicao) if b.valor_aquisicao else None,
+            'Contado Por':      '—',
+        })
+
+    cols = ['Situação','Plaqueta','Descrição','Categoria','Departamento','Local no Sistema','Local Encontrado','Valor','Contado Por']
+    df  = pd.DataFrame(rows) if rows else pd.DataFrame(columns=cols)
+    buf = io.BytesIO()
+    with pd.ExcelWriter(buf, engine='openpyxl') as writer:
+        df.to_excel(writer, index=False, sheet_name='Relatório')
+    buf.seek(0)
+
+    resp = HttpResponse(buf.read(), content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+    resp['Content-Disposition'] = f'attachment; filename="relatorio_{inv.data}.xlsx"'
+    return resp
 
 
 def api_inventario_relatorio(request, pk):
