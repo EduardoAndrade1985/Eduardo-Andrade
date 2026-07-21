@@ -13,7 +13,7 @@ export default function ProtectedRoute({ children }) {
     )
   }
 
-  if (!user) return <Navigate to="/login" state={{ from: location }} replace />
+  if (!user) return <Navigate to="/login" state={{ from: pathname }} replace />
 
   // força troca de senha antes de qualquer outra rota
   if (user.must_change_password && pathname !== '/definir-senha') {
