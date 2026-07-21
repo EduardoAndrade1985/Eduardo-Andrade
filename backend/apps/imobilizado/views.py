@@ -3,13 +3,31 @@ import json
 import uuid
 from decimal import Decimal, InvalidOperation
 from django.db import transaction
-from django.db.models import Q
+from django.db.models import Q, Sum, Count
 from django.http import JsonResponse, HttpResponse
 from django.views.decorators.csrf import csrf_exempt
 from django.utils import timezone
 
-from .models import CategoriaBem, Departamento, LocalizacaoBem, Bem, Inventario, ItemInventario
+from .models import CategoriaBem, Departamento, LocalizacaoBem, Bem, Inventario, ItemInventario, TransferenciaAtivo, LogAuditoria
 from .services import registrar_leitura, reconciliar
+
+
+def _get_usuario(request):
+    if hasattr(request, 'user') and request.user.is_authenticated:
+        return request.user.get_full_name() or request.user.username
+    return 'Sistema'
+
+
+def _log(empresa, acao, descricao, request):
+    try:
+        LogAuditoria.objects.create(
+            empresa=empresa,
+            acao=acao,
+            descricao=descricao,
+            usuario=_get_usuario(request),
+        )
+    except Exception:
+        pass
 
 
 def _empresa(request):
@@ -281,6 +299,7 @@ def api_bens(request):
         if 'foto' in request.FILES:
             bem.foto = request.FILES['foto']
         bem.save()
+        _log(empresa, LogAuditoria.CRIAR_BEM, f'Bem {bem.plaqueta} – {bem.descricao} criado', request)
         return JsonResponse({'ok': True, 'id': bem.id})
 
     return _err('Método não permitido', 405)
@@ -332,9 +351,11 @@ def api_bem_detalhe(request, pk):
         if 'foto' in request.FILES:
             bem.foto = request.FILES['foto']
         bem.save()
+        _log(empresa, LogAuditoria.EDITAR_BEM, f'Bem {bem.plaqueta} – {bem.descricao} editado', request)
         return JsonResponse({'ok': True})
 
     if request.method == 'DELETE':
+        _log(empresa, LogAuditoria.EXCLUIR_BEM, f'Bem {bem.plaqueta} – {bem.descricao} excluído', request)
         bem.delete()
         return JsonResponse({'ok': True})
 
@@ -370,6 +391,7 @@ def api_bem_baixar(request, pk):
     if obs_extra:
         bem.observacoes = (bem.observacoes + '\n' + obs_extra).strip()
     bem.save()
+    _log(empresa, LogAuditoria.BAIXAR_BEM, f'Bem {bem.plaqueta} baixado por motivo: {motivo}', request)
     return JsonResponse({'ok': True})
 
 
@@ -486,6 +508,7 @@ def api_inventarios(request):
                 'local_area':  inv.local_area,
                 'responsavel': inv.responsavel,
                 'status':      inv.status,
+                'link_ativo':  inv.link_ativo,
                 'total_itens': inv.itens.count(),
                 'criado_em':   inv.criado_em.isoformat(),
             }
@@ -508,6 +531,7 @@ def api_inventarios(request):
             responsavel = (data.get('responsavel') or '').strip(),
             observacoes = (data.get('observacoes') or '').strip(),
         )
+        _log(empresa, LogAuditoria.CRIAR_INV, f'Inventário {data_inv} criado – área: {inv.local_area or "geral"}', request)
         return JsonResponse({'ok': True, 'id': inv.id})
 
     return _err('Método não permitido', 405)
@@ -557,6 +581,7 @@ def api_inventario_finalizar(request, pk):
 
     inv.status = Inventario.AGUARDANDO
     inv.save(update_fields=['status'])
+    _log(empresa, LogAuditoria.FINALIZAR_INV, f'Inventário {inv.data} finalizado para conciliação', request)
     return JsonResponse({'ok': True})
 
 
@@ -794,6 +819,7 @@ def api_inventario_conciliar(request, pk):
 
         inv.status = Inventario.FINALIZADO
         inv.save(update_fields=['status'])
+        _log(empresa, LogAuditoria.CONCILIAR_INV, f'Inventário {inv.data} conciliado e finalizado', request)
 
     return JsonResponse({'ok': True})
 
@@ -1117,3 +1143,296 @@ def api_comparativo(request):
         'valor_fantasmas':    r['valor_fantasmas'],
         'inventarios_finalizados': finalizados,
     })
+
+
+# ─── LINK ATIVO (toggle) ──────────────────────────────────────────────────────
+
+@csrf_exempt
+def api_inventario_toggle_link(request, pk):
+    """Bloqueia ou libera o link público do inventário."""
+    empresa = _empresa(request)
+    if not empresa:
+        return _err('Sem empresa ativa', 401)
+    if request.method != 'POST':
+        return _err('Método não permitido', 405)
+    try:
+        inv = Inventario.objects.get(pk=pk, empresa=empresa)
+    except Inventario.DoesNotExist:
+        return _err('Inventário não encontrado', 404)
+
+    inv.link_ativo = not inv.link_ativo
+    inv.save(update_fields=['link_ativo'])
+
+    acao = LogAuditoria.LIBERAR_LINK if inv.link_ativo else LogAuditoria.BLOQUEAR_LINK
+    desc = f'Link do inventário {inv.data} {"liberado" if inv.link_ativo else "bloqueado"}'
+    _log(empresa, acao, desc, request)
+
+    return JsonResponse({'ok': True, 'link_ativo': inv.link_ativo})
+
+
+# ─── TRANSFERÊNCIA DE ATIVOS ──────────────────────────────────────────────────
+
+@csrf_exempt
+def api_bem_transferir(request, pk):
+    empresa = _empresa(request)
+    if not empresa:
+        return _err('Sem empresa ativa', 401)
+    if request.method != 'POST':
+        return _err('Método não permitido', 405)
+
+    try:
+        bem = Bem.objects.select_related('categoria', 'departamento').get(pk=pk, empresa=empresa)
+    except Bem.DoesNotExist:
+        return _err('Bem não encontrado', 404)
+
+    try:
+        data = json.loads(request.body)
+    except Exception:
+        return _err('JSON inválido')
+
+    de_dep  = bem.departamento.nome if bem.departamento_id else ''
+    de_loc  = bem.localizacao or ''
+
+    novo_dep_id  = data.get('departamento_id')
+    nova_loc     = (data.get('localizacao') or '').strip()
+    motivo       = (data.get('motivo') or '').strip()
+
+    if not novo_dep_id and not nova_loc:
+        return _err('Informe ao menos um destino (departamento ou localização)')
+
+    para_dep_nome = de_dep
+    if novo_dep_id:
+        try:
+            novo_dep = Departamento.objects.get(id=novo_dep_id, empresa=empresa)
+        except Departamento.DoesNotExist:
+            return _err('Departamento não encontrado')
+        bem.departamento  = novo_dep
+        para_dep_nome     = novo_dep.nome
+
+    if nova_loc:
+        bem.localizacao = nova_loc
+
+    bem.save()
+
+    TransferenciaAtivo.objects.create(
+        bem               = bem,
+        de_departamento   = de_dep,
+        para_departamento = para_dep_nome,
+        de_localizacao    = de_loc,
+        para_localizacao  = nova_loc or de_loc,
+        motivo            = motivo,
+        transferido_por   = _get_usuario(request),
+    )
+    _log(empresa, LogAuditoria.TRANSFERIR_BEM,
+         f'Bem {bem.plaqueta} transferido de "{de_dep}/{de_loc}" para "{para_dep_nome}/{nova_loc or de_loc}"',
+         request)
+
+    return JsonResponse({'ok': True})
+
+
+@csrf_exempt
+def api_bem_historico_transferencias(request, pk):
+    empresa = _empresa(request)
+    if not empresa:
+        return _err('Sem empresa ativa', 401)
+    try:
+        bem = Bem.objects.get(pk=pk, empresa=empresa)
+    except Bem.DoesNotExist:
+        return _err('Bem não encontrado', 404)
+
+    data = [
+        {
+            'id':               t.id,
+            'de_departamento':  t.de_departamento,
+            'para_departamento':t.para_departamento,
+            'de_localizacao':   t.de_localizacao,
+            'para_localizacao': t.para_localizacao,
+            'motivo':           t.motivo,
+            'transferido_por':  t.transferido_por,
+            'criado_em':        t.criado_em.isoformat(),
+        }
+        for t in bem.transferencias.all()
+    ]
+    return JsonResponse(data, safe=False)
+
+
+# ─── AUDITORIA ────────────────────────────────────────────────────────────────
+
+def api_auditoria(request):
+    empresa = _empresa(request)
+    if not empresa:
+        return _err('Sem empresa ativa', 401)
+
+    qs = LogAuditoria.objects.filter(empresa=empresa)
+
+    acao    = request.GET.get('acao')
+    usuario = request.GET.get('usuario', '').strip()
+    de      = request.GET.get('de')
+    ate     = request.GET.get('ate')
+
+    if acao:    qs = qs.filter(acao=acao)
+    if usuario: qs = qs.filter(usuario__icontains=usuario)
+    if de:      qs = qs.filter(criado_em__date__gte=de)
+    if ate:     qs = qs.filter(criado_em__date__lte=ate)
+
+    data = [
+        {
+            'id':        l.id,
+            'acao':      l.acao,
+            'acao_label':l.get_acao_display(),
+            'descricao': l.descricao,
+            'usuario':   l.usuario,
+            'criado_em': l.criado_em.isoformat(),
+        }
+        for l in qs[:500]
+    ]
+    return JsonResponse(data, safe=False)
+
+
+# ─── DASHBOARD ────────────────────────────────────────────────────────────────
+
+def api_dashboard(request):
+    empresa = _empresa(request)
+    if not empresa:
+        return _err('Sem empresa ativa', 401)
+
+    bens_qs = Bem.objects.filter(empresa=empresa)
+
+    total_bens    = bens_qs.count()
+    em_uso        = bens_qs.filter(situacao=Bem.EM_USO).count()
+    manutencao    = bens_qs.filter(situacao=Bem.MANUTENCAO).count()
+    baixados      = bens_qs.filter(situacao=Bem.BAIXADO).count()
+    sem_cadastro  = bens_qs.filter(Q(valor_aquisicao__isnull=True) | Q(nota_fiscal='')).count()
+    valor_total   = bens_qs.filter(situacao=Bem.EM_USO).aggregate(s=Sum('valor_aquisicao'))['s'] or 0
+
+    # por categoria (top 8)
+    por_categoria = list(
+        bens_qs.filter(situacao=Bem.EM_USO)
+        .values('categoria__nome')
+        .annotate(total=Count('id'), valor=Sum('valor_aquisicao'))
+        .order_by('-total')[:8]
+    )
+
+    # por departamento (top 8)
+    por_departamento = list(
+        bens_qs.filter(situacao=Bem.EM_USO)
+        .values('departamento__nome')
+        .annotate(total=Count('id'))
+        .order_by('-total')[:8]
+    )
+
+    # último inventário
+    ultimo_inv = Inventario.objects.filter(empresa=empresa).order_by('-data', '-criado_em').first()
+    ultimo_inv_data = None
+    if ultimo_inv:
+        r = reconciliar(ultimo_inv)
+        ultimo_inv_data = {
+            'id':               ultimo_inv.id,
+            'data':             ultimo_inv.data.isoformat(),
+            'local_area':       ultimo_inv.local_area,
+            'status':           ultimo_inv.status,
+            'total_contados':   r['total_contados'],
+            'total_esperados':  r['total_esperados'],
+            'indice_localizacao': r['indice_localizacao'],
+        }
+
+    return JsonResponse({
+        'total_bens':      total_bens,
+        'em_uso':          em_uso,
+        'manutencao':      manutencao,
+        'baixados':        baixados,
+        'sem_cadastro':    sem_cadastro,
+        'valor_total':     float(valor_total),
+        'por_categoria':   [{'nome': c['categoria__nome'] or 'Sem categoria', 'total': c['total'], 'valor': float(c['valor'] or 0)} for c in por_categoria],
+        'por_departamento':[{'nome': d['departamento__nome'] or 'Sem dep.', 'total': d['total']} for d in por_departamento],
+        'ultimo_inventario': ultimo_inv_data,
+    })
+
+
+# ─── RELATÓRIOS ───────────────────────────────────────────────────────────────
+
+def api_relatorios(request):
+    empresa = _empresa(request)
+    if not empresa:
+        return _err('Sem empresa ativa', 401)
+
+    tipo = request.GET.get('tipo', 'bens')
+
+    if tipo == 'baixas':
+        qs = Bem.objects.filter(empresa=empresa, situacao=Bem.BAIXADO).select_related('categoria', 'departamento').order_by('-data_baixa')
+        data = [
+            {
+                'plaqueta':      b.plaqueta,
+                'descricao':     b.descricao,
+                'categoria':     b.categoria.nome if b.categoria_id else '',
+                'departamento':  b.departamento.nome if b.departamento_id else '',
+                'data_baixa':    b.data_baixa.isoformat() if b.data_baixa else None,
+                'motivo_baixa':  dict(Bem.MOTIVO_BAIXA_CHOICES).get(b.motivo_baixa, b.motivo_baixa),
+                'valor_aquisicao': float(b.valor_aquisicao) if b.valor_aquisicao else None,
+                'observacoes':   b.observacoes,
+            }
+            for b in qs
+        ]
+        return JsonResponse({'tipo': 'baixas', 'registros': data})
+
+    if tipo == 'transferencias':
+        qs = TransferenciaAtivo.objects.filter(bem__empresa=empresa).select_related('bem').order_by('-criado_em')
+        data = [
+            {
+                'plaqueta':          t.bem.plaqueta,
+                'descricao':         t.bem.descricao,
+                'de_departamento':   t.de_departamento,
+                'para_departamento': t.para_departamento,
+                'de_localizacao':    t.de_localizacao,
+                'para_localizacao':  t.para_localizacao,
+                'motivo':            t.motivo,
+                'transferido_por':   t.transferido_por,
+                'criado_em':         t.criado_em.isoformat(),
+            }
+            for t in qs
+        ]
+        return JsonResponse({'tipo': 'transferencias', 'registros': data})
+
+    if tipo == 'inventarios':
+        qs = Inventario.objects.filter(empresa=empresa).order_by('-data', '-criado_em')
+        data = []
+        for inv in qs:
+            r = reconciliar(inv)
+            data.append({
+                'id':               inv.id,
+                'data':             inv.data.isoformat(),
+                'local_area':       inv.local_area,
+                'responsavel':      inv.responsavel,
+                'status':           inv.status,
+                'link_ativo':       inv.link_ativo,
+                'total_contados':   r['total_contados'],
+                'total_esperados':  r['total_esperados'],
+                'localizados':      len(r['localizados']),
+                'divergentes':      len(r['divergentes']),
+                'nao_cadastrados':  len(r['nao_cadastrados']),
+                'fantasmas':        len(r['fantasmas']),
+                'indice_localizacao': r['indice_localizacao'],
+            })
+        return JsonResponse({'tipo': 'inventarios', 'registros': data})
+
+    # default: bens
+    qs = Bem.objects.filter(empresa=empresa).select_related('categoria', 'departamento').order_by('plaqueta')
+    situacao = request.GET.get('situacao')
+    if situacao:
+        qs = qs.filter(situacao=situacao)
+    data = [
+        {
+            'plaqueta':        b.plaqueta,
+            'descricao':       b.descricao,
+            'categoria':       b.categoria.nome if b.categoria_id else '',
+            'departamento':    b.departamento.nome if b.departamento_id else '',
+            'localizacao':     b.localizacao,
+            'responsavel':     b.responsavel,
+            'situacao':        dict(Bem.SITUACAO_CHOICES).get(b.situacao, b.situacao),
+            'valor_aquisicao': float(b.valor_aquisicao) if b.valor_aquisicao else None,
+            'data_aquisicao':  b.data_aquisicao.isoformat() if b.data_aquisicao else None,
+            'nota_fiscal':     b.nota_fiscal,
+        }
+        for b in qs
+    ]
+    return JsonResponse({'tipo': 'bens', 'registros': data})

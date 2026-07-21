@@ -96,6 +96,100 @@ function ListaConfig({ titulo, itens, novoValor, onNovoValor, onAdicionar, onRem
 }
 
 // ════════════════════════════════════════════════════════════════════════════════
+// ABA DASHBOARD
+// ════════════════════════════════════════════════════════════════════════════════
+function KpiCard({ label, value, sub, color }) {
+  return (
+    <div className="bg-bg2 border border-border rounded-xl p-4 flex flex-col gap-1">
+      <span className="text-[11px] font-bold text-muted uppercase tracking-wider">{label}</span>
+      <span className={`text-2xl font-bold ${color || 'text-dim'}`}>{value}</span>
+      {sub && <span className="text-xs text-muted">{sub}</span>}
+    </div>
+  )
+}
+
+function BarChart({ items, labelKey, valueKey, color }) {
+  if (!items || items.length === 0) return <p className="text-xs text-muted italic">Sem dados</p>
+  const max = Math.max(...items.map(i => i[valueKey]), 1)
+  return (
+    <div className="space-y-1.5">
+      {items.map((item, idx) => (
+        <div key={idx} className="flex items-center gap-2 text-xs">
+          <span className="text-muted w-28 truncate text-right flex-shrink-0">{item[labelKey]}</span>
+          <div className="flex-1 bg-bg3 rounded-full h-2 overflow-hidden">
+            <div className={`h-2 rounded-full ${color || 'bg-primary'}`}
+              style={{ width: `${(item[valueKey] / max) * 100}%` }}/>
+          </div>
+          <span className="text-dim w-8 text-right">{item[valueKey]}</span>
+        </div>
+      ))}
+    </div>
+  )
+}
+
+function DashboardTab() {
+  const [dash, setDash]     = useState(null)
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    api.get('/imobilizado/dashboard/')
+      .then(r => setDash(r.data))
+      .finally(() => setLoading(false))
+  }, [])
+
+  if (loading) return <div className="text-center py-16 text-muted">Carregando dashboard…</div>
+  if (!dash)   return <div className="text-center py-16 text-muted">Erro ao carregar.</div>
+
+  const fmtV = v => Number(v).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
+  const pct  = dash.total_bens > 0 ? Math.round((dash.em_uso / dash.total_bens) * 100) : 0
+  const inv  = dash.ultimo_inventario
+
+  return (
+    <div className="space-y-6">
+      {/* KPIs principais */}
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
+        <KpiCard label="Total de Bens"    value={dash.total_bens}   color="text-dim"/>
+        <KpiCard label="Em Uso"           value={dash.em_uso}       color="text-teal-400"  sub={`${pct}% do total`}/>
+        <KpiCard label="Em Manutenção"    value={dash.manutencao}   color="text-amber-400"/>
+        <KpiCard label="Baixados"         value={dash.baixados}     color="text-rose-400"/>
+        <KpiCard label="Cadastro Incompleto" value={dash.sem_cadastro} color="text-violet-400" sub="sem NF ou valor"/>
+      </div>
+
+      <div className="bg-bg2 border border-border rounded-xl p-4">
+        <p className="text-[11px] font-bold text-muted uppercase tracking-wider mb-1">Valor Total do Imobilizado (em uso)</p>
+        <p className="text-3xl font-bold text-primary">{fmtV(dash.valor_total)}</p>
+      </div>
+
+      {/* Gráficos */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div className="bg-bg2 border border-border rounded-xl p-4 space-y-3">
+          <p className="text-[11px] font-bold text-muted uppercase tracking-wider">Bens por Categoria</p>
+          <BarChart items={dash.por_categoria} labelKey="nome" valueKey="total" color="bg-primary"/>
+        </div>
+        <div className="bg-bg2 border border-border rounded-xl p-4 space-y-3">
+          <p className="text-[11px] font-bold text-muted uppercase tracking-wider">Bens por Departamento</p>
+          <BarChart items={dash.por_departamento} labelKey="nome" valueKey="total" color="bg-teal-500"/>
+        </div>
+      </div>
+
+      {/* Último inventário */}
+      {inv && (
+        <div className="bg-bg2 border border-border rounded-xl p-4 space-y-2">
+          <p className="text-[11px] font-bold text-muted uppercase tracking-wider">Último Inventário</p>
+          <div className="flex flex-wrap gap-4 text-sm">
+            <span className="text-muted">Data: <span className="text-dim font-medium">{fmtDt(inv.data)}</span></span>
+            {inv.local_area && <span className="text-muted">Área: <span className="text-dim font-medium">{inv.local_area}</span></span>}
+            <span className="text-muted">Contados: <span className="text-dim font-medium">{inv.total_contados}</span></span>
+            <span className="text-muted">Esperados: <span className="text-dim font-medium">{inv.total_esperados}</span></span>
+            <span className="text-muted">Índice: <span className="text-teal-400 font-bold">{inv.indice_localizacao?.toFixed(1)}%</span></span>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ════════════════════════════════════════════════════════════════════════════════
 // ABA BENS
 // ════════════════════════════════════════════════════════════════════════════════
 function BensTab({ categorias, departamentos, localizacoes }) {
@@ -105,6 +199,8 @@ function BensTab({ categorias, departamentos, localizacoes }) {
   const [bemSel, setBemSel]     = useState(null)
   const [editando, setEditando] = useState(false)
   const [baixando, setBaixando] = useState(false)
+  const [transferindo, setTransferindo] = useState(false)
+  const [transForm, setTransForm]       = useState({ departamento_id: '', localizacao: '', motivo: '' })
   const [form, setForm]         = useState({})
   const [fotoFile, setFotoFile] = useState(null)
   const [erros, setErros]       = useState([])
@@ -226,6 +322,22 @@ function BensTab({ categorias, departamentos, localizacoes }) {
     } finally {
       setImportando(false)
       e.target.value = ''
+    }
+  }
+
+  const executarTransferencia = async () => {
+    setSalvando(true)
+    setErros([])
+    try {
+      await api.post(`/imobilizado/bens/${bemSel.id}/transferir/`, transForm)
+      setTransferindo(false)
+      setBemSel(null)
+      setTransForm({ departamento_id: '', localizacao: '', motivo: '' })
+      carregar()
+    } catch (e) {
+      setErros([e.response?.data?.erro || 'Erro ao transferir'])
+    } finally {
+      setSalvando(false)
     }
   }
 
@@ -473,6 +585,10 @@ function BensTab({ categorias, departamentos, localizacoes }) {
                 className="bg-primary text-bg text-sm font-semibold px-5 py-2 rounded-lg hover:bg-primary/90 transition disabled:opacity-50">
                 {salvando ? 'Salvando…' : 'Salvar'}
               </button>
+              <button onClick={() => { setEditando(false); setTransferindo(true); setTransForm({ departamento_id: '', localizacao: '', motivo: '' }) }}
+                className="bg-amber-500/10 text-amber-400 border border-amber-500/20 text-sm font-semibold px-4 py-2 rounded-lg hover:bg-amber-500/20 transition">
+                Transferir
+              </button>
               <button onClick={() => { setEditando(false); setBaixando(true) }}
                 className="bg-rose-500/10 text-rose-400 border border-rose-500/20 text-sm font-semibold px-4 py-2 rounded-lg hover:bg-rose-500/20 transition">
                 Dar Baixa
@@ -501,6 +617,50 @@ function BensTab({ categorias, departamentos, localizacoes }) {
                 </div>
               </div>
             )}
+          </div>
+        </Modal>
+      )}
+
+      {/* Modal de transferência */}
+      {transferindo && bemSel && (
+        <Modal title={`Transferir: ${bemSel.plaqueta}`} onClose={() => { setTransferindo(false); setBemSel(null) }}>
+          <div className="space-y-4">
+            {erros.length > 0 && (
+              <div className="bg-rose-500/10 border border-rose-500/20 rounded-lg p-3 text-sm text-rose-400">
+                {erros.map((e, i) => <p key={i}>{e}</p>)}
+              </div>
+            )}
+            <div className="bg-bg3 rounded-lg p-3 text-xs text-muted space-y-1">
+              <p>Departamento atual: <span className="text-dim font-medium">{bemSel.departamento?.nome || '—'}</span></p>
+              <p>Localização atual: <span className="text-dim font-medium">{bemSel.localizacao || '—'}</span></p>
+            </div>
+            <Field label="Novo Departamento">
+              <select className={sel} value={transForm.departamento_id}
+                onChange={e => setTransForm(p => ({ ...p, departamento_id: e.target.value }))}>
+                <option value="">Manter atual</option>
+                {departamentos.map(d => <option key={d.id} value={d.id}>{d.nome}</option>)}
+              </select>
+            </Field>
+            <Field label="Nova Localização">
+              <input className={inp} value={transForm.localizacao}
+                placeholder="Deixe em branco para manter atual"
+                onChange={e => setTransForm(p => ({ ...p, localizacao: e.target.value }))}/>
+            </Field>
+            <Field label="Motivo">
+              <input className={inp} value={transForm.motivo}
+                placeholder="Ex: Remanejamento de área, reforma…"
+                onChange={e => setTransForm(p => ({ ...p, motivo: e.target.value }))}/>
+            </Field>
+            <div className="flex gap-3 pt-2">
+              <button onClick={executarTransferencia} disabled={salvando || (!transForm.departamento_id && !transForm.localizacao)}
+                className="bg-amber-500 text-bg text-sm font-semibold px-5 py-2 rounded-lg hover:bg-amber-400 transition disabled:opacity-50">
+                {salvando ? 'Transferindo…' : 'Confirmar Transferência'}
+              </button>
+              <button onClick={() => { setTransferindo(false); setBemSel(null) }}
+                className="text-muted text-sm px-4 py-2 rounded-lg hover:bg-bg3 transition">
+                Cancelar
+              </button>
+            </div>
           </div>
         </Modal>
       )}
@@ -1562,6 +1722,18 @@ function InventariosTab({ categorias, departamentos }) {
     setInvs(prev => prev.map(i => i.id === inv.id ? { ...i, token: data.token } : i))
   }
 
+  const toggleLink = async inv => {
+    const acao = inv.link_ativo ? 'bloquear' : 'liberar'
+    if (!window.confirm(`Deseja ${acao} o link deste inventário?`)) return
+    const { data } = await api.post(`/imobilizado/inventarios/${inv.id}/toggle-link/`)
+    setInvs(prev => prev.map(i => i.id === inv.id ? { ...i, link_ativo: data.link_ativo } : i))
+  }
+
+  const copiarLink = async inv => {
+    const url = `${window.location.origin}/imobilizado/${inv.token}/contagem`
+    try { await navigator.clipboard.writeText(url) } catch { prompt('Copie o link:', url) }
+  }
+
   const finalizar = async inv => {
     if (!window.confirm(`Finalizar inventário de ${fmtDt(inv.data)}?`)) return
     await api.post(`/imobilizado/inventarios/${inv.id}/finalizar/`)
@@ -1628,16 +1800,21 @@ function InventariosTab({ categorias, departamentos }) {
                               📱 Contar
                             </button>
                           )}
-                          {inv.status === 'ABERTO' && (
-                            <button onClick={async () => {
-                              const url = `${window.location.origin}/imobilizado/${inv.token}/contagem`
-                              try { await navigator.clipboard.writeText(url) } catch { prompt('Copie o link:', url) }
-                            }}
-                              className="text-xs bg-bg3 border border-border text-muted px-2.5 py-1 rounded-lg hover:border-primary/40 hover:text-primary transition"
-                              title="Copiar link público">
-                              🔗
-                            </button>
-                          )}
+                          {/* Copiar link — disponível sempre que link_ativo */}
+                          <button onClick={() => copiarLink(inv)}
+                            className={`text-xs bg-bg3 border px-2.5 py-1 rounded-lg transition ${inv.link_ativo ? 'border-border text-muted hover:border-primary/40 hover:text-primary' : 'border-border/40 text-muted/40 cursor-not-allowed'}`}
+                            title={inv.link_ativo ? 'Copiar link' : 'Link bloqueado'}
+                            disabled={!inv.link_ativo}>
+                            🔗
+                          </button>
+                          {/* Toggle link (bloquear / liberar) */}
+                          <button onClick={() => toggleLink(inv)}
+                            className={`text-xs border px-2.5 py-1 rounded-lg transition whitespace-nowrap ${inv.link_ativo
+                              ? 'bg-teal-500/10 text-teal-400 border-teal-500/30 hover:bg-teal-500/20'
+                              : 'bg-rose-500/10 text-rose-400 border-rose-500/30 hover:bg-rose-500/20'}`}
+                            title={inv.link_ativo ? 'Bloquear link' : 'Liberar link'}>
+                            {inv.link_ativo ? '🔓 Link' : '🔒 Link'}
+                          </button>
                           {inv.status === 'ABERTO' && (
                             <button onClick={() => novoLink(inv)}
                               className="text-xs bg-bg3 border border-border text-muted px-2.5 py-1 rounded-lg hover:border-amber-500/40 hover:text-amber-400 transition"
@@ -1744,10 +1921,262 @@ function InventariosTab({ categorias, departamentos }) {
 }
 
 // ════════════════════════════════════════════════════════════════════════════════
+// ABA AUDITORIA
+// ════════════════════════════════════════════════════════════════════════════════
+const ACAO_CORES = {
+  CRIAR_BEM:      'text-teal-400',
+  EDITAR_BEM:     'text-blue-400',
+  BAIXAR_BEM:     'text-rose-400',
+  TRANSFERIR_BEM: 'text-amber-400',
+  EXCLUIR_BEM:    'text-rose-500',
+  CRIAR_INV:      'text-violet-400',
+  FINALIZAR_INV:  'text-violet-400',
+  CONCILIAR_INV:  'text-violet-400',
+  BLOQUEAR_LINK:  'text-rose-400',
+  LIBERAR_LINK:   'text-teal-400',
+}
+
+function AuditoriaTab() {
+  const [logs, setLogs]         = useState([])
+  const [loading, setLoading]   = useState(true)
+  const [filtros, setFiltros]   = useState({ acao: '', usuario: '', de: '', ate: '' })
+
+  const carregar = async () => {
+    setLoading(true)
+    try {
+      const params = {}
+      if (filtros.acao)    params.acao    = filtros.acao
+      if (filtros.usuario) params.usuario = filtros.usuario
+      if (filtros.de)      params.de      = filtros.de
+      if (filtros.ate)     params.ate     = filtros.ate
+      const { data } = await api.get('/imobilizado/auditoria/', { params })
+      setLogs(data)
+    } finally { setLoading(false) }
+  }
+
+  useEffect(() => { carregar() }, [])
+
+  const fmtTs = s => {
+    if (!s) return '—'
+    const d = new Date(s)
+    return d.toLocaleDateString('pt-BR') + ' ' + d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
+  }
+
+  const ACOES = [
+    ['', 'Todas as ações'],
+    ['CRIAR_BEM', 'Criar Bem'],
+    ['EDITAR_BEM', 'Editar Bem'],
+    ['BAIXAR_BEM', 'Baixar Bem'],
+    ['TRANSFERIR_BEM', 'Transferir Bem'],
+    ['EXCLUIR_BEM', 'Excluir Bem'],
+    ['CRIAR_INV', 'Criar Inventário'],
+    ['FINALIZAR_INV', 'Finalizar Inventário'],
+    ['CONCILIAR_INV', 'Conciliar Inventário'],
+    ['BLOQUEAR_LINK', 'Bloquear Link'],
+    ['LIBERAR_LINK', 'Liberar Link'],
+  ]
+
+  return (
+    <div className="space-y-4">
+      {/* Filtros */}
+      <div className="flex flex-wrap gap-2 items-end">
+        <select className={`${sel} w-44`} value={filtros.acao}
+          onChange={e => setFiltros(p => ({ ...p, acao: e.target.value }))}>
+          {ACOES.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+        </select>
+        <input className={`${inp} w-36`} placeholder="Usuário…" value={filtros.usuario}
+          onChange={e => setFiltros(p => ({ ...p, usuario: e.target.value }))}/>
+        <input type="date" className={`${inp} w-36`} value={filtros.de}
+          onChange={e => setFiltros(p => ({ ...p, de: e.target.value }))}/>
+        <input type="date" className={`${inp} w-36`} value={filtros.ate}
+          onChange={e => setFiltros(p => ({ ...p, ate: e.target.value }))}/>
+        <button onClick={carregar}
+          className="bg-primary/10 text-primary border border-primary/20 px-4 py-2 rounded-lg text-sm hover:bg-primary/20 transition">
+          Filtrar
+        </button>
+      </div>
+
+      {loading ? (
+        <div className="text-center py-12 text-muted">Carregando…</div>
+      ) : logs.length === 0 ? (
+        <div className="text-center py-12 text-muted">Nenhum registro encontrado.</div>
+      ) : (
+        <div className="bg-bg2 border border-border rounded-xl overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-border">
+                  {['Data/Hora', 'Ação', 'Descrição', 'Usuário'].map(h => (
+                    <th key={h} className="text-left text-[10px] font-bold text-muted uppercase tracking-wider px-4 py-3 whitespace-nowrap">{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {logs.map(l => (
+                  <tr key={l.id} className="border-b border-border/40 last:border-0 hover:bg-bg3/20 transition">
+                    <td className="px-4 py-2.5 text-muted text-xs whitespace-nowrap">{fmtTs(l.criado_em)}</td>
+                    <td className="px-4 py-2.5 whitespace-nowrap">
+                      <span className={`text-xs font-semibold ${ACAO_CORES[l.acao] || 'text-dim'}`}>{l.acao_label}</span>
+                    </td>
+                    <td className="px-4 py-2.5 text-muted text-xs max-w-xs truncate">{l.descricao}</td>
+                    <td className="px-4 py-2.5 text-muted text-xs whitespace-nowrap">{l.usuario || '—'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <p className="text-xs text-muted px-4 py-2 border-t border-border">{logs.length} registros (máx. 500)</p>
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ════════════════════════════════════════════════════════════════════════════════
+// ABA RELATÓRIOS
+// ════════════════════════════════════════════════════════════════════════════════
+function RelatoriosTab() {
+  const [tipo, setTipo]         = useState('bens')
+  const [dados, setDados]       = useState(null)
+  const [loading, setLoading]   = useState(false)
+  const [situacao, setSituacao] = useState('')
+
+  const carregar = async () => {
+    setLoading(true)
+    setDados(null)
+    try {
+      const params = { tipo }
+      if (tipo === 'bens' && situacao) params.situacao = situacao
+      const { data } = await api.get('/imobilizado/relatorios/', { params })
+      setDados(data)
+    } finally { setLoading(false) }
+  }
+
+  useEffect(() => { carregar() }, [tipo])
+
+  const fmtV = v => v != null ? Number(v).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }) : '—'
+
+  const TIPOS = [
+    { id: 'bens',           label: '📦 Bens' },
+    { id: 'baixas',         label: '📉 Baixas' },
+    { id: 'transferencias', label: '🔀 Transferências' },
+    { id: 'inventarios',    label: '📋 Inventários' },
+  ]
+
+  const registros = dados?.registros || []
+
+  const colsBens = ['Plaqueta', 'Descrição', 'Categoria', 'Departamento', 'Localização', 'Situação', 'Valor']
+  const colsBaixas = ['Plaqueta', 'Descrição', 'Categoria', 'Departamento', 'Data Baixa', 'Motivo', 'Valor']
+  const colsTrans = ['Plaqueta', 'Descrição', 'De Dep.', 'Para Dep.', 'De Local', 'Para Local', 'Motivo', 'Por', 'Data']
+  const colsInv = ['Data', 'Área', 'Responsável', 'Status', 'Esperados', 'Contados', 'Localizados', 'Divergentes', 'Não Cad.', 'Fantasmas', 'Índice']
+
+  return (
+    <div className="space-y-4">
+      {/* Seletor de tipo */}
+      <div className="flex flex-wrap gap-2 items-center">
+        {TIPOS.map(t => (
+          <button key={t.id} onClick={() => setTipo(t.id)}
+            className={`text-sm px-4 py-1.5 rounded-lg border transition font-medium ${tipo === t.id
+              ? 'bg-primary/10 text-primary border-primary/30'
+              : 'bg-bg3 text-muted border-border hover:text-dim'}`}>
+            {t.label}
+          </button>
+        ))}
+        {tipo === 'bens' && (
+          <select className={`${sel} w-36 ml-2`} value={situacao} onChange={e => setSituacao(e.target.value)}>
+            <option value="">Todas situações</option>
+            <option value="EM_USO">Em Uso</option>
+            <option value="MANUTENCAO">Manutenção</option>
+            <option value="BAIXADO">Baixado</option>
+          </select>
+        )}
+        <button onClick={carregar}
+          className="bg-primary/10 text-primary border border-primary/20 px-4 py-1.5 rounded-lg text-sm hover:bg-primary/20 transition">
+          Atualizar
+        </button>
+        {dados && registros.length > 0 && (
+          <span className="text-xs text-muted ml-auto">{registros.length} registros</span>
+        )}
+      </div>
+
+      {loading && <div className="text-center py-12 text-muted">Carregando…</div>}
+
+      {!loading && dados && registros.length === 0 && (
+        <div className="text-center py-12 text-muted">Nenhum registro encontrado.</div>
+      )}
+
+      {!loading && registros.length > 0 && (
+        <div className="bg-bg2 border border-border rounded-xl overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-border">
+                  {(tipo === 'bens' ? colsBens : tipo === 'baixas' ? colsBaixas : tipo === 'transferencias' ? colsTrans : colsInv).map(h => (
+                    <th key={h} className="text-left text-[10px] font-bold text-muted uppercase tracking-wider px-3 py-3 whitespace-nowrap">{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {registros.map((r, i) => (
+                  <tr key={i} className="border-b border-border/40 last:border-0 hover:bg-bg3/20 transition text-xs">
+                    {tipo === 'bens' && <>
+                      <td className="px-3 py-2 font-medium text-dim">{r.plaqueta}</td>
+                      <td className="px-3 py-2 text-muted max-w-[180px] truncate">{r.descricao}</td>
+                      <td className="px-3 py-2 text-muted">{r.categoria}</td>
+                      <td className="px-3 py-2 text-muted">{r.departamento}</td>
+                      <td className="px-3 py-2 text-muted">{r.localizacao || '—'}</td>
+                      <td className="px-3 py-2 text-muted">{r.situacao}</td>
+                      <td className="px-3 py-2 text-muted whitespace-nowrap">{fmtV(r.valor_aquisicao)}</td>
+                    </>}
+                    {tipo === 'baixas' && <>
+                      <td className="px-3 py-2 font-medium text-dim">{r.plaqueta}</td>
+                      <td className="px-3 py-2 text-muted max-w-[180px] truncate">{r.descricao}</td>
+                      <td className="px-3 py-2 text-muted">{r.categoria}</td>
+                      <td className="px-3 py-2 text-muted">{r.departamento}</td>
+                      <td className="px-3 py-2 text-muted whitespace-nowrap">{fmtDt(r.data_baixa)}</td>
+                      <td className="px-3 py-2 text-muted">{r.motivo_baixa}</td>
+                      <td className="px-3 py-2 text-muted whitespace-nowrap">{fmtV(r.valor_aquisicao)}</td>
+                    </>}
+                    {tipo === 'transferencias' && <>
+                      <td className="px-3 py-2 font-medium text-dim">{r.plaqueta}</td>
+                      <td className="px-3 py-2 text-muted max-w-[160px] truncate">{r.descricao}</td>
+                      <td className="px-3 py-2 text-muted">{r.de_departamento || '—'}</td>
+                      <td className="px-3 py-2 text-muted">{r.para_departamento || '—'}</td>
+                      <td className="px-3 py-2 text-muted">{r.de_localizacao || '—'}</td>
+                      <td className="px-3 py-2 text-muted">{r.para_localizacao || '—'}</td>
+                      <td className="px-3 py-2 text-muted">{r.motivo || '—'}</td>
+                      <td className="px-3 py-2 text-muted">{r.transferido_por || '—'}</td>
+                      <td className="px-3 py-2 text-muted whitespace-nowrap">{fmtDt(r.criado_em?.slice(0,10))}</td>
+                    </>}
+                    {tipo === 'inventarios' && <>
+                      <td className="px-3 py-2 font-medium text-dim whitespace-nowrap">{fmtDt(r.data)}</td>
+                      <td className="px-3 py-2 text-muted">{r.local_area || '—'}</td>
+                      <td className="px-3 py-2 text-muted">{r.responsavel || '—'}</td>
+                      <td className="px-3 py-2 text-muted">{r.status}</td>
+                      <td className="px-3 py-2 text-muted text-center">{r.total_esperados}</td>
+                      <td className="px-3 py-2 text-muted text-center">{r.total_contados}</td>
+                      <td className="px-3 py-2 text-teal-400 text-center">{r.localizados}</td>
+                      <td className="px-3 py-2 text-amber-400 text-center">{r.divergentes}</td>
+                      <td className="px-3 py-2 text-violet-400 text-center">{r.nao_cadastrados}</td>
+                      <td className="px-3 py-2 text-rose-400 text-center">{r.fantasmas}</td>
+                      <td className="px-3 py-2 text-teal-400 font-medium whitespace-nowrap">{r.indice_localizacao?.toFixed(1)}%</td>
+                    </>}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ════════════════════════════════════════════════════════════════════════════════
 // COMPONENTE PRINCIPAL
 // ════════════════════════════════════════════════════════════════════════════════
 export default function Imobilizado() {
-  const [aba, setAba]               = useState('bens')
+  const [aba, setAba]               = useState('dashboard')
   const [categorias, setCategorias] = useState([])
   const [departamentos, setDepartamentos] = useState([])
   const [localizacoes, setLocalizacoes]   = useState([])
@@ -1794,10 +2223,13 @@ export default function Imobilizado() {
   }
 
   const tabs = [
+    { id: 'dashboard',   label: '🏠 Dashboard'   },
     { id: 'bens',        label: '📦 Bens'        },
     { id: 'lancamento',  label: '📝 Lançamento'  },
     { id: 'inventarios', label: '📋 Inventários' },
     { id: 'diferencas',  label: '📊 Diferenças'  },
+    { id: 'relatorios',  label: '📑 Relatórios'  },
+    { id: 'auditoria',   label: '🔍 Auditoria'   },
   ]
 
   return (
@@ -1828,6 +2260,7 @@ export default function Imobilizado() {
       </div>
 
       {/* Conteúdo */}
+      {aba === 'dashboard'   && <DashboardTab/>}
       {aba === 'bens' && (
         <BensTab categorias={categorias} departamentos={departamentos} localizacoes={localizacoes}/>
       )}
@@ -1841,6 +2274,8 @@ export default function Imobilizado() {
       )}
       {aba === 'inventarios' && <InventariosTab categorias={categorias} departamentos={departamentos}/>}
       {aba === 'diferencas'  && <DiferencasTab/>}
+      {aba === 'relatorios'  && <RelatoriosTab/>}
+      {aba === 'auditoria'   && <AuditoriaTab/>}
 
       {/* Modal de configuração */}
       {showConfig && (

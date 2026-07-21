@@ -119,6 +119,7 @@ class Inventario(EmpresaBaseModel):
     local_area  = models.CharField(max_length=120, blank=True)
     responsavel = models.CharField(max_length=120, blank=True)
     status      = models.CharField(max_length=15, choices=STATUS_CHOICES, default=ABERTO)
+    link_ativo  = models.BooleanField(default=True)
     observacoes = models.TextField(blank=True)
     criado_em   = models.DateTimeField(auto_now_add=True)
 
@@ -164,3 +165,61 @@ class ItemInventario(models.Model):
 
     def __str__(self):
         return f'{self.plaqueta_lida} – {self.get_situacao_display()}'
+
+
+class TransferenciaAtivo(models.Model):
+    bem               = models.ForeignKey(Bem, on_delete=models.CASCADE, related_name='transferencias')
+    de_departamento   = models.CharField(max_length=120, blank=True)
+    para_departamento = models.CharField(max_length=120, blank=True)
+    de_localizacao    = models.CharField(max_length=120, blank=True)
+    para_localizacao  = models.CharField(max_length=120, blank=True)
+    motivo            = models.CharField(max_length=200, blank=True)
+    transferido_por   = models.CharField(max_length=120, blank=True)
+    criado_em         = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering            = ['-criado_em']
+        verbose_name        = 'Transferência de Ativo'
+        verbose_name_plural = 'Transferências de Ativos'
+
+    def __str__(self):
+        return f'Transferência {self.bem.plaqueta} em {self.criado_em:%d/%m/%Y}'
+
+
+class LogAuditoria(EmpresaBaseModel):
+    CRIAR_BEM        = 'CRIAR_BEM'
+    EDITAR_BEM       = 'EDITAR_BEM'
+    BAIXAR_BEM       = 'BAIXAR_BEM'
+    TRANSFERIR_BEM   = 'TRANSFERIR_BEM'
+    EXCLUIR_BEM      = 'EXCLUIR_BEM'
+    CRIAR_INV        = 'CRIAR_INV'
+    FINALIZAR_INV    = 'FINALIZAR_INV'
+    CONCILIAR_INV    = 'CONCILIAR_INV'
+    BLOQUEAR_LINK    = 'BLOQUEAR_LINK'
+    LIBERAR_LINK     = 'LIBERAR_LINK'
+
+    ACAO_CHOICES = [
+        (CRIAR_BEM,      'Criar Bem'),
+        (EDITAR_BEM,     'Editar Bem'),
+        (BAIXAR_BEM,     'Baixar Bem'),
+        (TRANSFERIR_BEM, 'Transferir Bem'),
+        (EXCLUIR_BEM,    'Excluir Bem'),
+        (CRIAR_INV,      'Criar Inventário'),
+        (FINALIZAR_INV,  'Finalizar Inventário'),
+        (CONCILIAR_INV,  'Conciliar Inventário'),
+        (BLOQUEAR_LINK,  'Bloquear Link'),
+        (LIBERAR_LINK,   'Liberar Link'),
+    ]
+
+    acao      = models.CharField(max_length=20, choices=ACAO_CHOICES)
+    descricao = models.TextField()
+    usuario   = models.CharField(max_length=120, blank=True)
+    criado_em = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering            = ['-criado_em']
+        verbose_name        = 'Log de Auditoria'
+        verbose_name_plural = 'Logs de Auditoria'
+
+    def __str__(self):
+        return f'{self.get_acao_display()} – {self.usuario} – {self.criado_em:%d/%m/%Y %H:%M}'

@@ -39,7 +39,7 @@ class EmpresaMiddleware(MiddlewareMixin):
                     from apps.imobilizado.models import Inventario
                     inv = Inventario.objects.select_related('empresa').get(
                         token=inventario_token,
-                        status=Inventario.ABERTO,
+                        link_ativo=True,
                     )
                     request.empresa = inv.empresa
                 except Exception:
