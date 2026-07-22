@@ -56,11 +56,14 @@ def registrar_leitura(
 
 
 def reconciliar(inventario):
-    bens_esperados = list(
+    qs = (
         Bem.objects
         .filter(empresa=inventario.empresa, situacao__in=[Bem.EM_USO, Bem.MANUTENCAO])
         .select_related('categoria', 'departamento')
     )
+    if inventario.local_area:
+        qs = qs.filter(localizacao__icontains=inventario.local_area)
+    bens_esperados = list(qs)
 
     itens = list(
         ItemInventario.objects

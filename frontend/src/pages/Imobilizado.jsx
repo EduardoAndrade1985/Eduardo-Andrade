@@ -919,7 +919,7 @@ const SIT_INFO = {
   NAO_LOCALIZADO:   { label: 'Não Localizado',   emoji: '👻', cor: 'text-rose-400',   bg: 'bg-rose-500/10'   },
 }
 
-function TabelaRelatorio({ relatorio: r, invId, invStatus, onRefresh }) {
+function TabelaRelatorio({ relatorio: r, invId, invStatus, onRefresh, categorias = [], departamentos = [] }) {
   const [exportando, setExportando]   = useState(false)
   const [filtroSit, setFiltroSit]     = useState('TODOS')
   const [editandoId, setEditandoId]   = useState(null)   // _itemId do row em edição
@@ -942,17 +942,27 @@ function TabelaRelatorio({ relatorio: r, invId, invStatus, onRefresh }) {
   }
 
   const allRows = [
-    ...r.localizados.map(i     => ({ _sit: 'LOCALIZADO',      plq: i.plaqueta_lida, desc: i.bem?.descricao || '—', locSist: i.bem?.localizacao || '—', locEnc: i.localizacao_encontrada || '—', valor: i.bem?.valor_aquisicao, op: i.contado_por, _itemId: i.id, _bemId: i.bem?.id, _locEnc: i.localizacao_encontrada, _op: i.contado_por, _obs: i.observacao })),
-    ...r.divergentes.map(i     => ({ _sit: 'LOCAL_DIVERGENTE', plq: i.plaqueta_lida, desc: i.bem?.descricao || '—', locSist: i.bem?.localizacao || '—', locEnc: i.localizacao_encontrada || '—', valor: i.bem?.valor_aquisicao, op: i.contado_por, _itemId: i.id, _bemId: i.bem?.id, _locEnc: i.localizacao_encontrada, _op: i.contado_por, _obs: i.observacao })),
-    ...r.nao_cadastrados.map(i => ({ _sit: 'NAO_CADASTRADO',   plq: i.plaqueta_lida, desc: i.descricao_provisoria || '—', locSist: '—', locEnc: i.localizacao_encontrada || '—', valor: null, op: i.contado_por, _itemId: i.id, _bemId: null, _locEnc: i.localizacao_encontrada, _op: i.contado_por, _obs: i.observacao })),
-    ...r.fantasmas.map(b       => ({ _sit: 'NAO_LOCALIZADO',   plq: b.plaqueta,      desc: b.descricao,              locSist: b.localizacao || '—', locEnc: '—', valor: b.valor_aquisicao, op: '—', _itemId: null, _bemId: b.id, _locEnc: '', _op: '', _obs: '' })),
+    ...r.localizados.map(i     => ({ _sit: 'LOCALIZADO',      plq: i.plaqueta_lida, desc: i.bem?.descricao || '—', locSist: i.bem?.localizacao || '—', locEnc: i.localizacao_encontrada || '—', valor: i.bem?.valor_aquisicao, op: i.contado_por, _itemId: i.id, _bemId: i.bem?.id, _locEnc: i.localizacao_encontrada, _op: i.contado_por, _obs: i.observacao, _qtd: i.quantidade })),
+    ...r.divergentes.map(i     => ({ _sit: 'LOCAL_DIVERGENTE', plq: i.plaqueta_lida, desc: i.bem?.descricao || '—', locSist: i.bem?.localizacao || '—', locEnc: i.localizacao_encontrada || '—', valor: i.bem?.valor_aquisicao, op: i.contado_por, _itemId: i.id, _bemId: i.bem?.id, _locEnc: i.localizacao_encontrada, _op: i.contado_por, _obs: i.observacao, _qtd: i.quantidade })),
+    ...r.nao_cadastrados.map(i => ({ _sit: 'NAO_CADASTRADO',   plq: i.plaqueta_lida, desc: i.descricao_provisoria || '—', locSist: '—', locEnc: i.localizacao_encontrada || '—', valor: null, op: i.contado_por, _itemId: i.id, _bemId: null, _locEnc: i.localizacao_encontrada, _op: i.contado_por, _obs: i.observacao, _qtd: i.quantidade, _descProv: i.descricao_provisoria, _catProvId: i.categoria_provisoria_id, _depProvId: i.departamento_provisorio_id })),
+    ...r.fantasmas.map(b       => ({ _sit: 'NAO_LOCALIZADO',   plq: b.plaqueta,      desc: b.descricao,              locSist: b.localizacao || '—', locEnc: '—', valor: b.valor_aquisicao, op: '—', _itemId: null, _bemId: b.id, _locEnc: '', _op: '', _obs: '', _qtd: 1 })),
   ]
 
   const rows = filtroSit === 'TODOS' ? allRows : allRows.filter(r => r._sit === filtroSit)
 
   const abrirEdit = row => {
     setEditandoId(row._itemId)
-    setEditForm({ localizacao_encontrada: row._locEnc || '', contado_por: row._op || '', observacao: row._obs || '' })
+    setEditForm({
+      localizacao_encontrada: row._locEnc || '',
+      contado_por: row._op || '',
+      observacao: row._obs || '',
+      quantidade: row._qtd || 1,
+      ...(row._sit === 'NAO_CADASTRADO' ? {
+        descricao_provisoria:      row._descProv || '',
+        categoria_provisoria_id:   row._catProvId ? String(row._catProvId) : '',
+        departamento_provisorio_id: row._depProvId ? String(row._depProvId) : '',
+      } : {}),
+    })
   }
 
   const salvarEdit = async row => {
@@ -1071,6 +1081,37 @@ function TabelaRelatorio({ relatorio: r, invId, invStatus, onRefresh }) {
                       {isEditing && (
                         <tr key={`edit-${i}`} className="bg-primary/5 border-b border-border/40">
                           <td colSpan={podeEditar ? 8 : 7} className="px-4 py-3">
+                            {row._sit === 'NAO_CADASTRADO' && (
+                              <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-3">
+                                <div className="md:col-span-2">
+                                  <label className="text-[10px] font-bold text-muted uppercase tracking-wider block mb-1">Descrição</label>
+                                  <input className={inp} value={editForm.descricao_provisoria || ''}
+                                    onChange={e => setEditForm(f => ({ ...f, descricao_provisoria: e.target.value }))}
+                                    placeholder="Descrição do item"/>
+                                </div>
+                                <div>
+                                  <label className="text-[10px] font-bold text-muted uppercase tracking-wider block mb-1">Quantidade</label>
+                                  <input className={inp} type="number" min="1" value={editForm.quantidade || 1}
+                                    onChange={e => setEditForm(f => ({ ...f, quantidade: Math.max(1, parseInt(e.target.value) || 1) }))}/>
+                                </div>
+                                <div>
+                                  <label className="text-[10px] font-bold text-muted uppercase tracking-wider block mb-1">Categoria</label>
+                                  <select className={sel} value={editForm.categoria_provisoria_id || ''}
+                                    onChange={e => setEditForm(f => ({ ...f, categoria_provisoria_id: e.target.value }))}>
+                                    <option value="">— selecione —</option>
+                                    {categorias.map(c => <option key={c.id} value={c.id}>{c.nome}</option>)}
+                                  </select>
+                                </div>
+                                <div>
+                                  <label className="text-[10px] font-bold text-muted uppercase tracking-wider block mb-1">Departamento</label>
+                                  <select className={sel} value={editForm.departamento_provisorio_id || ''}
+                                    onChange={e => setEditForm(f => ({ ...f, departamento_provisorio_id: e.target.value }))}>
+                                    <option value="">— selecione —</option>
+                                    {departamentos.map(d => <option key={d.id} value={d.id}>{d.nome}</option>)}
+                                  </select>
+                                </div>
+                              </div>
+                            )}
                             <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                               <div>
                                 <label className="text-[10px] font-bold text-muted uppercase tracking-wider block mb-1">Local Encontrado</label>
@@ -1090,6 +1131,13 @@ function TabelaRelatorio({ relatorio: r, invId, invStatus, onRefresh }) {
                                   onChange={e => setEditForm(f => ({ ...f, observacao: e.target.value }))}
                                   placeholder="Observação opcional"/>
                               </div>
+                              {row._sit !== 'NAO_CADASTRADO' && (
+                                <div>
+                                  <label className="text-[10px] font-bold text-muted uppercase tracking-wider block mb-1">Quantidade</label>
+                                  <input className={inp} type="number" min="1" value={editForm.quantidade || 1}
+                                    onChange={e => setEditForm(f => ({ ...f, quantidade: Math.max(1, parseInt(e.target.value) || 1) }))}/>
+                                </div>
+                              )}
                             </div>
                             <div className="flex gap-2 mt-3">
                               <button onClick={() => salvarEdit(row)} disabled={salvandoEdit}
@@ -1118,7 +1166,7 @@ function TabelaRelatorio({ relatorio: r, invId, invStatus, onRefresh }) {
   )
 }
 
-function RelatorioPanel({ relatorio: r, invId, invStatus, onClose, onRefresh }) {
+function RelatorioPanel({ relatorio: r, invId, invStatus, onClose, onRefresh, categorias = [], departamentos = [] }) {
   const titulo = r.inventario
     ? `${fmtDt(r.inventario.data)}${r.inventario.local_area ? ' — ' + r.inventario.local_area : ''}`
     : 'Inventário'
@@ -1137,7 +1185,8 @@ function RelatorioPanel({ relatorio: r, invId, invStatus, onClose, onRefresh }) 
       </div>
       {/* Conteúdo scrollável */}
       <div className="flex-1 overflow-y-auto p-5 md:p-8">
-        <TabelaRelatorio relatorio={r} invId={invId} invStatus={invStatus} onRefresh={onRefresh}/>
+        <TabelaRelatorio relatorio={r} invId={invId} invStatus={invStatus} onRefresh={onRefresh}
+          categorias={categorias} departamentos={departamentos}/>
       </div>
     </div>
   )
@@ -1867,6 +1916,8 @@ function InventariosTab({ categorias, departamentos }) {
           invStatus={relatorioInv?.status}
           onClose={() => { setRelatorioModal(null); setInvRelId(null); setRelatorioInv(null) }}
           onRefresh={recarregarRelatorio}
+          categorias={categorias}
+          departamentos={departamentos}
         />
       )}
 

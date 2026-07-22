@@ -629,9 +629,10 @@ def api_inventario_leitura(request, pk):
         except Exception:
             return _err('JSON inválido')
 
+    import uuid as _uuid
     plaqueta = (data.get('plaqueta') or '').strip()
     if not plaqueta:
-        return _err('Plaqueta obrigatória')
+        plaqueta = f'SEM-{_uuid.uuid4().hex[:8].upper()}'
 
     cat_id = data.get('categoria_provisoria_id')
     dep_id = data.get('departamento_provisorio_id')
@@ -1078,11 +1079,17 @@ def api_inventario_item(request, pk, item_pk):
             data = json.loads(request.body)
         except Exception:
             return _err('JSON inválido')
-        campos = ['localizacao_encontrada', 'contado_por', 'observacao']
         update_fields = []
-        for c in campos:
+        for c in ['localizacao_encontrada', 'contado_por', 'observacao', 'descricao_provisoria']:
             if c in data:
                 setattr(item, c, str(data[c]).strip())
+                update_fields.append(c)
+        if 'quantidade' in data:
+            item.quantidade = max(1, int(data['quantidade'] or 1))
+            update_fields.append('quantidade')
+        for c in ['categoria_provisoria_id', 'departamento_provisorio_id']:
+            if c in data:
+                setattr(item, c, int(data[c]) if data[c] else None)
                 update_fields.append(c)
         if update_fields:
             item.save(update_fields=update_fields)

@@ -262,7 +262,7 @@ function CardConfirmacao({
                 color: cor.text, background: `${cor.bg}cc`,
                 border: `1px solid ${cor.border}`, padding: '3px 10px', borderRadius: 999,
               }}>
-                {encontrado ? bem.plaqueta : plaqueta}
+                {encontrado ? bem.plaqueta : (plaqueta || 'SEM PLAQUETA')}
               </span>
               <span style={{
                 fontSize: 11, fontWeight: 700, color: cor.text,
@@ -477,6 +477,14 @@ export default function ImobilizadoContagem() {
   useEffect(() => { carregarInventario() }, [carregarInventario])
   useEffect(() => { if (operador) localStorage.setItem('imob_operador', operador) }, [operador])
   useEffect(() => { if (step === 'scan') setTimeout(() => inputRef.current?.focus(), 150) }, [step])
+
+  // ── item sem plaqueta: vai direto para confirmação como NAO_CADASTRADO ───────
+  const registrarSemPlaqueta = useCallback(() => {
+    setPlaqueta('')
+    setLocalEncontrado('')
+    setBuscaResult({ encontrado: false, plaqueta: '' })
+    setStep('confirmar')
+  }, [])
 
   // ── busca sem registrar ──────────────────────────────────────────────────────
   const buscarPlaqueta = useCallback(async (plq) => {
@@ -697,6 +705,15 @@ export default function ImobilizadoContagem() {
                   Scanner de câmera não disponível — use o campo acima.
                 </p>
               )}
+              <button onClick={registrarSemPlaqueta}
+                style={{
+                  marginTop: 10, width: '100%', padding: '11px',
+                  background: 'transparent', border: '1px dashed #374151',
+                  borderRadius: 12, color: '#6b7280', fontWeight: 600, fontSize: 13,
+                  cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+                }}>
+                🏷️ Sem plaqueta — registrar sem número
+              </button>
             </>
           )}
         </div>
