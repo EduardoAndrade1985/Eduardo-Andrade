@@ -571,7 +571,7 @@ export default function GiroEstoque() {
         <BarChart data={ch2Data} layout="vertical" margin={{ top: 4, right: lbl ? 56 : 16, bottom: 0, left: 8 }}>
           <CartesianGrid strokeDasharray="3 3" stroke={C.grid} horizontal={false} />
           <XAxis type="number" tick={{ fill: C.tick, fontSize: 9, fontFamily: 'monospace' }} tickLine={false} axisLine={false} tickFormatter={v => fN(v, 1) + 'x'} />
-          <YAxis type="category" dataKey="cls" tick={{ fill: '#cdd5e2', fontSize: 11, fontFamily: 'Outfit' }} tickLine={false} axisLine={false} width={140} />
+          <YAxis type="category" dataKey="cls" tick={{ fill: C.tick, fontSize: 11, fontFamily: 'Outfit', fontWeight: 500 }} tickLine={false} axisLine={false} width={140} />
           <Tooltip content={<GiroTooltip />} cursor={{ fill: 'rgba(255,255,255,.04)' }} />
           <Bar dataKey="g" name="Giro" radius={[0, 4, 4, 0]} maxBarSize={16}>
             {ch2Data.map((_, i) => <Cell key={i} fill={PALETTE[i % PALETTE.length]} />)}
