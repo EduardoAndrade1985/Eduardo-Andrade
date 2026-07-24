@@ -825,7 +825,7 @@ export default function GiroEstoque() {
           </ChartCard>
           <ChartCard title="Giro por Classe" sub="Comparativo entre classes (período selecionado)"
             lblOn={lbls.ch2} onToggleLbl={() => togLbl('ch2')} onExpand={() => setExpand('ch2')}>
-            {renderCh2(240)}
+            {renderCh2(Math.max(240, ch2Data.length * 32))}
           </ChartCard>
         </div>
 
