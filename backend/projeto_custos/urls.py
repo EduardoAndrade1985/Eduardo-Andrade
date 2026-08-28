@@ -7,10 +7,12 @@ from django.views.static import serve
 from django.http import FileResponse
 from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
 from rest_framework_simplejwt.exceptions import TokenError, InvalidToken
+from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework.response import Response
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import AllowAny
 from apps.empresas.views import me_view, change_password_view
+from apps.empresas.models import MembroEmpresa
 
 
 def spa_fallback(request, *args, **kwargs):
@@ -27,21 +29,48 @@ def ping(request):
     return Response({'status': 'ok'})
 
 
+def _check_user_access(u):
+    """Retorna (ok, detail, code) — ok=True se o usuário pode autenticar."""
+    if not u.is_active:
+        return False, 'Conta inativa.', 'account_inactive'
+    if not u.is_staff and not MembroEmpresa.objects.filter(
+        usuario=u, ativo=True, empresa__ativo=True
+    ).exists():
+        return False, 'Usuário sem acesso ao sistema.', 'no_access'
+    return True, None, None
+
+
 class CustomTokenObtainPairView(TokenObtainPairView):
-    """Retorna código específico quando o usuário existe mas está inativo."""
+    """Bloqueia login de usuários inativos ou sem vínculo ativo em nenhuma empresa."""
     def post(self, request, *args, **kwargs):
         username = request.data.get('username', '').strip().lower()
         User = get_user_model()
         try:
             u = User.objects.get(username=username)
-            if not u.is_active:
-                return Response(
-                    {'detail': 'Conta inativa.', 'code': 'account_inactive'},
-                    status=401,
-                )
+            ok, detail, code = _check_user_access(u)
+            if not ok:
+                return Response({'detail': detail, 'code': code}, status=401)
         except User.DoesNotExist:
             pass
         return super().post(request, *args, **kwargs)
+
+
+class CustomTokenRefreshView(TokenRefreshView):
+    """Bloqueia renovação de token se o usuário foi removido ou inativado."""
+    def post(self, request, *args, **kwargs):
+        response = super().post(request, *args, **kwargs)
+        if response.status_code == 200:
+            try:
+                refresh = RefreshToken(request.data.get('refresh', ''))
+                user_id = refresh.payload.get('user_id')
+                User = get_user_model()
+                u = User.objects.get(pk=user_id)
+                ok, detail, code = _check_user_access(u)
+                if not ok:
+                    return Response({'detail': detail, 'code': code}, status=401)
+            except Exception:
+                return Response({'detail': 'Token inválido.', 'code': 'token_invalid'}, status=401)
+        return response
 
 
 urlpatterns = [
@@ -52,7 +81,7 @@ urlpatterns = [
 
     # JWT Auth
     path('auth/token/',         CustomTokenObtainPairView.as_view(), name='token_obtain'),
-    path('auth/token/refresh/', TokenRefreshView.as_view(),    name='token_refresh'),
+    path('auth/token/refresh/', CustomTokenRefreshView.as_view(), name='token_refresh'),
     path('auth/me/',              me_view,                       name='me'),
     path('auth/change-password/', change_password_view,          name='change_password'),
 
