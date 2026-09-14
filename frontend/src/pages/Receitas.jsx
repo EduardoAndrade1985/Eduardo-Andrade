@@ -45,6 +45,18 @@ function thinnedLabel({color, fontSize=9, dy=-6, step=1, offset=0}) {
   }
 }
 
+// desenha rótulo num índice específico — mesmo padrão do thinnedLabel (textAnchor="middle", funciona no html2canvas)
+function pointLbl({color, dy=-10, at=0, prefix='', fontSize=9}) {
+  return ({x, y, value, index}) => {
+    if (value == null || index !== at) return null
+    return (
+      <text x={x} y={y+dy} textAnchor="middle" fontSize={fontSize} fontWeight={700} fill={color}>
+        {prefix}{compact(value)}
+      </text>
+    )
+  }
+}
+
 function diasNoMes(mes) {
   const [y,m] = mes.split('-').map(Number)
   return new Date(y, m, 0).getDate()
@@ -281,12 +293,9 @@ function ComparativoChart({data, C, meta, labels, expanded}) {
     return out
   })
 
-  // Rótulo no fim da linha — textAnchor="end" mantém o texto dentro da área (evita clipPath do html2canvas)
-  const endLbl = (color, dy, prefix='') => ({x, y, value, index}) =>
-    index !== endIdx || value == null ? null :
-    <text x={x-3} y={y+dy} textAnchor="end" fontSize={9} fontWeight={700} fill={color}>
-      {prefix}{compact(value)}
-    </text>
+  // Índices para os rótulos pontuais — mesmo padrão do thinnedLabel (textAnchor="middle"), funciona no html2canvas
+  const orcAt  = Math.min(4, endIdx)                                           // orçado: dia 5
+  const fcstAt = lastRealIdx >= 0 ? Math.min(lastRealIdx + 5, endIdx - 1) : Math.floor(endIdx * 0.7) // forecast: ~5 dias após o último real
 
   return (
     <ResponsiveContainer width="100%" height={expanded?'100%':380} minHeight={expanded?400:undefined}>
@@ -295,18 +304,18 @@ function ComparativoChart({data, C, meta, labels, expanded}) {
         <XAxis dataKey="dia" tick={{fill:C.muted, fontSize:11}} axisLine={{stroke:C.grid}} tickLine={false}/>
         <YAxis tickFormatter={compact} tick={{fill:C.muted, fontSize:11}} axisLine={false} tickLine={false} width={60}/>
         <Tooltip content={<ComparativoTip/>}/>
-        {/* Orçado por segmento — linha tracejada; rótulo com nome do segmento acima da linha */}
+        {/* Orçado por segmento — rótulo "Hosp X" no dia 5 via pointLbl (mesmo padrão que funciona no PDF) */}
         {SEG_CFG.map(({key, color, short}) => (
           <Line key={`orc_${key}`} dataKey={`orc_${key}`} stroke={color} strokeWidth={2}
             dot={false} strokeDasharray="10 4" strokeOpacity={0.9} connectNulls>
-            {labels && <LabelList dataKey={`orc_${key}`} isAnimationActive={false} content={endLbl(color, -8, `${short} `)}/>}
+            {labels && <LabelList dataKey={`orc_${key}`} isAnimationActive={false} content={pointLbl({color, dy:-10, at:orcAt, prefix:`${short} `})}/>}
           </Line>
         ))}
-        {/* Forecast por segmento — linha pontilhada fina; rótulo abaixo da linha */}
+        {/* Forecast por segmento — rótulo abaixo ~5 dias após o último real */}
         {SEG_CFG.map(({key, color, short}) => (
           <Line key={`proj_${key}`} dataKey={`proj_${key}`} stroke={color} strokeWidth={1.5}
             dot={false} strokeDasharray="3 3" strokeOpacity={0.65} connectNulls={false}>
-            {labels && <LabelList dataKey={`proj_${key}`} isAnimationActive={false} content={endLbl(color, +10, `${short} `)}/>}
+            {labels && <LabelList dataKey={`proj_${key}`} isAnimationActive={false} content={pointLbl({color, dy:14, at:fcstAt, prefix:`${short} `})}/>}
           </Line>
         ))}
         {/* Realizado por segmento — offset escalonado para não empilhar no mesmo dia */}
