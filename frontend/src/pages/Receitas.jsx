@@ -524,14 +524,19 @@ export default function Receitas() {
 
   function metaOf(mes) {
     const ov = metas.months?.[mes] || {}
-    const orcado   = ov.orcado   != null ? +ov.orcado   : (+metas.padrao?.orcado   || 0)
-    const forecast = ov.forecast != null ? +ov.forecast : (+metas.padrao?.forecast || 0)
     const seg = {}
     for (const s of ['hosp','ab','outros']) {
       seg[`orcado_${s}`]   = ov[`orcado_${s}`]   != null ? +ov[`orcado_${s}`]   : (+metas.padrao?.[`orcado_${s}`]   || 0)
       seg[`forecast_${s}`] = ov[`forecast_${s}`] != null ? +ov[`forecast_${s}`] : (+metas.padrao?.[`forecast_${s}`] || 0)
     }
-    return {orcado, forecast, ...seg, orcOverride: ov.orcado!=null, fcOverride: ov.forecast!=null}
+    // total = soma dos segmentos; fallback para campo total legado se segmentos todos zero
+    const segOrc  = seg.orcado_hosp   + seg.orcado_ab   + seg.orcado_outros
+    const segFcst = seg.forecast_hosp + seg.forecast_ab + seg.forecast_outros
+    const orcado   = segOrc  > 0 ? segOrc  : (ov.orcado   != null ? +ov.orcado   : (+metas.padrao?.orcado   || 0))
+    const forecast = segFcst > 0 ? segFcst : (ov.forecast != null ? +ov.forecast : (+metas.padrao?.forecast || 0))
+    const orcOverride = segOrc > 0 ? Object.keys(ov).some(k=>k.startsWith('orcado_')) : ov.orcado != null
+    const fcOverride  = segFcst > 0 ? Object.keys(ov).some(k=>k.startsWith('forecast_')) : ov.forecast != null
+    return {orcado, forecast, ...seg, orcOverride, fcOverride}
   }
 
   const ajustesMes = useMemo(()=>ajustes.filter(a=>a.mes===mesAtual),[ajustes, mesAtual])
