@@ -993,10 +993,10 @@ export default function Receitas() {
                         </tr>
                         <tr className="text-[9px] text-muted">
                           {[{lbl:'Hosp.',color:COR.real},{lbl:'A&B',color:COR.fcst},{lbl:'Outros',color:COR.orc}].map(({lbl,color})=>(
-                            <th key={`o${lbl}`} className="text-center py-1 px-1 bg-bg3 border-b border-border font-semibold" style={{color}}>{lbl}</th>
+                            <th key={`o${lbl}`} className="text-center py-1 px-1 bg-bg3 border-b border-border font-semibold" style={{color, position:'sticky', top:28}}>{lbl}</th>
                           ))}
                           {[{lbl:'Hosp.',color:COR.real},{lbl:'A&B',color:COR.fcst},{lbl:'Outros',color:COR.orc}].map(({lbl,color})=>(
-                            <th key={`f${lbl}`} className="text-center py-1 px-1 bg-bg3 border-b border-border font-semibold" style={{color}}>{lbl}</th>
+                            <th key={`f${lbl}`} className="text-center py-1 px-1 bg-bg3 border-b border-border font-semibold" style={{color, position:'sticky', top:28}}>{lbl}</th>
                           ))}
                         </tr>
                       </thead>
