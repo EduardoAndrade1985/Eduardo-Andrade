@@ -772,77 +772,55 @@ export default function Receitas() {
         })
       }
 
-      const cap = async (el) => {
-        el.scrollIntoView({ block: 'nearest', behavior: 'instant' })
-        await new Promise(r => setTimeout(r, 60))
-        return html2canvas(el, {
-          ...baseOpts,
-          scrollX: -window.scrollX,
-          scrollY: -window.scrollY,
-          height:  el.scrollHeight,
-          width:   el.scrollWidth,
-          onclone: fixSvgText,
-        })
-      }
+      // Tela estática — sem scrollIntoView; scrollX/Y compensa scroll atual da página
+      const cap = (el) => html2canvas(el, {
+        ...baseOpts,
+        scrollX: -window.scrollX,
+        scrollY: -window.scrollY,
+        height:  el.scrollHeight,
+        width:   el.scrollWidth,
+        onclone: fixSvgText,
+      })
 
       // Captura sequencial evita interferência entre clones DOM do html2canvas
       const canvas1       = await cap(refPag1.current)
-      const canvasCharts  = await cap(refCharts2.current)
       const canvasDiario  = await cap(refDiario.current)
+      const canvasCharts  = await cap(refCharts2.current)
       const canvasTabelas = await cap(refTabelas.current)
 
-      const pdf     = new jsPDF({ orientation: 'portrait', unit: 'pt', format: 'a4' })
-      const pageW   = pdf.internal.pageSize.getWidth()
-      const pageH   = pdf.internal.pageSize.getHeight()
-      const margin  = 22
-      const HDR_H   = 48
-      const availW  = pageW - 2 * margin
-      const availH  = pageH - HDR_H - margin - 8
+      const pdf    = new jsPDF({ orientation: 'portrait', unit: 'pt', format: 'a4' })
+      const pageW  = pdf.internal.pageSize.getWidth()
+      const pageH  = pdf.internal.pageSize.getHeight()
+      const margin = 22
+      const HDR_H  = 48
+      const availW = pageW - 2 * margin
+      const availH = pageH - HDR_H - margin - 8
       const empresa = empresaAtiva?.nome || 'RPHub'
       const periodo = mesLblLongo(mesAtual)
       const hoje    = new Date().toLocaleDateString('pt-BR')
 
-      const drawHeader = (pg) => {
-        // Fundo branco
-        pdf.setFillColor(255, 255, 255)
-        pdf.rect(0, 0, pageW, HDR_H, 'F')
-        // Linha verde no rodapé do header
-        pdf.setFillColor(45, 212, 160)
-        pdf.rect(0, HDR_H - 2, pageW, 2, 'F')
-        // Título
-        pdf.setFontSize(14)
-        pdf.setTextColor(45, 212, 160)
-        pdf.text('Relatório de Receitas - Gerencial', margin, 20)
-        // Subtítulo
-        pdf.setFontSize(9)
-        pdf.setTextColor(71, 85, 105)
-        pdf.text(`${empresa} · ${periodo} · Gerado em ${hoje}`, margin, 35)
-        // Paginação
-        pdf.setFontSize(8)
-        pdf.text(`Página ${pg} de 2`, pageW - margin, 35, { align: 'right' })
+      // Header — página única, sem paginação
+      pdf.setFillColor(255, 255, 255)
+      pdf.rect(0, 0, pageW, HDR_H, 'F')
+      pdf.setFillColor(45, 212, 160)
+      pdf.rect(0, HDR_H - 2, pageW, 2, 'F')
+      pdf.setFontSize(14); pdf.setTextColor(45, 212, 160)
+      pdf.text('Relatório de Receitas - Gerencial', margin, 20)
+      pdf.setFontSize(9); pdf.setTextColor(71, 85, 105)
+      pdf.text(`${empresa} · ${periodo} · Gerado em ${hoje}`, margin, 35)
+
+      // Página única: empilha todas as seções e calcula escala para caber em availH
+      const gap = 6
+      const sections = [canvas1, canvasDiario, canvasCharts, canvasTabelas]
+      const totalH   = sections.reduce((s, c) => s + c.height, 0) + gap * (sections.length - 1)
+      const scale    = Math.min(availW / canvas1.width, availH / totalH)
+      const w        = canvas1.width * scale
+      let   curY     = HDR_H + 4
+      for (const c of sections) {
+        const h = c.height * scale
+        pdf.addImage(c.toDataURL('image/jpeg', 0.92), 'JPEG', margin, curY, w, h)
+        curY += h + gap
       }
-
-      const gap = 8
-
-      // Página 1: resumo/KPIs/bullet + diário + comparativo/weekday
-      drawHeader(1)
-      const totalH1 = canvas1.height + canvasDiario.height + canvasCharts.height
-      const scale1  = Math.min(availW / canvas1.width, (availH - 2 * gap) / totalH1)
-      const w1   = canvas1.width       * scale1
-      const hh1  = canvas1.height      * scale1
-      const hhD  = canvasDiario.height * scale1
-      const hhC  = canvasCharts.height * scale1
-      pdf.addImage(canvas1.toDataURL('image/jpeg', 0.92),      'JPEG', margin, HDR_H + 4,                   w1, hh1)
-      pdf.addImage(canvasDiario.toDataURL('image/jpeg', 0.92), 'JPEG', margin, HDR_H + 4 + hh1 + gap,       w1, hhD)
-      pdf.addImage(canvasCharts.toDataURL('image/jpeg', 0.92), 'JPEG', margin, HDR_H + 4 + hh1 + hhD + 2*gap, w1, hhC)
-
-      // Página 2: composição de receita + detalhe diário
-      pdf.addPage()
-      drawHeader(2)
-      const scale2 = Math.min(availW / canvasTabelas.width, availH / canvasTabelas.height)
-      const w2  = canvasTabelas.width  * scale2
-      const hhT = canvasTabelas.height * scale2
-      pdf.addImage(canvasTabelas.toDataURL('image/jpeg', 0.92), 'JPEG', margin, HDR_H + 4, w2, hhT)
 
       pdf.save(`receitas_${mesAtual}_${empresa.replace(/\s+/g,'_').toLowerCase()}.pdf`)
     } catch (err) {
@@ -1137,7 +1115,7 @@ export default function Receitas() {
               <WeekdayChart data={weekdayData} C={C} labels={lbls.weekday}/>
             </Card>
             <Card title="Detalhe diário" onExpand={()=>setExpandInfo({title:'Detalhe diário', key:'detalhe'})}>
-              <DetalheTable rows={detalheRows} diasDecorridos={dadosMes?.diasDecorridos} orcado={meta.orcado} noScroll={exportando}/>
+              <DetalheTable rows={detalheRows} diasDecorridos={dadosMes?.diasDecorridos} orcado={meta.orcado}/>
             </Card>
           </div>
 
