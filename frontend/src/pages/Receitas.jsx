@@ -107,9 +107,9 @@ function DiarioTip({active, payload, label}) {
 }
 
 const SEG_CFG = [
-  {key:'hosp',   label:'Hospedagem', color:COR.real},
-  {key:'ab',     label:'A&B',        color:COR.fcst},
-  {key:'outros', label:'Outros',     color:COR.orc},
+  {key:'hosp',   label:'Hospedagem', short:'Hosp', color:COR.real},
+  {key:'ab',     label:'A&B',        short:'A&B',  color:COR.fcst},
+  {key:'outros', label:'Outros',     short:'Out',  color:COR.orc},
 ]
 
 function ComparativoTip({active, payload, label}) {
@@ -281,37 +281,40 @@ function ComparativoChart({data, C, meta, labels, expanded}) {
     return out
   })
 
-  const endLbl = (color, dy) => ({x, y, value, index}) =>
+  // Rótulo no fim da linha com nome do segmento — textAnchor="start" entra na margem direita
+  const endLbl = (color, dy, prefix='') => ({x, y, value, index}) =>
     index !== endIdx || value == null ? null :
-    <text x={x} y={y+dy} textAnchor="end" fontSize={9} fontWeight={700} fill={color}>{compact(value)}</text>
+    <text x={x+4} y={y+dy} textAnchor="start" fontSize={9} fontWeight={700} fill={color}>
+      {prefix}{compact(value)}
+    </text>
 
   return (
     <ResponsiveContainer width="100%" height={expanded?'100%':380} minHeight={expanded?400:undefined}>
-      <LineChart data={enriched} margin={{top:28,right:16,left:0,bottom:0}}>
+      <LineChart data={enriched} margin={{top:28,right:76,left:0,bottom:0}}>
         <CartesianGrid strokeDasharray="3 3" stroke={C.grid} vertical={false}/>
         <XAxis dataKey="dia" tick={{fill:C.muted, fontSize:11}} axisLine={{stroke:C.grid}} tickLine={false}/>
         <YAxis tickFormatter={compact} tick={{fill:C.muted, fontSize:11}} axisLine={false} tickLine={false} width={60}/>
         <Tooltip content={<ComparativoTip/>}/>
-        {/* Orçado por segmento — linha tracejada com maior destaque */}
-        {SEG_CFG.map(({key, color}) => (
+        {/* Orçado por segmento — linha tracejada; rótulo com nome do segmento acima da linha */}
+        {SEG_CFG.map(({key, color, short}) => (
           <Line key={`orc_${key}`} dataKey={`orc_${key}`} stroke={color} strokeWidth={2}
             dot={false} strokeDasharray="10 4" strokeOpacity={0.9} connectNulls>
-            {labels && <LabelList dataKey={`orc_${key}`} isAnimationActive={false} content={endLbl(color, -8)}/>}
+            {labels && <LabelList dataKey={`orc_${key}`} isAnimationActive={false} content={endLbl(color, -8, `${short} `)}/>}
           </Line>
         ))}
-        {/* Forecast por segmento — linha pontilhada fina */}
-        {SEG_CFG.map(({key, color}) => (
+        {/* Forecast por segmento — linha pontilhada fina; rótulo abaixo da linha */}
+        {SEG_CFG.map(({key, color, short}) => (
           <Line key={`proj_${key}`} dataKey={`proj_${key}`} stroke={color} strokeWidth={1.5}
             dot={false} strokeDasharray="3 3" strokeOpacity={0.65} connectNulls={false}>
-            {labels && <LabelList dataKey={`proj_${key}`} isAnimationActive={false} content={endLbl(color, 14)}/>}
+            {labels && <LabelList dataKey={`proj_${key}`} isAnimationActive={false} content={endLbl(color, +10, `${short} `)}/>}
           </Line>
         ))}
-        {/* Realizado por segmento — linha sólida */}
-        {SEG_CFG.map(({key, color}) => (
+        {/* Realizado por segmento — offset escalonado para não empilhar no mesmo dia */}
+        {SEG_CFG.map(({key, color}, si) => (
           <Line key={`${key}_acum`} dataKey={`${key}_acum`} stroke={color} strokeWidth={2.4}
             dot={false} connectNulls={false}>
             {labels && <LabelList dataKey={`${key}_acum`} isAnimationActive={false}
-              content={thinnedLabel({color, dy:-10, step:step, offset:0})}/>}
+              content={thinnedLabel({color, dy:-10, step:step, offset:si})}/>}
           </Line>
         ))}
       </LineChart>
