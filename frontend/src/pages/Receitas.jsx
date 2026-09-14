@@ -744,13 +744,37 @@ export default function Receitas() {
     // Ativa todos os rótulos para o PDF e restaura depois
     const lblsOrig = lbls
     setLbls({ diario: true, comparativo: true, weekday: true })
-    // LabelList com isAnimationActive={false} aparece imediatamente; 350ms garante re-render completo
-    await new Promise(r => setTimeout(r, 350))
+    // 9 LabelLists precisam de tempo para re-renderizar
+    await new Promise(r => setTimeout(r, 600))
 
     try {
       const bgColor = tema === 'light' ? '#f1f5f9' : '#0d1117'
-      const baseOpts = { scale: 2, useCORS: true, allowTaint: true, logging: false, backgroundColor: bgColor, scrollX: 0, scrollY: 0 }
-      const cap = (el) => html2canvas(el, { ...baseOpts, height: el.scrollHeight, width: el.scrollWidth })
+      const baseOpts = { scale: 2, useCORS: true, allowTaint: true, logging: false, backgroundColor: bgColor }
+
+      // onclone converte atributos SVG para CSS inline — html2canvas ignora atributos fontSize/fill no clone
+      const fixSvgText = (doc) => {
+        doc.querySelectorAll('text').forEach(t => {
+          const fs   = t.getAttribute('fontSize')   || t.getAttribute('font-size')
+          const fw   = t.getAttribute('fontWeight') || t.getAttribute('font-weight')
+          const fill = t.getAttribute('fill')
+          if (fs)   t.style.fontSize   = `${fs}px`
+          if (fw)   t.style.fontWeight = fw
+          if (fill) t.style.fill       = fill
+        })
+      }
+
+      const cap = async (el) => {
+        el.scrollIntoView({ block: 'nearest', behavior: 'instant' })
+        await new Promise(r => setTimeout(r, 60))
+        return html2canvas(el, {
+          ...baseOpts,
+          scrollX: -window.scrollX,
+          scrollY: -window.scrollY,
+          height:  el.scrollHeight,
+          width:   el.scrollWidth,
+          onclone: fixSvgText,
+        })
+      }
 
       // Captura sequencial evita interferência entre clones DOM do html2canvas
       const canvas1       = await cap(refPag1.current)
