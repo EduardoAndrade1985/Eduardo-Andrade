@@ -961,26 +961,6 @@ export default function Receitas() {
                     <p className="text-xs font-bold text-dim">Metas mensais · {anoMetas}</p>
                     <span className="text-[10px] text-muted">orçado e forecast por mês · vazio usa o padrão</span>
                   </div>
-                  <div className="grid grid-cols-3 gap-2 mb-3">
-                    {[
-                      {f:'orcado_hosp',   lbl:'Orçado Hosp.',   color:COR.real},
-                      {f:'orcado_ab',     lbl:'Orçado A&B',     color:COR.fcst},
-                      {f:'orcado_outros', lbl:'Orçado Outros',  color:COR.orc},
-                      {f:'forecast_hosp',   lbl:'Forecast Hosp.',   color:COR.real},
-                      {f:'forecast_ab',     lbl:'Forecast A&B',     color:COR.fcst},
-                      {f:'forecast_outros', lbl:'Forecast Outros',  color:COR.orc},
-                    ].map(({f, lbl, color})=>(
-                      <div key={f} className="bg-bg2 border border-border rounded-lg px-2.5 py-2">
-                        <label className="block text-[9px] font-bold uppercase tracking-wide mb-1" style={{color}}>{lbl}</label>
-                        <div className="flex items-baseline gap-1">
-                          <span className="text-muted text-[10px] font-mono">R$</span>
-                          <input value={padraoForm[f]} onChange={e=>onPadraoChange(f, e.target.value)}
-                            inputMode="numeric" placeholder="0"
-                            className="bg-transparent outline-none text-dim font-mono font-semibold text-sm w-full"/>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
                   <div className="max-h-[280px] overflow-auto">
                     <table className="border-collapse" style={{minWidth:660}}>
                       <thead>
