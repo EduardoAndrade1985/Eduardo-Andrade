@@ -286,7 +286,7 @@ function ComparativoChart({data, C, meta, labels, expanded}) {
     <text x={x} y={y+dy} textAnchor="end" fontSize={9} fontWeight={700} fill={color}>{compact(value)}</text>
 
   return (
-    <ResponsiveContainer width="100%" height={expanded?'100%':300} minHeight={expanded?320:undefined}>
+    <ResponsiveContainer width="100%" height={expanded?'100%':380} minHeight={expanded?400:undefined}>
       <LineChart data={enriched} margin={{top:28,right:16,left:0,bottom:0}}>
         <CartesianGrid strokeDasharray="3 3" stroke={C.grid} vertical={false}/>
         <XAxis dataKey="dia" tick={{fill:C.muted, fontSize:11}} axisLine={{stroke:C.grid}} tickLine={false}/>
@@ -1076,25 +1076,28 @@ export default function Receitas() {
           </div>{/* /refDiario */}
 
           {/* ── comparativo + dia da semana ── */}
-          <div ref={refCharts2} className="space-y-4">
-            <Card title="Comparativo do mês · orçado × realizado × forecast" legend={<>
-              {SEG_CFG.map(({label,color})=><Lg key={label} color={color} label={label}/>)}
-              <span className="text-muted text-[10px]">· · · orç &nbsp; - - fcst</span>
-            </>} lblOn={lbls.comparativo} onLbl={()=>togLbl('comparativo')}
-               onExpand={()=>setExpandInfo({title:'Comparativo do mês', key:'comparativo'})}>
-              <ComparativoChart data={diasData} C={C} meta={meta} labels={lbls.comparativo}/>
-            </Card>
-            <Card title="Receita média por dia da semana" lblOn={lbls.weekday} onLbl={()=>togLbl('weekday')}
-               onExpand={()=>setExpandInfo({title:'Receita média por dia da semana', key:'weekday'})}>
-              <WeekdayChart data={weekdayData} C={C} labels={lbls.weekday}/>
+          {/* ── Comparativo (2/3) + Composição (1/3) ── */}
+          <div ref={refCharts2} className="grid grid-cols-1 xl:grid-cols-3 gap-4">
+            <div className="xl:col-span-2">
+              <Card title="Comparativo do mês · orçado × realizado × forecast" legend={<>
+                {SEG_CFG.map(({label,color})=><Lg key={label} color={color} label={label}/>)}
+                <span className="text-muted text-[10px]">· · · orç &nbsp; - - fcst</span>
+              </>} lblOn={lbls.comparativo} onLbl={()=>togLbl('comparativo')}
+                 onExpand={()=>setExpandInfo({title:'Comparativo do mês', key:'comparativo'})}>
+                <ComparativoChart data={diasData} C={C} meta={meta} labels={lbls.comparativo}/>
+              </Card>
+            </div>
+            <Card title="Composição da receita" onExpand={()=>setExpandInfo({title:'Composição da receita', key:'mix'})}>
+              <MixRows rows={mixRows} total={mixTotal}/>
             </Card>
           </div>
 
-          {/* ── composição + detalhe diário ── */}
+          {/* ── Weekday + Detalhe diário ── */}
           <div ref={refTabelas} className="space-y-4">
           <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
-            <Card title="Composição da receita" onExpand={()=>setExpandInfo({title:'Composição da receita', key:'mix'})}>
-              <MixRows rows={mixRows} total={mixTotal}/>
+            <Card title="Receita média por dia da semana" lblOn={lbls.weekday} onLbl={()=>togLbl('weekday')}
+               onExpand={()=>setExpandInfo({title:'Receita média por dia da semana', key:'weekday'})}>
+              <WeekdayChart data={weekdayData} C={C} labels={lbls.weekday}/>
             </Card>
             <Card title="Detalhe diário" onExpand={()=>setExpandInfo({title:'Detalhe diário', key:'detalhe'})}>
               <DetalheTable rows={detalheRows} diasDecorridos={dadosMes?.diasDecorridos} orcado={meta.orcado} noScroll={exportando}/>
