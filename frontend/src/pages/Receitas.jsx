@@ -429,10 +429,11 @@ export default function Receitas() {
 
   const fileRef    = useRef(null)
   const timersRef  = useRef({})
-  const contentRef = useRef(null)
-  const refPag1    = useRef(null)
-  const refDiario  = useRef(null)
-  const refPag2    = useRef(null)
+  const contentRef  = useRef(null)
+  const refPag1     = useRef(null)
+  const refDiario   = useRef(null)
+  const refCharts2  = useRef(null)
+  const refTabelas  = useRef(null)
 
   const C = useMemo(()=>({
     grid:  tema==='light'?'#e2e8f0':'#252b3b',
@@ -723,7 +724,7 @@ export default function Receitas() {
 
   // ── export PDF ───────────────────────────────────────────────
   async function gerarPDF() {
-    if (!refPag1.current || !refPag2.current) return
+    if (!refPag1.current || !refCharts2.current || !refDiario.current || !refTabelas.current) return
     setExportando(true)
     setPdfModal(false)
 
@@ -743,9 +744,10 @@ export default function Receitas() {
       const opts = { scale: 2, useCORS: true, allowTaint: true, logging: false, backgroundColor: bgColor }
 
       // Captura sequencial evita interferência entre clones DOM do html2canvas
-      const canvas1      = await html2canvas(refPag1.current,   opts)
-      const canvasDiario = await html2canvas(refDiario.current, opts)
-      const canvas2      = await html2canvas(refPag2.current,   opts)
+      const canvas1       = await html2canvas(refPag1.current,    opts)
+      const canvasCharts  = await html2canvas(refCharts2.current,  opts)
+      const canvasDiario  = await html2canvas(refDiario.current,   opts)
+      const canvasTabelas = await html2canvas(refTabelas.current,  opts)
 
       const pdf     = new jsPDF({ orientation: 'portrait', unit: 'pt', format: 'a4' })
       const pageW   = pdf.internal.pageSize.getWidth()
@@ -778,26 +780,32 @@ export default function Receitas() {
         pdf.text(`Página ${pg} de 2`, pageW - margin, 35, { align: 'right' })
       }
 
-      // Página 1: resumo/KPIs/bullet (canvas1) + diário (canvasDiario) empilhados
+      const gap = 8
+
+      // Página 1: resumo/KPIs/bullet + comparativo/weekday
       drawHeader(1)
-      const gap    = 8
       const scale1 = Math.min(
         availW / canvas1.width,
-        (availH - gap) / (canvas1.height + canvasDiario.height)
+        (availH - gap) / (canvas1.height + canvasCharts.height)
       )
-      const w1  = canvas1.width      * scale1
-      const hh1 = canvas1.height     * scale1
-      const hhD = canvasDiario.height * scale1
-      pdf.addImage(canvas1.toDataURL('image/jpeg', 0.92),      'JPEG', margin, HDR_H + 4,        w1, hh1)
-      pdf.addImage(canvasDiario.toDataURL('image/jpeg', 0.92), 'JPEG', margin, HDR_H + 4 + hh1 + gap, w1, hhD)
+      const w1   = canvas1.width       * scale1
+      const hh1  = canvas1.height      * scale1
+      const hhC  = canvasCharts.height * scale1
+      pdf.addImage(canvas1.toDataURL('image/jpeg', 0.92),      'JPEG', margin, HDR_H + 4,             w1, hh1)
+      pdf.addImage(canvasCharts.toDataURL('image/jpeg', 0.92), 'JPEG', margin, HDR_H + 4 + hh1 + gap, w1, hhC)
 
-      // Página 2: comparativo + weekday + mix + detalhe
+      // Página 2: diário + composição/detalhe
       pdf.addPage()
       drawHeader(2)
-      const scale2 = Math.min(availW / canvas2.width, availH / canvas2.height)
-      const w2  = canvas2.width  * scale2
-      const hh2 = canvas2.height * scale2
-      pdf.addImage(canvas2.toDataURL('image/jpeg', 0.92), 'JPEG', margin, HDR_H + 4, w2, hh2)
+      const scale2 = Math.min(
+        availW / canvasDiario.width,
+        (availH - gap) / (canvasDiario.height + canvasTabelas.height)
+      )
+      const w2   = canvasDiario.width    * scale2
+      const hhD  = canvasDiario.height   * scale2
+      const hhT  = canvasTabelas.height  * scale2
+      pdf.addImage(canvasDiario.toDataURL('image/jpeg', 0.92),  'JPEG', margin, HDR_H + 4,             w2, hhD)
+      pdf.addImage(canvasTabelas.toDataURL('image/jpeg', 0.92), 'JPEG', margin, HDR_H + 4 + hhD + gap, w2, hhT)
 
       pdf.save(`receitas_${mesAtual}_${empresa.replace(/\s+/g,'_').toLowerCase()}.pdf`)
     } catch (err) {
@@ -1087,11 +1095,8 @@ export default function Receitas() {
           </Card>
           </div>{/* /refDiario */}
 
-          {/* ── PÁGINA 2: comparativo + tabelas ── */}
-          <div ref={refPag2} className="space-y-4">
-
           {/* ── comparativo + dia da semana ── */}
-          <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
+          <div ref={refCharts2} className="grid grid-cols-1 xl:grid-cols-2 gap-4">
             <Card title="Comparativo do mês · orçado × realizado × forecast" legend={<>
               {SEG_CFG.map(({label,color})=><Lg key={label} color={color} label={label}/>)}
               <span className="text-muted text-[10px]">· · · orç &nbsp; - - fcst</span>
@@ -1106,6 +1111,7 @@ export default function Receitas() {
           </div>
 
           {/* ── composição + detalhe diário ── */}
+          <div ref={refTabelas} className="space-y-4">
           <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
             <Card title="Composição da receita" onExpand={()=>setExpandInfo({title:'Composição da receita', key:'mix'})}>
               <MixRows rows={mixRows} total={mixTotal}/>
@@ -1119,7 +1125,7 @@ export default function Receitas() {
             Receita líquida considerada = <b className="text-dim">Débito + Crédito</b> (estornos entram negativos).{' '}
             <b className="text-dim">% realizado do orçado</b> = realizado acumulado (com adicional) ÷ orçado do mês.
           </p>
-          </div>{/* /refPag2 */}
+          </div>{/* /refTabelas */}
         </div>
       )}
 
