@@ -281,16 +281,16 @@ function ComparativoChart({data, C, meta, labels, expanded}) {
     return out
   })
 
-  // Rótulo no fim da linha com nome do segmento — textAnchor="start" entra na margem direita
+  // Rótulo no fim da linha — textAnchor="end" mantém o texto dentro da área (evita clipPath do html2canvas)
   const endLbl = (color, dy, prefix='') => ({x, y, value, index}) =>
     index !== endIdx || value == null ? null :
-    <text x={x+4} y={y+dy} textAnchor="start" fontSize={9} fontWeight={700} fill={color}>
+    <text x={x-3} y={y+dy} textAnchor="end" fontSize={9} fontWeight={700} fill={color}>
       {prefix}{compact(value)}
     </text>
 
   return (
     <ResponsiveContainer width="100%" height={expanded?'100%':380} minHeight={expanded?400:undefined}>
-      <LineChart data={enriched} margin={{top:28,right:76,left:0,bottom:0}}>
+      <LineChart data={enriched} margin={{top:28,right:16,left:0,bottom:0}}>
         <CartesianGrid strokeDasharray="3 3" stroke={C.grid} vertical={false}/>
         <XAxis dataKey="dia" tick={{fill:C.muted, fontSize:11}} axisLine={{stroke:C.grid}} tickLine={false}/>
         <YAxis tickFormatter={compact} tick={{fill:C.muted, fontSize:11}} axisLine={false} tickLine={false} width={60}/>
@@ -749,13 +749,14 @@ export default function Receitas() {
 
     try {
       const bgColor = tema === 'light' ? '#f1f5f9' : '#0d1117'
-      const opts = { scale: 2, useCORS: true, allowTaint: true, logging: false, backgroundColor: bgColor }
+      const baseOpts = { scale: 2, useCORS: true, allowTaint: true, logging: false, backgroundColor: bgColor, scrollX: 0, scrollY: 0 }
+      const cap = (el) => html2canvas(el, { ...baseOpts, height: el.scrollHeight, width: el.scrollWidth })
 
       // Captura sequencial evita interferência entre clones DOM do html2canvas
-      const canvas1       = await html2canvas(refPag1.current,    opts)
-      const canvasCharts  = await html2canvas(refCharts2.current,  opts)
-      const canvasDiario  = await html2canvas(refDiario.current,   opts)
-      const canvasTabelas = await html2canvas(refTabelas.current,  opts)
+      const canvas1       = await cap(refPag1.current)
+      const canvasCharts  = await cap(refCharts2.current)
+      const canvasDiario  = await cap(refDiario.current)
+      const canvasTabelas = await cap(refTabelas.current)
 
       const pdf     = new jsPDF({ orientation: 'portrait', unit: 'pt', format: 'a4' })
       const pageW   = pdf.internal.pageSize.getWidth()
