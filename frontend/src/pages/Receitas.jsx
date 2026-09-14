@@ -286,23 +286,23 @@ function ComparativoChart({data, C, meta, labels, expanded}) {
     <text x={x} y={y+dy} textAnchor="end" fontSize={9} fontWeight={700} fill={color}>{compact(value)}</text>
 
   return (
-    <ResponsiveContainer width="100%" height={expanded?'100%':400} minHeight={expanded?420:undefined}>
+    <ResponsiveContainer width="100%" height={expanded?'100%':300} minHeight={expanded?320:undefined}>
       <LineChart data={enriched} margin={{top:28,right:16,left:0,bottom:0}}>
         <CartesianGrid strokeDasharray="3 3" stroke={C.grid} vertical={false}/>
         <XAxis dataKey="dia" tick={{fill:C.muted, fontSize:11}} axisLine={{stroke:C.grid}} tickLine={false}/>
         <YAxis tickFormatter={compact} tick={{fill:C.muted, fontSize:11}} axisLine={false} tickLine={false} width={60}/>
         <Tooltip content={<ComparativoTip/>}/>
-        {/* Orçado por segmento — linha pontilhada */}
+        {/* Orçado por segmento — linha tracejada com maior destaque */}
         {SEG_CFG.map(({key, color}) => (
-          <Line key={`orc_${key}`} dataKey={`orc_${key}`} stroke={color} strokeWidth={1.5}
-            dot={false} strokeDasharray="6 4" strokeOpacity={0.55} connectNulls>
+          <Line key={`orc_${key}`} dataKey={`orc_${key}`} stroke={color} strokeWidth={2}
+            dot={false} strokeDasharray="10 4" strokeOpacity={0.9} connectNulls>
             {labels && <LabelList dataKey={`orc_${key}`} isAnimationActive={false} content={endLbl(color, -8)}/>}
           </Line>
         ))}
-        {/* Forecast por segmento — linha tracejada */}
+        {/* Forecast por segmento — linha pontilhada fina */}
         {SEG_CFG.map(({key, color}) => (
           <Line key={`proj_${key}`} dataKey={`proj_${key}`} stroke={color} strokeWidth={1.5}
-            dot={false} strokeDasharray="3 3" strokeOpacity={0.75} connectNulls={false}>
+            dot={false} strokeDasharray="3 3" strokeOpacity={0.65} connectNulls={false}>
             {labels && <LabelList dataKey={`proj_${key}`} isAnimationActive={false} content={endLbl(color, 14)}/>}
           </Line>
         ))}
@@ -1076,7 +1076,7 @@ export default function Receitas() {
           </div>{/* /refDiario */}
 
           {/* ── comparativo + dia da semana ── */}
-          <div ref={refCharts2} className="grid grid-cols-1 xl:grid-cols-2 gap-4">
+          <div ref={refCharts2} className="space-y-4">
             <Card title="Comparativo do mês · orçado × realizado × forecast" legend={<>
               {SEG_CFG.map(({label,color})=><Lg key={label} color={color} label={label}/>)}
               <span className="text-muted text-[10px]">· · · orç &nbsp; - - fcst</span>
