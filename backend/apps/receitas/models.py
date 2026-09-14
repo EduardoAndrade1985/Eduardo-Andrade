@@ -46,8 +46,14 @@ class LancamentoDiario(models.Model):
 
 
 class ConfiguracaoReceita(EmpresaBaseModel):
-    orcado_padrao   = models.DecimalField(max_digits=14, decimal_places=2, default=0)
-    forecast_padrao = models.DecimalField(max_digits=14, decimal_places=2, default=0)
+    orcado_padrao          = models.DecimalField(max_digits=14, decimal_places=2, default=0)
+    forecast_padrao        = models.DecimalField(max_digits=14, decimal_places=2, default=0)
+    orcado_padrao_hosp     = models.DecimalField(max_digits=14, decimal_places=2, default=0)
+    orcado_padrao_ab       = models.DecimalField(max_digits=14, decimal_places=2, default=0)
+    orcado_padrao_outros   = models.DecimalField(max_digits=14, decimal_places=2, default=0)
+    forecast_padrao_hosp   = models.DecimalField(max_digits=14, decimal_places=2, default=0)
+    forecast_padrao_ab     = models.DecimalField(max_digits=14, decimal_places=2, default=0)
+    forecast_padrao_outros = models.DecimalField(max_digits=14, decimal_places=2, default=0)
 
     class Meta:
         verbose_name        = 'Configuração de Receita'
@@ -58,9 +64,15 @@ class ConfiguracaoReceita(EmpresaBaseModel):
 
 
 class MetaMensal(EmpresaBaseModel):
-    mes      = models.CharField(max_length=7)  # YYYY-MM
-    orcado   = models.DecimalField(max_digits=14, decimal_places=2, null=True, blank=True)
-    forecast = models.DecimalField(max_digits=14, decimal_places=2, null=True, blank=True)
+    mes             = models.CharField(max_length=7)  # YYYY-MM
+    orcado          = models.DecimalField(max_digits=14, decimal_places=2, null=True, blank=True)
+    forecast        = models.DecimalField(max_digits=14, decimal_places=2, null=True, blank=True)
+    orcado_hosp     = models.DecimalField(max_digits=14, decimal_places=2, null=True, blank=True)
+    orcado_ab       = models.DecimalField(max_digits=14, decimal_places=2, null=True, blank=True)
+    orcado_outros   = models.DecimalField(max_digits=14, decimal_places=2, null=True, blank=True)
+    forecast_hosp   = models.DecimalField(max_digits=14, decimal_places=2, null=True, blank=True)
+    forecast_ab     = models.DecimalField(max_digits=14, decimal_places=2, null=True, blank=True)
+    forecast_outros = models.DecimalField(max_digits=14, decimal_places=2, null=True, blank=True)
 
     class Meta:
         unique_together = [('empresa', 'mes')]

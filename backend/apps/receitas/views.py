@@ -298,20 +298,35 @@ def _configuracao(empresa):
     return cfg
 
 
+def _f(v):
+    return float(v) if v is not None else None
+
 def api_metas(request):
     empresa = _empresa(request)
     cfg = _configuracao(empresa)
     padrao = {
-        'orcado':   float(cfg.orcado_padrao) if cfg else 0,
-        'forecast': float(cfg.forecast_padrao) if cfg else 0,
+        'orcado':          float(cfg.orcado_padrao)          if cfg else 0,
+        'forecast':        float(cfg.forecast_padrao)        if cfg else 0,
+        'orcado_hosp':     float(cfg.orcado_padrao_hosp)     if cfg else 0,
+        'orcado_ab':       float(cfg.orcado_padrao_ab)       if cfg else 0,
+        'orcado_outros':   float(cfg.orcado_padrao_outros)   if cfg else 0,
+        'forecast_hosp':   float(cfg.forecast_padrao_hosp)   if cfg else 0,
+        'forecast_ab':     float(cfg.forecast_padrao_ab)     if cfg else 0,
+        'forecast_outros': float(cfg.forecast_padrao_outros) if cfg else 0,
     }
     qs = MetaMensal.objects.all()
     if empresa:
         qs = qs.filter(empresa=empresa)
     months = {
         m.mes: {
-            'orcado':   float(m.orcado) if m.orcado is not None else None,
-            'forecast': float(m.forecast) if m.forecast is not None else None,
+            'orcado':          _f(m.orcado),
+            'forecast':        _f(m.forecast),
+            'orcado_hosp':     _f(m.orcado_hosp),
+            'orcado_ab':       _f(m.orcado_ab),
+            'orcado_outros':   _f(m.orcado_outros),
+            'forecast_hosp':   _f(m.forecast_hosp),
+            'forecast_ab':     _f(m.forecast_ab),
+            'forecast_outros': _f(m.forecast_outros),
         }
         for m in qs
     }
@@ -335,6 +350,11 @@ def api_metas_padrao(request):
         cfg.orcado_padrao = body['orcado'] or 0
     if 'forecast' in body:
         cfg.forecast_padrao = body['forecast'] or 0
+    for s in ['hosp', 'ab', 'outros']:
+        if f'orcado_{s}' in body:
+            setattr(cfg, f'orcado_padrao_{s}', body[f'orcado_{s}'] or 0)
+        if f'forecast_{s}' in body:
+            setattr(cfg, f'forecast_padrao_{s}', body[f'forecast_{s}'] or 0)
     cfg.save()
     return JsonResponse({'ok': True})
 
@@ -353,14 +373,21 @@ def api_meta_mes(request, mes):
 
     orcado   = body.get('orcado', None)
     forecast = body.get('forecast', None)
+    seg_vals = {}
+    for s in ['hosp', 'ab', 'outros']:
+        seg_vals[f'orcado_{s}']   = body.get(f'orcado_{s}',   None)
+        seg_vals[f'forecast_{s}'] = body.get(f'forecast_{s}', None)
 
-    if orcado in (None, '') and forecast in (None, ''):
+    all_empty = all(v in (None, '') for v in [orcado, forecast, *seg_vals.values()])
+    if all_empty:
         MetaMensal.objects.filter(empresa=empresa, mes=mes).delete()
         return JsonResponse({'ok': True})
 
     meta, _ = MetaMensal.objects.get_or_create(empresa=empresa, mes=mes)
-    meta.orcado   = orcado if orcado not in (None, '') else None
+    meta.orcado   = orcado   if orcado   not in (None, '') else None
     meta.forecast = forecast if forecast not in (None, '') else None
+    for k, v in seg_vals.items():
+        setattr(meta, k, None if v in (None, '') else v)
     meta.save()
     return JsonResponse({'ok': True})
 

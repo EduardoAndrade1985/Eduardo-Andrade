@@ -106,17 +106,34 @@ function DiarioTip({active, payload, label}) {
   )
 }
 
+const SEG_CFG = [
+  {key:'hosp',   label:'Hospedagem', color:COR.real},
+  {key:'ab',     label:'A&B',        color:COR.fcst},
+  {key:'outros', label:'Outros',     color:COR.orc},
+]
+
 function ComparativoTip({active, payload, label}) {
   if (!active || !payload?.length) return null
-  const acumulado = payload.find(p=>p.dataKey==='acumulado')?.value
-  const orcVal    = payload.find(p=>p.dataKey==='orcAcum')?.value
-  const projVal   = payload.find(p=>p.dataKey==='projecao')?.value
+  const get = k => payload.find(p=>p.dataKey===k)?.value
+  const hasReal = SEG_CFG.some(s => get(`${s.key}_acum`) != null)
+  const hasProj = SEG_CFG.some(s => get(`proj_${s.key}`) != null)
   return (
-    <div className="bg-bg border border-border rounded-lg px-3 py-2 text-xs shadow-xl">
-      <p className="text-dim font-semibold mb-1">Dia {label}</p>
-      {acumulado!=null && <p style={{color:COR.real}}>Realizado: <b>{fmtBRL2(acumulado)}</b></p>}
-      {projVal!=null && acumulado==null && <p style={{color:COR.fcst}}>Projeção forecast: <b>{fmtBRL2(projVal)}</b></p>}
-      {orcVal!=null  && <p style={{color:COR.orc}}>Orçado: <b>{fmtBRL2(orcVal)}</b></p>}
+    <div className="bg-bg border border-border rounded-lg px-3 py-2 text-xs shadow-xl min-w-[180px]">
+      <p className="text-dim font-semibold mb-1.5">Dia {label}</p>
+      {SEG_CFG.map(({key, label: lbl, color})=>{
+        const real = get(`${key}_acum`)
+        const orc  = get(`orc_${key}`)
+        const proj = get(`proj_${key}`)
+        if (real==null && orc==null && proj==null) return null
+        return (
+          <div key={key} className="mb-1">
+            <p className="font-semibold" style={{color}}>{lbl}</p>
+            {real!=null && <p className="pl-2 text-[10px]">Realizado: <b>{fmtBRL2(real)}</b></p>}
+            {proj!=null && real==null && <p className="pl-2 text-[10px]" style={{color}}>Projeção: <b>{fmtBRL2(proj)}</b></p>}
+            {orc!=null  && <p className="pl-2 text-[10px] text-muted">Orçado: <b>{fmtBRL2(orc)}</b></p>}
+          </div>
+        )
+      })}
     </div>
   )
 }
@@ -132,8 +149,9 @@ function WeekdayTip({active, payload, label}) {
 }
 
 function BulletChart({rows, orcado, C}) {
-  const W=960, H=175, L=14, R=165, T=8, B=30
-  const trackW=W-L-R, rowH=46, gap=38
+  const W=960, L=14, R=165, T=8, B=30, rowH=46, gap=38
+  const trackW=W-L-R
+  const H = T + (rows.length - 1) * (rowH + gap) + rowH + B + 8
   const maxVal = Math.max(...rows.map(r=>r.val), 1)
   const scaleMax = Math.max(orcado>0 ? orcado/0.88 : 0, maxVal*1.12)
   const x = v => L + Math.max(0, Math.min(1, v/scaleMax))*trackW
@@ -233,26 +251,34 @@ function DiarioChart({data, C, labels, expanded, ajTotal=0}) {
   )
 }
 
-function ComparativoChart({data, C, orcado, forecast, labels, expanded}) {
-  const step    = labelStep(data.length)
-  const endIdx  = data.length - 1
+function ComparativoChart({data, C, meta, labels, expanded}) {
+  const step   = labelStep(data.length)
+  const endIdx = data.length - 1
 
-  // último ponto com dado real
-  const lastRealIdx = data.reduce((acc, d, i) => d.acumulado != null ? i : acc, -1)
-  const lastRealVal = lastRealIdx >= 0 ? data[lastRealIdx].acumulado : 0
+  const lastRealIdx   = data.reduce((acc, d, i) => d.acumulado != null ? i : acc, -1)
   const remainingDays = endIdx - lastRealIdx
 
   const enriched = data.map((d, i) => {
-    let projecao = null
-    if (forecast > 0 && lastRealIdx >= 0 && remainingDays > 0) {
-      if (i === lastRealIdx) {
-        projecao = lastRealVal
-      } else if (i > lastRealIdx) {
-        const t = (i - lastRealIdx) / remainingDays
-        projecao = Math.round(lastRealVal + (forecast - lastRealVal) * t)
+    const out = {...d}
+    SEG_CFG.forEach(({key}) => {
+      const realKey  = `${key}_acum`
+      const fcstVal  = meta?.[`forecast_${key}`] || 0
+      const orcVal   = meta?.[`orcado_${key}`]   || 0
+      const lastReal = lastRealIdx >= 0 ? (data[lastRealIdx][realKey] || 0) : 0
+
+      out[`orc_${key}`] = orcVal > 0 ? orcVal : null
+
+      let proj = null
+      if (fcstVal > 0 && lastRealIdx >= 0 && remainingDays > 0) {
+        if (i === lastRealIdx)      proj = lastReal
+        else if (i > lastRealIdx) {
+          const t = (i - lastRealIdx) / remainingDays
+          proj = Math.round(lastReal + (fcstVal - lastReal) * t)
+        }
       }
-    }
-    return { ...d, orcAcum: orcado > 0 ? orcado : null, projecao }
+      out[`proj_${key}`] = proj
+    })
+    return out
   })
 
   const endLbl = (color, dy) => ({x, y, value, index}) =>
@@ -266,15 +292,28 @@ function ComparativoChart({data, C, orcado, forecast, labels, expanded}) {
         <XAxis dataKey="dia" tick={{fill:C.muted, fontSize:11}} axisLine={{stroke:C.grid}} tickLine={false}/>
         <YAxis tickFormatter={compact} tick={{fill:C.muted, fontSize:11}} axisLine={false} tickLine={false} width={60}/>
         <Tooltip content={<ComparativoTip/>}/>
-        <Line dataKey="orcAcum" stroke={COR.orc} strokeWidth={2} dot={false} strokeDasharray="6 4" connectNulls>
-          {labels && <LabelList dataKey="orcAcum" isAnimationActive={false} content={endLbl(COR.orc, -8)}/>}
-        </Line>
-        <Line dataKey="projecao" stroke={COR.fcst} strokeWidth={2} dot={false} strokeDasharray="6 4" connectNulls={false}>
-          {labels && <LabelList dataKey="projecao" isAnimationActive={false} content={endLbl(COR.fcst, 14)}/>}
-        </Line>
-        <Line dataKey="acumulado" stroke={COR.real} strokeWidth={2.8} dot={false} connectNulls={false}>
-          {labels && <LabelList dataKey="acumulado" isAnimationActive={false} content={thinnedLabel({color:COR.real, dy:-10, step:step, offset:0})}/>}
-        </Line>
+        {/* Orçado por segmento — linha pontilhada */}
+        {SEG_CFG.map(({key, color}) => (
+          <Line key={`orc_${key}`} dataKey={`orc_${key}`} stroke={color} strokeWidth={1.5}
+            dot={false} strokeDasharray="6 4" strokeOpacity={0.55} connectNulls>
+            {labels && <LabelList dataKey={`orc_${key}`} isAnimationActive={false} content={endLbl(color, -8)}/>}
+          </Line>
+        ))}
+        {/* Forecast por segmento — linha tracejada */}
+        {SEG_CFG.map(({key, color}) => (
+          <Line key={`proj_${key}`} dataKey={`proj_${key}`} stroke={color} strokeWidth={1.5}
+            dot={false} strokeDasharray="3 3" strokeOpacity={0.75} connectNulls={false}>
+            {labels && <LabelList dataKey={`proj_${key}`} isAnimationActive={false} content={endLbl(color, 14)}/>}
+          </Line>
+        ))}
+        {/* Realizado por segmento — linha sólida */}
+        {SEG_CFG.map(({key, color}) => (
+          <Line key={`${key}_acum`} dataKey={`${key}_acum`} stroke={color} strokeWidth={2.4}
+            dot={false} connectNulls={false}>
+            {labels && <LabelList dataKey={`${key}_acum`} isAnimationActive={false}
+              content={thinnedLabel({color, dy:-10, step:step, offset:0})}/>}
+          </Line>
+        ))}
       </LineChart>
     </ResponsiveContainer>
   )
@@ -369,7 +408,11 @@ export default function Receitas() {
   const [uploadMsg,   setUploadMsg]   = useState('')
 
   const [metasOpen,   setMetasOpen]   = useState(false)
-  const [padraoForm,  setPadraoForm]  = useState({orcado:'', forecast:''})
+  const [padraoForm,  setPadraoForm]  = useState({
+    orcado:'', forecast:'',
+    orcado_hosp:'', orcado_ab:'', orcado_outros:'',
+    forecast_hosp:'', forecast_ab:'', forecast_outros:'',
+  })
   const [mesDraft,    setMesDraft]    = useState({})
   const [anoMetas,    setAnoMetas]    = useState('')
   const [addDesc,      setAddDesc]      = useState('')
@@ -440,9 +483,13 @@ export default function Receitas() {
   },[mesAtual])
 
   useEffect(()=>{
+    if (!metas.padrao) return
+    const p = metas.padrao
+    const s = v => v != null && v !== 0 ? String(v) : ''
     setPadraoForm({
-      orcado:   metas.padrao?.orcado   != null ? String(metas.padrao.orcado)   : '',
-      forecast: metas.padrao?.forecast != null ? String(metas.padrao.forecast) : '',
+      orcado:          s(p.orcado),          forecast:        s(p.forecast),
+      orcado_hosp:     s(p.orcado_hosp),     orcado_ab:       s(p.orcado_ab),     orcado_outros:   s(p.orcado_outros),
+      forecast_hosp:   s(p.forecast_hosp),   forecast_ab:     s(p.forecast_ab),   forecast_outros: s(p.forecast_outros),
     })
   },[metas.padrao])
 
@@ -452,13 +499,17 @@ export default function Receitas() {
     const dim = diasNoMes(mesAtual)
     const porDia = {}
     lancamentos.filter(l=>l.mes===mesAtual).forEach(l=>{ porDia[Number(l.data.slice(8,10))] = l })
-    const diario=[], acumulado=[]
-    let acc=0, lastDay=0
+    const diario=[], acumulado=[], hosp_acum=[], ab_acum=[], outros_acum=[]
+    let acc=0, accH=0, accA=0, accO=0, lastDay=0
     for (let k=1;k<=dim;k++){
       const row = porDia[k]
       const v = row ? row.total : null
-      if (v!=null) { acc+=v; lastDay=k }
-      diario.push(v); acumulado.push(v==null?null:acc)
+      if (v!=null) { acc+=v; accH+=row.hosp; accA+=row.ab; accO+=row.outros; lastDay=k }
+      diario.push(v)
+      acumulado.push(v==null?null:acc)
+      hosp_acum.push(v==null?null:accH)
+      ab_acum.push(v==null?null:accA)
+      outros_acum.push(v==null?null:accO)
     }
     const mix = {hosp:0, ab:0, outros:0}
     lancamentos.filter(l=>l.mes===mesAtual).forEach(l=>{
@@ -467,14 +518,19 @@ export default function Receitas() {
     const realizado = acc
     const diasDecorridos = lastDay
     const projecao = diasDecorridos ? realizado/diasDecorridos*dim : 0
-    return {dim, diario, acumulado, realizado, diasDecorridos, projecao, mix}
+    return {dim, diario, acumulado, hosp_acum, ab_acum, outros_acum, realizado, diasDecorridos, projecao, mix}
   },[lancamentos, mesAtual])
 
   function metaOf(mes) {
     const ov = metas.months?.[mes] || {}
     const orcado   = ov.orcado   != null ? +ov.orcado   : (+metas.padrao?.orcado   || 0)
     const forecast = ov.forecast != null ? +ov.forecast : (+metas.padrao?.forecast || 0)
-    return {orcado, forecast, orcOverride: ov.orcado!=null, fcOverride: ov.forecast!=null}
+    const seg = {}
+    for (const s of ['hosp','ab','outros']) {
+      seg[`orcado_${s}`]   = ov[`orcado_${s}`]   != null ? +ov[`orcado_${s}`]   : (+metas.padrao?.[`orcado_${s}`]   || 0)
+      seg[`forecast_${s}`] = ov[`forecast_${s}`] != null ? +ov[`forecast_${s}`] : (+metas.padrao?.[`forecast_${s}`] || 0)
+    }
+    return {orcado, forecast, ...seg, orcOverride: ov.orcado!=null, fcOverride: ov.forecast!=null}
   }
 
   const ajustesMes = useMemo(()=>ajustes.filter(a=>a.mes===mesAtual),[ajustes, mesAtual])
@@ -504,12 +560,13 @@ export default function Receitas() {
     const lastIdx = dadosMes.diasDecorridos - 1
     return Array.from({length:dadosMes.dim}, (_,i)=>({
       dia: i+1,
-      diario: dadosMes.diario[i],
-      acumulado: dadosMes.acumulado[i] != null
-        ? dadosMes.acumulado[i] + (i === lastIdx ? ajTotal : 0)
-        : null,
+      diario:    dadosMes.diario[i],
+      acumulado: dadosMes.acumulado[i] != null ? dadosMes.acumulado[i] + (i===lastIdx?ajTotal:0) : null,
+      hosp_acum: dadosMes.hosp_acum[i] != null ? dadosMes.hosp_acum[i] + (i===lastIdx?(ajustesMix.hosp||0):0) : null,
+      ab_acum:   dadosMes.ab_acum[i]   != null ? dadosMes.ab_acum[i]   + (i===lastIdx?(ajustesMix.ab||0):0)   : null,
+      outros_acum: dadosMes.outros_acum[i] != null ? dadosMes.outros_acum[i] + (i===lastIdx?(ajustesMix.outros||0):0) : null,
     }))
-  },[dadosMes, ajTotal])
+  },[dadosMes, ajTotal, ajustesMix])
 
   // sem ajTotal — acumulação orgânica diária para o comparativo
   const comparativoDias = useMemo(()=>{
@@ -534,8 +591,7 @@ export default function Receitas() {
 
   const bulletRows = useMemo(()=>([
     {nome:'Consolidado', sub:'realizado + adicional', val: realAjustado,  pct: pctRealOrc},
-    {nome:'Forecast',    sub:'projeção do fechamento', val: meta.forecast, pct: pctFcstOrc},
-  ]),[realAjustado, pctRealOrc, meta.forecast, pctFcstOrc])
+  ]),[realAjustado, pctRealOrc])
 
   const mixTotal = dadosMes ? (dadosMes.mix.hosp+dadosMes.mix.ab+dadosMes.mix.outros+ajTotal)||1 : 1
   const mixRows = dadosMes ? [
@@ -575,10 +631,12 @@ export default function Receitas() {
     const digits = raw.replace(/[^\d]/g,'')
     setPadraoForm(p=>({...p, [field]: digits}))
     debounced('padrao', async ()=>{
+      const v = (f) => f===field ? (digits===''?0:Number(digits)) : (padraoForm[f]===''?0:Number(padraoForm[f]||0))
       try {
         await api.post('/receitas/metas/padrao/', {
-          orcado:   field==='orcado'   ? (digits===''?0:Number(digits)) : (padraoForm.orcado===''?0:Number(padraoForm.orcado)),
-          forecast: field==='forecast' ? (digits===''?0:Number(digits)) : (padraoForm.forecast===''?0:Number(padraoForm.forecast)),
+          orcado: v('orcado'), forecast: v('forecast'),
+          orcado_hosp: v('orcado_hosp'), orcado_ab: v('orcado_ab'), orcado_outros: v('orcado_outros'),
+          forecast_hosp: v('forecast_hosp'), forecast_ab: v('forecast_ab'), forecast_outros: v('forecast_outros'),
         })
         setMetas(prev=>{
           const next = {...prev, padrao:{...prev.padrao, [field]: digits===''?0:Number(digits)}}
@@ -593,25 +651,28 @@ export default function Receitas() {
   function draftFor(mes) {
     if (mesDraft[mes]) return mesDraft[mes]
     const ov = metas.months?.[mes] || {}
-    return { orcado: ov.orcado!=null?String(ov.orcado):'', forecast: ov.forecast!=null?String(ov.forecast):'' }
+    const s = (v) => v != null ? String(v) : ''
+    return {
+      orcado: s(ov.orcado), forecast: s(ov.forecast),
+      orcado_hosp: s(ov.orcado_hosp), orcado_ab: s(ov.orcado_ab), orcado_outros: s(ov.orcado_outros),
+      forecast_hosp: s(ov.forecast_hosp), forecast_ab: s(ov.forecast_ab), forecast_outros: s(ov.forecast_outros),
+    }
   }
+  const SEG_FIELDS = ['orcado','forecast','orcado_hosp','orcado_ab','orcado_outros','forecast_hosp','forecast_ab','forecast_outros']
   function onMetaMesChange(mes, field, raw) {
     const digits = raw.replace(/[^\d]/g,'')
     const next = {...draftFor(mes), [field]: digits}
     setMesDraft(p=>({...p, [mes]: next}))
     debounced(`meta-${mes}`, async ()=>{
+      const payload = {}
+      SEG_FIELDS.forEach(f => { payload[f] = next[f]==='' ? null : Number(next[f]) })
       try {
-        await api.post(`/receitas/metas/${mes}/`, {
-          orcado:   next.orcado===''   ? null : Number(next.orcado),
-          forecast: next.forecast==='' ? null : Number(next.forecast),
-        })
+        await api.post(`/receitas/metas/${mes}/`, payload)
         setMetas(prev=>{
           const months = {...prev.months}
-          if (next.orcado===''&&next.forecast==='') delete months[mes]
-          else months[mes] = {
-            orcado:   next.orcado===''   ? null : Number(next.orcado),
-            forecast: next.forecast==='' ? null : Number(next.forecast),
-          }
+          const allEmpty = SEG_FIELDS.every(f => next[f]==='')
+          if (allEmpty) delete months[mes]
+          else months[mes] = {...(months[mes]||{}), ...Object.fromEntries(SEG_FIELDS.map(f=>[f, next[f]===''?null:Number(next[f])]))}
           const out = {...prev, months}
           setCached('receitas_metas', out, empresaAtiva?.id)
           return out
@@ -892,33 +953,43 @@ export default function Receitas() {
                     <p className="text-xs font-bold text-dim">Metas mensais · {anoMetas}</p>
                     <span className="text-[10px] text-muted">orçado e forecast por mês · vazio usa o padrão</span>
                   </div>
-                  <div className="flex gap-3 mb-3">
-                    <div className="flex-1 bg-bg2 border border-border rounded-lg px-3 py-2">
-                      <label className="block text-[9px] font-bold uppercase tracking-wide text-muted mb-1">Orçado padrão · todos os meses</label>
-                      <div className="flex items-baseline gap-1">
-                        <span className="text-muted text-xs font-mono">R$</span>
-                        <input value={padraoForm.orcado} onChange={e=>onPadraoChange('orcado', e.target.value)}
-                          inputMode="numeric" className="bg-transparent outline-none text-dim font-mono font-semibold text-sm w-full"/>
+                  <div className="grid grid-cols-3 gap-2 mb-3">
+                    {[
+                      {f:'orcado_hosp',   lbl:'Orçado Hosp.',   color:COR.real},
+                      {f:'orcado_ab',     lbl:'Orçado A&B',     color:COR.fcst},
+                      {f:'orcado_outros', lbl:'Orçado Outros',  color:COR.orc},
+                      {f:'forecast_hosp',   lbl:'Forecast Hosp.',   color:COR.real},
+                      {f:'forecast_ab',     lbl:'Forecast A&B',     color:COR.fcst},
+                      {f:'forecast_outros', lbl:'Forecast Outros',  color:COR.orc},
+                    ].map(({f, lbl, color})=>(
+                      <div key={f} className="bg-bg2 border border-border rounded-lg px-2.5 py-2">
+                        <label className="block text-[9px] font-bold uppercase tracking-wide mb-1" style={{color}}>{lbl}</label>
+                        <div className="flex items-baseline gap-1">
+                          <span className="text-muted text-[10px] font-mono">R$</span>
+                          <input value={padraoForm[f]} onChange={e=>onPadraoChange(f, e.target.value)}
+                            inputMode="numeric" placeholder="0"
+                            className="bg-transparent outline-none text-dim font-mono font-semibold text-sm w-full"/>
+                        </div>
                       </div>
-                    </div>
-                    <div className="flex-1 bg-bg2 border border-border rounded-lg px-3 py-2">
-                      <label className="block text-[9px] font-bold uppercase tracking-wide text-muted mb-1">Forecast padrão · todos os meses</label>
-                      <div className="flex items-baseline gap-1">
-                        <span className="text-muted text-xs font-mono">R$</span>
-                        <input value={padraoForm.forecast} onChange={e=>onPadraoChange('forecast', e.target.value)}
-                          inputMode="numeric" className="bg-transparent outline-none text-dim font-mono font-semibold text-sm w-full"/>
-                      </div>
-                    </div>
+                    ))}
                   </div>
                   <div className="max-h-[280px] overflow-auto">
-                    <table className="w-full border-collapse">
+                    <table className="border-collapse" style={{minWidth:660}}>
                       <thead>
                         <tr className="text-[9px] uppercase tracking-wide text-muted">
-                          <th className="text-left py-1.5 px-2 sticky top-0 bg-bg3 border-b border-border">Mês</th>
-                          <th className="text-right py-1.5 px-2 sticky top-0 bg-bg3 border-b border-border">Orçado</th>
-                          <th className="text-right py-1.5 px-2 sticky top-0 bg-bg3 border-b border-border">Forecast</th>
-                          <th className="text-right py-1.5 px-2 sticky top-0 bg-bg3 border-b border-border">Realizado</th>
-                          <th className="text-right py-1.5 px-2 sticky top-0 bg-bg3 border-b border-border">%</th>
+                          <th className="text-left py-1.5 px-2 sticky top-0 bg-bg3 border-b border-border" rowSpan={2}>Mês</th>
+                          <th className="text-center py-1 px-2 sticky top-0 bg-bg3 border-b border-border" colSpan={3} style={{color:COR.orc}}>Orçado</th>
+                          <th className="text-center py-1 px-2 sticky top-0 bg-bg3 border-b border-border" colSpan={3} style={{color:COR.fcst}}>Forecast</th>
+                          <th className="text-right py-1.5 px-2 sticky top-0 bg-bg3 border-b border-border" rowSpan={2}>Realizado</th>
+                          <th className="text-right py-1.5 px-2 sticky top-0 bg-bg3 border-b border-border" rowSpan={2}>%</th>
+                        </tr>
+                        <tr className="text-[9px] text-muted">
+                          {[{lbl:'Hosp.',color:COR.real},{lbl:'A&B',color:COR.fcst},{lbl:'Outros',color:COR.orc}].map(({lbl,color})=>(
+                            <th key={`o${lbl}`} className="text-center py-1 px-1 bg-bg3 border-b border-border font-semibold" style={{color}}>{lbl}</th>
+                          ))}
+                          {[{lbl:'Hosp.',color:COR.real},{lbl:'A&B',color:COR.fcst},{lbl:'Outros',color:COR.orc}].map(({lbl,color})=>(
+                            <th key={`f${lbl}`} className="text-center py-1 px-1 bg-bg3 border-b border-border font-semibold" style={{color}}>{lbl}</th>
+                          ))}
                         </tr>
                       </thead>
                       <tbody>
@@ -928,22 +999,27 @@ export default function Receitas() {
                           const temDados = mesesDisponiveis.includes(mes)
                           const rr = realizadoPorMes[mes]
                           const eff = metaOf(mes)
+                          const orcTot = eff.orcado_hosp + eff.orcado_ab + eff.orcado_outros
                           return (
                             <tr key={mes} className={`border-b border-border/50 ${mes===mesAtual?'bg-primary/5':''}`}>
-                              <td className="py-1 px-2 text-left">
+                              <td className="py-1 px-2 text-left whitespace-nowrap">
                                 <button disabled={!temDados} onClick={()=>temDados&&setMesAtual(mes)}
                                   className={`text-xs ${mes===mesAtual?'text-primary font-semibold':temDados?'text-dim hover:text-primary cursor-pointer':'text-muted cursor-default'}`}>{lbl}</button>
                               </td>
-                              <td className="py-1 px-2 text-right">
-                                <input value={draft.orcado} placeholder="padrão" onChange={e=>onMetaMesChange(mes,'orcado',e.target.value)}
-                                  className="w-20 bg-bg2 border border-border rounded px-1.5 py-1 text-right font-mono text-[11px] text-dim outline-none focus:border-primary"/>
-                              </td>
-                              <td className="py-1 px-2 text-right">
-                                <input value={draft.forecast} placeholder="padrão" onChange={e=>onMetaMesChange(mes,'forecast',e.target.value)}
-                                  className="w-20 bg-bg2 border border-border rounded px-1.5 py-1 text-right font-mono text-[11px] text-dim outline-none focus:border-primary"/>
-                              </td>
-                              <td className="py-1 px-2 text-right font-mono text-[11px] text-dim">{rr!=null?fmtBRL(rr):'—'}</td>
-                              <td className="py-1 px-2 text-right font-mono text-[11px] text-muted">{rr!=null&&eff.orcado?fmtPct(rr/eff.orcado):'—'}</td>
+                              {['orcado_hosp','orcado_ab','orcado_outros'].map(f=>(
+                                <td key={f} className="py-1 px-1">
+                                  <input value={draft[f]} placeholder="padrão" onChange={e=>onMetaMesChange(mes,f,e.target.value)}
+                                    className="w-16 bg-bg2 border border-border rounded px-1 py-1 text-right font-mono text-[10px] text-dim outline-none focus:border-primary"/>
+                                </td>
+                              ))}
+                              {['forecast_hosp','forecast_ab','forecast_outros'].map(f=>(
+                                <td key={f} className="py-1 px-1">
+                                  <input value={draft[f]} placeholder="padrão" onChange={e=>onMetaMesChange(mes,f,e.target.value)}
+                                    className="w-16 bg-bg2 border border-border rounded px-1 py-1 text-right font-mono text-[10px] text-dim outline-none focus:border-primary"/>
+                                </td>
+                              ))}
+                              <td className="py-1 px-2 text-right font-mono text-[11px] text-dim whitespace-nowrap">{rr!=null?fmtBRL(rr):'—'}</td>
+                              <td className="py-1 px-2 text-right font-mono text-[11px] text-muted">{rr!=null&&orcTot?fmtPct(rr/orcTot):'—'}</td>
                             </tr>
                           )
                         })}
@@ -1017,10 +1093,11 @@ export default function Receitas() {
           {/* ── comparativo + dia da semana ── */}
           <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
             <Card title="Comparativo do mês · orçado × realizado × forecast" legend={<>
-              <Lg color={COR.real} label="Realizado"/><Lg color={COR.orc} label="Orçado" dash/><Lg color={COR.fcst} label="Forecast" dash/>
+              {SEG_CFG.map(({label,color})=><Lg key={label} color={color} label={label}/>)}
+              <span className="text-muted text-[10px]">· · · orç &nbsp; - - fcst</span>
             </>} lblOn={lbls.comparativo} onLbl={()=>togLbl('comparativo')}
                onExpand={()=>setExpandInfo({title:'Comparativo do mês', key:'comparativo'})}>
-              <ComparativoChart data={diasData} C={C} orcado={meta.orcado} forecast={meta.forecast} labels={lbls.comparativo}/>
+              <ComparativoChart data={diasData} C={C} meta={meta} labels={lbls.comparativo}/>
             </Card>
             <Card title="Receita média por dia da semana" lblOn={lbls.weekday} onLbl={()=>togLbl('weekday')}
                onExpand={()=>setExpandInfo({title:'Receita média por dia da semana', key:'weekday'})}>
@@ -1051,7 +1128,7 @@ export default function Receitas() {
         <ExpandModal title={expandInfo.title} onClose={()=>setExpandInfo(null)}>
           {expandInfo.key==='bullets'      && <BulletChart rows={bulletRows} orcado={meta.orcado} C={C}/>}
           {expandInfo.key==='diario'       && <DiarioChart data={diasData} C={C} labels={lbls.diario} expanded ajTotal={ajTotal}/>}
-          {expandInfo.key==='comparativo'  && <ComparativoChart data={diasData} C={C} orcado={meta.orcado} forecast={meta.forecast} labels={lbls.comparativo} expanded/>}
+          {expandInfo.key==='comparativo'  && <ComparativoChart data={diasData} C={C} meta={meta} labels={lbls.comparativo} expanded/>}
           {expandInfo.key==='weekday'      && <WeekdayChart data={weekdayData} C={C} labels={lbls.weekday} expanded/>}
           {expandInfo.key==='mix'          && <MixRows rows={mixRows} total={mixTotal}/>}
           {expandInfo.key==='detalhe'      && <DetalheTable rows={detalheRows} diasDecorridos={dadosMes?.diasDecorridos} orcado={meta.orcado}/>}
