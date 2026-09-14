@@ -782,30 +782,25 @@ export default function Receitas() {
 
       const gap = 8
 
-      // Página 1: resumo/KPIs/bullet + comparativo/weekday
+      // Página 1: resumo/KPIs/bullet + diário + comparativo/weekday
       drawHeader(1)
-      const scale1 = Math.min(
-        availW / canvas1.width,
-        (availH - gap) / (canvas1.height + canvasCharts.height)
-      )
+      const totalH1 = canvas1.height + canvasDiario.height + canvasCharts.height
+      const scale1  = Math.min(availW / canvas1.width, (availH - 2 * gap) / totalH1)
       const w1   = canvas1.width       * scale1
       const hh1  = canvas1.height      * scale1
+      const hhD  = canvasDiario.height * scale1
       const hhC  = canvasCharts.height * scale1
-      pdf.addImage(canvas1.toDataURL('image/jpeg', 0.92),      'JPEG', margin, HDR_H + 4,             w1, hh1)
-      pdf.addImage(canvasCharts.toDataURL('image/jpeg', 0.92), 'JPEG', margin, HDR_H + 4 + hh1 + gap, w1, hhC)
+      pdf.addImage(canvas1.toDataURL('image/jpeg', 0.92),      'JPEG', margin, HDR_H + 4,                   w1, hh1)
+      pdf.addImage(canvasDiario.toDataURL('image/jpeg', 0.92), 'JPEG', margin, HDR_H + 4 + hh1 + gap,       w1, hhD)
+      pdf.addImage(canvasCharts.toDataURL('image/jpeg', 0.92), 'JPEG', margin, HDR_H + 4 + hh1 + hhD + 2*gap, w1, hhC)
 
-      // Página 2: diário + composição/detalhe
+      // Página 2: composição de receita + detalhe diário
       pdf.addPage()
       drawHeader(2)
-      const scale2 = Math.min(
-        availW / canvasDiario.width,
-        (availH - gap) / (canvasDiario.height + canvasTabelas.height)
-      )
-      const w2   = canvasDiario.width    * scale2
-      const hhD  = canvasDiario.height   * scale2
-      const hhT  = canvasTabelas.height  * scale2
-      pdf.addImage(canvasDiario.toDataURL('image/jpeg', 0.92),  'JPEG', margin, HDR_H + 4,             w2, hhD)
-      pdf.addImage(canvasTabelas.toDataURL('image/jpeg', 0.92), 'JPEG', margin, HDR_H + 4 + hhD + gap, w2, hhT)
+      const scale2 = Math.min(availW / canvasTabelas.width, availH / canvasTabelas.height)
+      const w2  = canvasTabelas.width  * scale2
+      const hhT = canvasTabelas.height * scale2
+      pdf.addImage(canvasTabelas.toDataURL('image/jpeg', 0.92), 'JPEG', margin, HDR_H + 4, w2, hhT)
 
       pdf.save(`receitas_${mesAtual}_${empresa.replace(/\s+/g,'_').toLowerCase()}.pdf`)
     } catch (err) {
