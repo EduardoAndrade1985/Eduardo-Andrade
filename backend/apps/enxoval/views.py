@@ -326,6 +326,62 @@ def api_movimentacoes(request):
     return JsonResponse({'ok': True, 'movimentacao': _mov_dict(mov)}, status=201)
 
 
+@csrf_exempt
+@require_http_methods(['POST'])
+def api_pecas_lote(request):
+    empresa = _empresa(request)
+    if not empresa:
+        return _err('empresa required', 400)
+
+    data    = json.loads(request.body or '{}')
+    tipo_id = data.get('tipo_id')
+    epcs    = data.get('epcs', [])
+
+    if not epcs:
+        return _err('lista de epcs vazia')
+
+    try:
+        tipo = TipoEnxoval.objects.get(pk=tipo_id, empresa=empresa)
+    except TipoEnxoval.DoesNotExist:
+        return _err('tipo não encontrado')
+
+    epcs_norm = list(dict.fromkeys(_norm_epc(e) for e in epcs if e))
+    if not epcs_norm:
+        return _err('nenhum EPC válido')
+
+    with transaction.atomic():
+        existentes = {p.epc: p for p in PecaEnxoval.objects.filter(epc__in=epcs_norm)}
+
+        novos = []
+        for epc in epcs_norm:
+            if epc not in existentes:
+                try:
+                    serial = int(epc[8:16], 16) if len(epc) >= 16 else 0
+                except Exception:
+                    serial = 0
+                novos.append(PecaEnxoval(
+                    empresa=empresa,
+                    tipo=tipo,
+                    epc=epc,
+                    serial=serial,
+                    status=PecaEnxoval.EM_HOTEL,
+                ))
+
+        if novos:
+            PecaEnxoval.objects.bulk_create(novos, ignore_conflicts=True)
+
+        ids_atualizar = [p.id for p in existentes.values() if p.tipo_id != tipo.id]
+        if ids_atualizar:
+            PecaEnxoval.objects.filter(id__in=ids_atualizar).update(tipo=tipo)
+
+    return JsonResponse({
+        'ok':          True,
+        'criadas':     len(novos),
+        'atualizadas': len(ids_atualizar),
+        'total':       len(epcs_norm),
+    })
+
+
 @require_http_methods(['GET'])
 def api_movimentacao_detail(request, pk):
     empresa = _empresa(request)

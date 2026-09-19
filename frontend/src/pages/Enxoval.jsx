@@ -468,10 +468,50 @@ function TabHistorico({ movimentacoes, loading, onSelect, detalhe, loadingDetalh
 // ── Cadastro ──────────────────────────────────────────────────────────────────
 const CORES = ['#6366f1', '#06b6d4', '#f59e0b', '#ec4899', '#10b981', '#f97316', '#8b5cf6', '#ef4444']
 
-function TabCadastro({ tipos, onRefresh }) {
-  const [form, setForm]     = useState({ nome: '', codigo: '', cor: CORES[0], estoque_minimo: 0 })
+function TabCadastro({ tipos, onRefresh, rfidState }) {
+  const [form, setForm]         = useState({ nome: '', codigo: '', cor: CORES[0], estoque_minimo: 0 })
   const [salvando, setSalvando] = useState(false)
   const [editando, setEditando] = useState(null)
+
+  // lote
+  const [tipoLoteId, setTipoLoteId]   = useState('')
+  const [registrando, setRegistrando] = useState(false)
+  const [resultadoLote, setResultLote] = useState(null)
+
+  const {
+    status, info, erro, lendo, conectado,
+    tagsValidas, totalUnico, totalIgnorado,
+    conectar, desconectar, iniciar, parar, limpar, paraApi,
+  } = rfidState
+
+  const podeConectar  = status === StatusLeitor.DESCONECTADO || status === StatusLeitor.ERRO
+  const podeLer       = conectado && !lendo
+  const podeRegistrar = conectado && !lendo && totalUnico > 0 && tipoLoteId && !resultadoLote
+
+  async function handleConectarLote() {
+    try { await conectar() } catch {}
+  }
+
+  async function handleIniciarLote() {
+    limpar()
+    setResultLote(null)
+    try { await iniciar() } catch {}
+  }
+
+  async function handleRegistrarLote() {
+    setRegistrando(true)
+    try {
+      const epcs = paraApi().map(t => t.epc)
+      const { data } = await api.post('/enxoval/pecas/lote/', { tipo_id: tipoLoteId, epcs })
+      setResultLote(data)
+      onRefresh()
+      limpar()
+    } catch (e) {
+      alert(e.response?.data?.erro || 'Erro ao registrar lote')
+    } finally {
+      setRegistrando(false)
+    }
+  }
 
   function iniciarEdicao(tipo) {
     setEditando(tipo.id)
@@ -511,10 +551,144 @@ function TabCadastro({ tipos, onRefresh }) {
     }
   }
 
+  const tipoLoteSel = tipos.find(t => String(t.id) === String(tipoLoteId))
+
   return (
     <div className="space-y-4">
-      {/* formulário */}
-      <Card title={editando ? 'Editar tipo' : 'Novo tipo de enxoval'}>
+      {/* ── cadastro em lote via RFID ── */}
+      <Card title="Cadastro em lote via RFID">
+        <p className="text-xs text-muted mb-4">
+          Aproxime todas as etiquetas do leitor de uma vez, selecione o tipo e registre tudo em um clique.
+        </p>
+
+        {/* seleção de tipo */}
+        <div className="mb-4">
+          <label className="text-xs text-muted mb-1 block">Tipo de enxoval</label>
+          <select
+            value={tipoLoteId}
+            onChange={e => { setTipoLoteId(e.target.value); setResultLote(null); limpar() }}
+            className="w-full max-w-xs bg-white/[0.04] border border-white/[0.08] rounded-lg px-3 py-2 text-sm text-dim focus:outline-none focus:border-primary/40"
+          >
+            <option value="">Selecione…</option>
+            {tipos.map(t => (
+              <option key={t.id} value={t.id}>{t.nome}</option>
+            ))}
+          </select>
+          {tipoLoteSel && (
+            <p className="text-[10px] text-muted mt-1 font-mono">
+              EPC: A100 <span className="text-primary">{tipoLoteSel.codigo}</span> SSSSSSSS 00000000
+            </p>
+          )}
+        </div>
+
+        {/* controles leitor */}
+        <LeitorStatusBar status={status} info={info} erro={erro} />
+        <div className="flex flex-wrap gap-2 mt-3">
+          {podeConectar ? (
+            <button
+              onClick={handleConectarLote}
+              className="px-4 py-2 text-sm bg-primary/15 text-primary border border-primary/30 rounded-lg hover:bg-primary/20 transition"
+            >
+              Conectar leitor
+            </button>
+          ) : (
+            <button
+              onClick={() => { desconectar(); limpar(); setResultLote(null) }}
+              className="px-4 py-2 text-sm bg-white/[0.06] text-muted border border-white/[0.08] rounded-lg hover:text-rose-400 hover:border-rose-500/30 transition"
+            >
+              Desconectar
+            </button>
+          )}
+          {podeLer && (
+            <button
+              onClick={handleIniciarLote}
+              disabled={!tipoLoteId}
+              className="px-4 py-2 text-sm bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 rounded-lg hover:bg-emerald-500/20 transition disabled:opacity-40"
+            >
+              Iniciar leitura
+            </button>
+          )}
+          {lendo && (
+            <button
+              onClick={parar}
+              className="px-4 py-2 text-sm bg-amber-500/15 text-amber-400 border border-amber-500/30 rounded-lg hover:bg-amber-500/20 transition animate-pulse"
+            >
+              Parar
+            </button>
+          )}
+        </div>
+
+        {/* contador em tempo real */}
+        {(totalUnico > 0 || lendo) && (
+          <div className="mt-4 flex items-center gap-4">
+            <div className="flex items-center gap-2">
+              <span className="text-3xl font-bold text-primary">{totalUnico}</span>
+              <div>
+                <p className="text-xs text-dim font-medium">etiquetas lidas</p>
+                {totalIgnorado > 0 && <p className="text-[10px] text-muted">{totalIgnorado} ignoradas (fora do sistema)</p>}
+              </div>
+            </div>
+            {lendo && <span className="text-xs text-primary animate-pulse ml-auto">lendo…</span>}
+          </div>
+        )}
+
+        {/* lista resumida de tags */}
+        {totalUnico > 0 && !lendo && (
+          <div className="mt-3 max-h-40 overflow-y-auto space-y-0.5 border border-white/[0.06] rounded-xl p-2">
+            {tagsValidas.map(tag => (
+              <div key={tag.epc} className="flex items-center gap-2 py-1 text-xs">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 flex-shrink-0" />
+                <span className="font-mono text-muted flex-1 truncate">{fmtEpc(tag.epc)}</span>
+                <span className="text-muted">{tag.contagem}×</span>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* botão registrar */}
+        {podeRegistrar && (
+          <div className="mt-4 flex items-center gap-3">
+            <button
+              onClick={handleRegistrarLote}
+              disabled={registrando}
+              className="px-5 py-2.5 text-sm bg-primary text-white rounded-lg hover:bg-primary/90 transition font-medium disabled:opacity-50"
+            >
+              {registrando
+                ? 'Registrando…'
+                : `Cadastrar ${totalUnico} etiqueta${totalUnico !== 1 ? 's' : ''} como ${tipoLoteSel?.nome}`}
+            </button>
+          </div>
+        )}
+
+        {/* resultado */}
+        {resultadoLote && (
+          <div className="mt-4 flex items-center gap-3 p-3 bg-emerald-500/10 border border-emerald-500/20 rounded-xl">
+            <span className="text-xl">✅</span>
+            <div>
+              <p className="text-sm font-medium text-emerald-400">
+                {resultadoLote.criadas} peças cadastradas
+                {resultadoLote.atualizadas > 0 && `, ${resultadoLote.atualizadas} atualizadas`}
+              </p>
+              <p className="text-xs text-muted">{resultadoLote.total} etiquetas processadas no total</p>
+            </div>
+            <button
+              onClick={() => setResultLote(null)}
+              className="ml-auto text-xs text-muted hover:text-dim"
+            >
+              Novo lote
+            </button>
+          </div>
+        )}
+
+        {tipos.length === 0 && (
+          <p className="text-xs text-amber-400 mt-3">
+            Crie um tipo de enxoval primeiro (seção abaixo) para poder cadastrar etiquetas.
+          </p>
+        )}
+      </Card>
+
+      {/* ── gerenciar tipos ── */}
+      <Card title={editando ? 'Editar tipo' : 'Tipos de enxoval'}>
         <div className="grid grid-cols-1 xl:grid-cols-4 gap-3">
           <div className="xl:col-span-2">
             <label className="text-xs text-muted mb-1 block">Nome</label>
@@ -578,15 +752,13 @@ function TabCadastro({ tipos, onRefresh }) {
         <p className="text-[10px] text-muted mt-2">
           O código EPC identifica o tipo na etiqueta RFID: A100 <strong>{form.codigo || 'XXXX'}</strong> SSSSSSSS 00000000
         </p>
-      </Card>
 
-      {/* lista de tipos */}
-      {tipos.length > 0 && (
-        <Card title="Tipos cadastrados">
-          <div className="space-y-1">
+        {/* lista de tipos */}
+        {tipos.length > 0 && (
+          <div className="mt-4 pt-4 border-t border-white/[0.06] space-y-1">
             {tipos.map(tipo => (
               <div key={tipo.id} className="flex items-center gap-3 py-2 px-2 rounded-lg hover:bg-white/[0.03] transition">
-                <span className="w-3 h-3 rounded-full" style={{ background: tipo.cor }} />
+                <span className="w-3 h-3 rounded-full flex-shrink-0" style={{ background: tipo.cor }} />
                 <div className="flex-1 min-w-0">
                   <span className="text-sm text-dim">{tipo.nome}</span>
                   <span className="text-xs text-muted ml-2 font-mono">A100{tipo.codigo}</span>
@@ -596,24 +768,14 @@ function TabCadastro({ tipos, onRefresh }) {
                 </div>
                 {!tipo.ativo && <span className="text-[10px] text-muted border border-white/[0.08] px-1.5 rounded">inativo</span>}
                 <div className="flex gap-1">
-                  <button
-                    onClick={() => iniciarEdicao(tipo)}
-                    className="text-xs px-2 py-1 text-muted hover:text-primary transition"
-                  >
-                    Editar
-                  </button>
-                  <button
-                    onClick={() => excluir(tipo.id)}
-                    className="text-xs px-2 py-1 text-muted hover:text-rose-400 transition"
-                  >
-                    Excluir
-                  </button>
+                  <button onClick={() => iniciarEdicao(tipo)} className="text-xs px-2 py-1 text-muted hover:text-primary transition">Editar</button>
+                  <button onClick={() => excluir(tipo.id)} className="text-xs px-2 py-1 text-muted hover:text-rose-400 transition">Excluir</button>
                 </div>
               </div>
             ))}
           </div>
-        </Card>
-      )}
+        )}
+      </Card>
     </div>
   )
 }
@@ -742,6 +904,7 @@ export default function Enxoval() {
       {tab === 'cadastro' && (
         <TabCadastro
           tipos={tipos}
+          rfidState={rfidState}
           onRefresh={() => { carregarTipos(); carregarDashboard() }}
         />
       )}
