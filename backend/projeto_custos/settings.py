@@ -42,6 +42,7 @@ INSTALLED_APPS = [
     'apps.tv.apps.TvConfig',
     'apps.desperdicio.apps.DesperdicioConfig',
     'apps.imobilizado.apps.ImobilizadoConfig',
+    'apps.enxoval.apps.EnxovalConfig',
 ]
 
 MIDDLEWARE = [

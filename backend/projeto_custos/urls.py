@@ -115,6 +115,9 @@ urlpatterns = [
     # Imobilizado (controle patrimonial)
     path('api/imobilizado/', include('apps.imobilizado.urls')),
 
+    # Enxoval (controle com RFID)
+    path('api/enxoval/', include('apps.enxoval.urls')),
+
     # Serve arquivos de media em produção também
     re_path(r'^uploads/(?P<path>.*)$', serve, {'document_root': settings.MEDIA_ROOT}),
 

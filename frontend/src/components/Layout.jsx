@@ -16,6 +16,7 @@ const TITLES = {
   '/eventos':   '📅 Eventos',
   '/desperdicio':  '🍽️ Food Intelligence',
   '/imobilizado':  '🏷️ Imobilizado',
+  '/enxoval':      '🧺 Controle de Enxoval',
 }
 
 function LayoutInner() {

@@ -21,6 +21,7 @@ import FoodIntelligence from './pages/FoodIntelligence'
 import FoodIntelligenceRegistrar from './pages/FoodIntelligenceRegistrar'
 import Imobilizado from './pages/Imobilizado'
 import ImobilizadoContagem from './pages/ImobilizadoContagem'
+import Enxoval from './pages/Enxoval'
 
 export default function App() {
   return (
@@ -58,6 +59,7 @@ export default function App() {
           <Route path="/tv-manager"   element={<TVManager />} />
           <Route path="/desperdicio" element={<FoodIntelligence />} />
           <Route path="/imobilizado" element={<Imobilizado />} />
+          <Route path="/enxoval"    element={<Enxoval />} />
         </Route>
 
         {/* Contagem de imobilizado — sem sidebar, sem login (link público via UUID) */}
