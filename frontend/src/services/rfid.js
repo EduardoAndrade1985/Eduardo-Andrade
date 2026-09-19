@@ -209,23 +209,96 @@ class RfidMock {
 }
 
 // ---------------------------------------------------------------
+// IMPLEMENTAÇÃO CAPACITOR (Android + SDK Zebra)
+// ---------------------------------------------------------------
+//
+// Ativa automaticamente quando o app roda dentro do Capacitor Android.
+// O plugin ZebraRfidPlugin.java + ZebraRfidHandler.java devem estar
+// instalados no projeto Android (ver rfid-plugin/ na raiz do projeto).
+
+class RfidCapacitorWrapped {
+  constructor(plugin) {
+    this.plugin          = plugin;
+    this.ouvintesTag     = new Set();
+    this.ouvintesStatus  = new Set();
+    this._removeListeners = null;
+  }
+
+  async conectar() {
+    // Registra os listeners de eventos antes de conectar
+    const [h1, h2] = await Promise.all([
+      this.plugin.addListener("tagRead", (d) => {
+        this.ouvintesTag.forEach((cb) =>
+          cb({ epc: d.epc, rssi: d.rssi, contagem: 1, lidaEm: new Date().toISOString() })
+        );
+      }),
+      this.plugin.addListener("statusChanged", (d) => {
+        this.ouvintesStatus.forEach((cb) =>
+          cb({ conectado: d.connected, bateria: d.battery, mensagem: d.message })
+        );
+      }),
+    ]);
+    this._removeListeners = () => { h1.remove(); h2.remove(); };
+
+    const r = await this.plugin.conectar();
+    return { nome: r.nome, serial: r.serial, bateria: r.bateria };
+  }
+
+  async desconectar() {
+    await this.plugin.desconectar();
+    if (this._removeListeners) { this._removeListeners(); this._removeListeners = null; }
+  }
+
+  async estaConectado() {
+    const r = await this.plugin.estaConectado();
+    return r.connected;
+  }
+
+  async iniciarInventario(opcoes = {}) {
+    await this.plugin.iniciarInventario(opcoes);
+  }
+
+  async pararInventario() {
+    await this.plugin.pararInventario();
+  }
+
+  async gravarEpc({ epcAtual, epcNovo }) {
+    await this.plugin.gravarEpc({ epcAtual, epcNovo });
+  }
+
+  async configurar(opcoes = {}) {
+    await this.plugin.configurar(opcoes);
+  }
+
+  onTag(cb) {
+    this.ouvintesTag.add(cb);
+    return () => this.ouvintesTag.delete(cb);
+  }
+
+  onStatus(cb) {
+    this.ouvintesStatus.add(cb);
+    return () => this.ouvintesStatus.delete(cb);
+  }
+}
+
+// ---------------------------------------------------------------
 // SELEÇÃO DA IMPLEMENTAÇÃO
 // ---------------------------------------------------------------
 
 function criarLeitor() {
-  // Quando o app rodar dentro do Capacitor em Android, usa o plugin nativo.
-  const nativo =
+  // Plugin nativo registrado pelo Capacitor (Android com SDK Zebra)
+  const pluginNativo =
     typeof window !== "undefined" &&
     window.Capacitor?.isNativePlatform?.() &&
-    window.Capacitor?.Plugins?.Rfid;
+    window.Capacitor?.Plugins?.ZebraRfid;
 
-  if (nativo) {
-    // Implementação real, criada quando o plugin estiver pronto.
-    // import { RfidCapacitor } from "./rfid.capacitor";
-    // return new RfidCapacitor();
-    console.warn("[rfid] Plugin nativo detectado mas ainda não implementado. Usando mock.");
+  if (pluginNativo) {
+    console.log("[rfid] Usando leitor nativo Zebra (Capacitor Android)");
+    return new RfidCapacitorWrapped(pluginNativo);
   }
 
+  // Navegador: mock para desenvolvimento e demonstração
+  console.log("[rfid] Usando mock (browser sem Capacitor)");
   return new RfidMock();
 }
 

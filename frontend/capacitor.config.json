@@ -1,0 +1,11 @@
+{
+  "appId": "com.rphub.app",
+  "appName": "RPHub",
+  "webDir": "dist",
+  "android": {
+    "allowMixedContent": true
+  },
+  "plugins": {
+    "SplashScreen": { "launchAutoHide": false }
+  }
+}
