@@ -22,6 +22,8 @@ import com.zebra.rfid.api3.STATUS_EVENT_TYPE;
 import com.zebra.rfid.api3.STOP_TRIGGER_TYPE;
 import com.zebra.rfid.api3.TagAccess;
 import com.zebra.rfid.api3.TagData;
+import com.zebra.rfid.api3.StartTrigger;
+import com.zebra.rfid.api3.StopTrigger;
 import com.zebra.rfid.api3.TriggerInfo;
 
 import java.util.ArrayList;
@@ -56,7 +58,7 @@ public class ZebraRfidHandler implements RfidEventsListener {
 
                     if (lista == null || lista.isEmpty()) {
                         readers.Dispose();
-                        readers = new Readers(activity, ENUM_TRANSPORT.USB);
+                        readers = new Readers(activity, ENUM_TRANSPORT.SERVICE_USB);
                         lista   = readers.GetAvailableRFIDReaderList();
                     }
 
@@ -83,13 +85,16 @@ public class ZebraRfidHandler implements RfidEventsListener {
                     reader.Config.Antennas.setAntennaRfConfig(1, cfg);
 
                     // Trigger por software: inicia/para via código
-                    TriggerInfo trig = new TriggerInfo();
-                    trig.StartTrigger.setTriggerType(START_TRIGGER_TYPE.START_TRIGGER_TYPE_IMMEDIATE);
-                    trig.StopTrigger.setTriggerType(STOP_TRIGGER_TYPE.STOP_TRIGGER_TYPE_IMMEDIATE);
-                    reader.Config.setTriggerInfo(trig);
+                    StartTrigger startTrigger = new StartTrigger();
+                    startTrigger.setTriggerType(START_TRIGGER_TYPE.START_TRIGGER_TYPE_IMMEDIATE);
+                    reader.Config.setStartTrigger(startTrigger);
+
+                    StopTrigger stopTrigger = new StopTrigger();
+                    stopTrigger.setTriggerType(STOP_TRIGGER_TYPE.STOP_TRIGGER_TYPE_IMMEDIATE);
+                    reader.Config.setStopTrigger(stopTrigger);
 
                     String serial = "";
-                    try { serial = reader.ReaderCapabilities.SerialNumber; }
+                    try { serial = reader.ReaderCapabilities.getSerialNumber(); }
                     catch (Exception ignored) {}
 
                     JSObject r = new JSObject();
@@ -233,7 +238,7 @@ public class ZebraRfidHandler implements RfidEventsListener {
                     wp.setWriteDataLength(epcNovo.length() / 4);
                     reader.Actions.TagAccess.writeWait(
                         (epcAtual == null || epcAtual.isEmpty()) ? null : epcAtual,
-                        wp, null);
+                        wp, null, null);
                     return null;
                 } catch (Exception e) {
                     return e.getMessage();

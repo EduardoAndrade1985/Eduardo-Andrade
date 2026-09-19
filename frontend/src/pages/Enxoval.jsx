@@ -65,17 +65,35 @@ function LeitorStatusBar({ status, info, erro }) {
     [StatusLeitor.LENDO]:        'text-primary',
     [StatusLeitor.ERRO]:         'text-rose-400',
   }
+
+  const isSimulado = info?.serial?.startsWith('MOCK') || info?.nome?.includes('simulado')
+  const nomeLabel  = info?.nome ? ` · ${info.nome}` : ''
+  const bateriaLabel = info?.bateria != null ? ` · 🔋${info.bateria}%` : ''
+
   const LABEL = {
     [StatusLeitor.DESCONECTADO]: 'Leitor desconectado',
     [StatusLeitor.CONECTANDO]:   'Conectando…',
-    [StatusLeitor.CONECTADO]:    `Conectado${info?.nome ? ` · ${info.nome}` : ''}${info?.bateria != null ? ` · ${info.bateria}%` : ''}`,
-    [StatusLeitor.LENDO]:        'Lendo…',
+    [StatusLeitor.CONECTADO]:    `Conectado${nomeLabel}${bateriaLabel}`,
+    [StatusLeitor.LENDO]:        `Lendo…${nomeLabel}`,
     [StatusLeitor.ERRO]:         `Erro: ${erro}`,
   }
+
+  const conectadoOuLendo = status === StatusLeitor.CONECTADO || status === StatusLeitor.LENDO
+
   return (
-    <div className="flex items-center gap-2 text-xs">
-      <span className={`w-2 h-2 rounded-full ${status === StatusLeitor.LENDO ? 'bg-primary animate-pulse' : 'bg-current'} ${COR[status]}`} />
+    <div className="flex items-center gap-2 text-xs flex-wrap">
+      <span className={`w-2 h-2 rounded-full flex-shrink-0 ${status === StatusLeitor.LENDO ? 'bg-primary animate-pulse' : 'bg-current'} ${COR[status]}`} />
       <span className={COR[status]}>{LABEL[status]}</span>
+      {conectadoOuLendo && isSimulado && (
+        <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-amber-500/20 text-amber-400 border border-amber-500/40 tracking-wide">
+          SIMULADO
+        </span>
+      )}
+      {conectadoOuLendo && !isSimulado && (
+        <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-emerald-500/20 text-emerald-400 border border-emerald-500/40 tracking-wide">
+          REAL
+        </span>
+      )}
     </div>
   )
 }
