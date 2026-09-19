@@ -153,7 +153,7 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 # ── CORS ──────────────────────────────────────────────────────────────────────
 FRONTEND_URL = os.environ.get('FRONTEND_URL', '')
 # Origens sempre permitidas (app Capacitor Android)
-_EXTRA_ORIGINS = ['capacitor://localhost', 'http://localhost']
+_EXTRA_ORIGINS = ['capacitor://localhost', 'http://localhost', 'https://localhost']
 if FRONTEND_URL:
     CORS_ALLOW_ALL_ORIGINS = False
     CORS_ALLOWED_ORIGINS   = [u.strip() for u in FRONTEND_URL.split(',')] + _EXTRA_ORIGINS
