@@ -17,7 +17,7 @@ if not SECRET_KEY:
     SECRET_KEY = 'django-insecure-custos-dashboard-dev-key-apenas-local'
 
 _allowed = os.environ.get('ALLOWED_HOSTS', '')
-ALLOWED_HOSTS = _allowed.split(',') if _allowed else ['localhost', '127.0.0.1', '0.0.0.0']
+ALLOWED_HOSTS = _allowed.split(',') if _allowed else ['localhost', '127.0.0.1', '0.0.0.0', '192.168.15.9']
 
 X_FRAME_OPTIONS = 'SAMEORIGIN'
 
@@ -175,7 +175,11 @@ CORS_ALLOW_HEADERS = [
 ]
 
 # ── CSRF ──────────────────────────────────────────────────────────────────────
-CSRF_TRUSTED_ORIGINS = ['http://localhost:3000', 'http://localhost:8000']
+CSRF_TRUSTED_ORIGINS = [
+    'http://localhost:3000', 'http://localhost:8000',
+    'http://192.168.15.9:8000',
+    'capacitor://localhost',  # app Capacitor Android
+]
 _csrf_extra = os.environ.get('CSRF_TRUSTED_ORIGINS', '')
 if _csrf_extra:
     CSRF_TRUSTED_ORIGINS += [u.strip() for u in _csrf_extra.split(',')]
