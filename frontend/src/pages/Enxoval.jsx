@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from 'react'
 import api from '../services/api'
 import { useEmpresa } from '../contexts/EmpresaContext'
 import { useRfid } from '../hooks/useRfid'
-import { StatusLeitor } from '../services/rfid'
+import { StatusLeitor, montarEpc } from '../services/rfid'
 
 // ── helpers ───────────────────────────────────────────────────────────────────
 const EPC_PREFIXO = 'A100'
@@ -491,20 +491,50 @@ function TabCadastro({ tipos, onRefresh, rfidState }) {
   const [salvando, setSalvando] = useState(false)
   const [editando, setEditando] = useState(null)
 
-  // lote
+  // lote (leitura de tags já gravadas)
   const [tipoLoteId, setTipoLoteId]   = useState('')
   const [registrando, setRegistrando] = useState(false)
   const [resultadoLote, setResultLote] = useState(null)
 
+  // programar (gravar EPC em tags em branco)
+  const [progTipoId, setProgTipoId]       = useState('')
+  const [proximoSerial, setProximoSerial] = useState(1)
+  const [gravando, setGravando]           = useState(false)
+  const [programadas, setProgramadas]     = useState([])
+
   const {
     status, info, erro, lendo, conectado,
-    tagsValidas, totalUnico, totalIgnorado,
-    conectar, desconectar, iniciar, parar, limpar, paraApi,
+    tags, tagsValidas, totalUnico, totalIgnorado,
+    conectar, desconectar, iniciar, parar, limpar, paraApi, gravarEpc,
   } = rfidState
 
   const podeConectar  = status === StatusLeitor.DESCONECTADO || status === StatusLeitor.ERRO
   const podeLer       = conectado && !lendo
   const podeRegistrar = conectado && !lendo && totalUnico > 0 && tipoLoteId && !resultadoLote
+
+  // ── programar: calcula próximo serial quando tipo muda ────────────────────
+  // montarEpc lança se o código do tipo não for hexadecimal. Como isso roda no
+  // render, a exceção derrubaria a página inteira — daí o try.
+  const tipoPrograma = tipos.find(t => String(t.id) === String(progTipoId))
+  let epcProximo = null
+  let epcErro    = null
+  if (tipoPrograma) {
+    try {
+      epcProximo = montarEpc({ prefixo: 'A100', tipoCodigo: tipoPrograma.codigo, serial: proximoSerial })
+    } catch {
+      epcErro = `O código "${tipoPrograma.codigo}" do tipo ${tipoPrograma.nome} não é hexadecimal de 4 dígitos (0-9, A-F). Corrija o tipo para poder gravar etiquetas.`
+    }
+  }
+
+  useEffect(() => {
+    if (!progTipoId) return
+    api.get(`/enxoval/pecas/?tipo=${progTipoId}`)
+      .then(({ data }) => {
+        const max = (data.pecas || []).reduce((m, p) => Math.max(m, p.serial || 0), 0)
+        setProximoSerial(max + 1)
+      })
+      .catch(() => setProximoSerial(1))
+  }, [progTipoId])
 
   async function handleConectarLote() {
     try { await conectar() } catch {}
@@ -514,6 +544,22 @@ function TabCadastro({ tipos, onRefresh, rfidState }) {
     limpar()
     setResultLote(null)
     try { await iniciar() } catch {}
+  }
+
+  async function handleGravar() {
+    if (!epcProximo || !conectado || gravando) return
+    setGravando(true)
+    try {
+      await gravarEpc({ epcAtual: '', epcNovo: epcProximo })
+      await api.post('/enxoval/pecas/lote/', { tipo_id: progTipoId, epcs: [epcProximo] })
+      setProgramadas(prev => [...prev, epcProximo])
+      setProximoSerial(s => s + 1)
+      onRefresh()
+    } catch (e) {
+      alert(e.message || e.response?.data?.erro || 'Erro ao gravar etiqueta')
+    } finally {
+      setGravando(false)
+    }
   }
 
   async function handleRegistrarLote() {
@@ -573,6 +619,86 @@ function TabCadastro({ tipos, onRefresh, rfidState }) {
 
   return (
     <div className="space-y-4">
+
+      {/* ── programar etiquetas em branco ── */}
+      <Card title="Programar etiquetas em branco">
+        <p className="text-xs text-muted mb-4">
+          Grave o EPC do sistema em etiquetas RFID virgens. Posicione <strong className="text-dim">uma etiqueta por vez</strong> bem próxima ao leitor e clique em Gravar.
+        </p>
+
+        <div className="mb-4">
+          <label className="text-xs text-muted mb-1 block">Tipo de enxoval</label>
+          <select
+            value={progTipoId}
+            onChange={e => { setProgTipoId(e.target.value); setProgramadas([]) }}
+            className="w-full max-w-xs bg-white/[0.04] border border-white/[0.08] rounded-lg px-3 py-2 text-sm text-dim focus:outline-none focus:border-primary/40"
+          >
+            <option value="">Selecione…</option>
+            {tipos.map(t => <option key={t.id} value={t.id}>{t.nome}</option>)}
+          </select>
+        </div>
+
+        {epcProximo && (
+          <div className="mb-4 p-3 bg-white/[0.03] rounded-xl border border-white/[0.06]">
+            <p className="text-[10px] text-muted mb-1">Próximo EPC a gravar — serial #{proximoSerial}</p>
+            <p className="text-sm font-mono text-primary tracking-wider">{fmtEpc(epcProximo)}</p>
+          </div>
+        )}
+
+        {epcErro && (
+          <div className="mb-4 p-3 bg-amber-500/10 rounded-xl border border-amber-500/30">
+            <p className="text-xs text-amber-400">{epcErro}</p>
+          </div>
+        )}
+
+        <LeitorStatusBar status={status} info={info} erro={erro} />
+        <div className="flex flex-wrap gap-2 mt-3">
+          {podeConectar ? (
+            <button
+              onClick={handleConectarLote}
+              className="px-4 py-2 text-sm bg-primary/15 text-primary border border-primary/30 rounded-lg hover:bg-primary/20 transition"
+            >
+              Conectar leitor
+            </button>
+          ) : (
+            <button
+              onClick={() => { desconectar(); setProgramadas([]) }}
+              className="px-4 py-2 text-sm bg-white/[0.06] text-muted border border-white/[0.08] rounded-lg hover:text-rose-400 hover:border-rose-500/30 transition"
+            >
+              Desconectar
+            </button>
+          )}
+
+          {conectado && epcProximo && !lendo && (
+            <button
+              onClick={handleGravar}
+              disabled={gravando}
+              className="px-5 py-2 text-sm bg-primary text-white rounded-lg hover:bg-primary/90 transition font-medium disabled:opacity-50"
+            >
+              {gravando ? 'Gravando…' : 'Gravar etiqueta'}
+            </button>
+          )}
+        </div>
+
+        {programadas.length > 0 && (
+          <div className="mt-4 border-t border-white/[0.06] pt-3">
+            <p className="text-xs text-emerald-400 font-medium mb-2">{programadas.length} etiqueta{programadas.length !== 1 ? 's' : ''} programada{programadas.length !== 1 ? 's' : ''} nesta sessão</p>
+            <div className="space-y-0.5 max-h-36 overflow-y-auto">
+              {programadas.map(epc => (
+                <div key={epc} className="flex items-center gap-2 text-xs">
+                  <span className="text-emerald-400 flex-shrink-0">✓</span>
+                  <span className="font-mono text-muted">{fmtEpc(epc)}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {tipos.length === 0 && (
+          <p className="text-xs text-amber-400 mt-3">Crie um tipo de enxoval primeiro (seção abaixo).</p>
+        )}
+      </Card>
+
       {/* ── cadastro em lote via RFID ── */}
       <Card title="Cadastro em lote via RFID">
         <p className="text-xs text-muted mb-4">
@@ -637,27 +763,28 @@ function TabCadastro({ tipos, onRefresh, rfidState }) {
         </div>
 
         {/* contador em tempo real */}
-        {(totalUnico > 0 || lendo) && (
+        {(tags.length > 0 || lendo) && (
           <div className="mt-4 flex items-center gap-4">
             <div className="flex items-center gap-2">
               <span className="text-3xl font-bold text-primary">{totalUnico}</span>
               <div>
-                <p className="text-xs text-dim font-medium">etiquetas lidas</p>
-                {totalIgnorado > 0 && <p className="text-[10px] text-muted">{totalIgnorado} ignoradas (fora do sistema)</p>}
+                <p className="text-xs text-dim font-medium">do sistema</p>
+                {totalIgnorado > 0 && <p className="text-[10px] text-muted">{totalIgnorado} em branco / de terceiros</p>}
               </div>
             </div>
             {lendo && <span className="text-xs text-primary animate-pulse ml-auto">lendo…</span>}
           </div>
         )}
 
-        {/* lista resumida de tags */}
-        {totalUnico > 0 && !lendo && (
+        {/* lista de tags — mostra todas, para dar retorno visual da leitura */}
+        {tags.length > 0 && !lendo && (
           <div className="mt-3 max-h-40 overflow-y-auto space-y-0.5 border border-white/[0.06] rounded-xl p-2">
-            {tagsValidas.map(tag => (
+            {tags.map(tag => (
               <div key={tag.epc} className="flex items-center gap-2 py-1 text-xs">
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 flex-shrink-0" />
-                <span className="font-mono text-muted flex-1 truncate">{fmtEpc(tag.epc)}</span>
-                <span className="text-muted">{tag.contagem}×</span>
+                <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${tag.doSistema ? 'bg-emerald-400' : 'bg-white/20'}`} />
+                <span className={`font-mono flex-1 truncate ${tag.doSistema ? 'text-muted' : 'text-muted/40'}`}>{fmtEpc(tag.epc)}</span>
+                {!tag.doSistema && <span className="text-[10px] text-muted/40 flex-shrink-0">em branco</span>}
+                <span className="text-muted flex-shrink-0">{tag.contagem}×</span>
               </div>
             ))}
           </div>
@@ -721,7 +848,7 @@ function TabCadastro({ tipos, onRefresh, rfidState }) {
             <label className="text-xs text-muted mb-1 block">Código EPC (4 hex)</label>
             <input
               value={form.codigo}
-              onChange={e => setForm(f => ({ ...f, codigo: e.target.value.toUpperCase().slice(0, 4) }))}
+              onChange={e => setForm(f => ({ ...f, codigo: e.target.value.toUpperCase().replace(/[^0-9A-F]/g, '').slice(0, 4) }))}
               placeholder="0001"
               maxLength={4}
               className="w-full bg-white/[0.04] border border-white/[0.08] rounded-lg px-3 py-2 text-sm font-mono text-dim focus:outline-none focus:border-primary/40"
@@ -800,7 +927,7 @@ function TabCadastro({ tipos, onRefresh, rfidState }) {
 
 // ── Página principal ──────────────────────────────────────────────────────────
 export default function Enxoval() {
-  const { empresa } = useEmpresa()
+  const { empresaAtiva: empresa } = useEmpresa()
   const [tab, setTab] = useState('dashboard')
 
   const [dashboard, setDashboard]     = useState(null)

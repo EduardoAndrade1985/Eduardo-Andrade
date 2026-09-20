@@ -8,6 +8,7 @@ import com.getcapacitor.JSObject;
 import com.getcapacitor.PluginCall;
 import com.zebra.rfid.api3.Antennas;
 import com.zebra.rfid.api3.ENUM_TRANSPORT;
+import com.zebra.rfid.api3.HANDHELD_TRIGGER_EVENT_TYPE;
 import com.zebra.rfid.api3.InvalidUsageException;
 import com.zebra.rfid.api3.MEMORY_BANK;
 import com.zebra.rfid.api3.OperationFailureException;
@@ -17,14 +18,9 @@ import com.zebra.rfid.api3.Readers;
 import com.zebra.rfid.api3.RfidEventsListener;
 import com.zebra.rfid.api3.RfidReadEvents;
 import com.zebra.rfid.api3.RfidStatusEvents;
-import com.zebra.rfid.api3.START_TRIGGER_TYPE;
 import com.zebra.rfid.api3.STATUS_EVENT_TYPE;
-import com.zebra.rfid.api3.STOP_TRIGGER_TYPE;
 import com.zebra.rfid.api3.TagAccess;
 import com.zebra.rfid.api3.TagData;
-import com.zebra.rfid.api3.StartTrigger;
-import com.zebra.rfid.api3.StopTrigger;
-import com.zebra.rfid.api3.TriggerInfo;
 
 import java.util.ArrayList;
 
@@ -55,11 +51,13 @@ public class ZebraRfidHandler implements RfidEventsListener {
                     // Tenta Bluetooth primeiro, depois USB
                     readers = new Readers(activity, ENUM_TRANSPORT.BLUETOOTH);
                     ArrayList<ReaderDevice> lista = readers.GetAvailableRFIDReaderList();
+                    Log.d(TAG, "BT readers found: " + (lista != null ? lista.size() : 0));
 
                     if (lista == null || lista.isEmpty()) {
                         readers.Dispose();
                         readers = new Readers(activity, ENUM_TRANSPORT.SERVICE_USB);
                         lista   = readers.GetAvailableRFIDReaderList();
+                        Log.d(TAG, "USB readers found: " + (lista != null ? lista.size() : 0));
                     }
 
                     if (lista == null || lista.isEmpty()) {
@@ -69,33 +67,38 @@ public class ZebraRfidHandler implements RfidEventsListener {
 
                     readerDevice = lista.get(0);
                     reader       = readerDevice.getRFIDReader();
+                    Log.d(TAG, "Conectando a: " + readerDevice.getName());
                     reader.connect();
+                    Log.d(TAG, "Conectado com sucesso");
 
-                    // Registra ouvintes de eventos
+                    // ── Eventos ──────────────────────────────────────────────
                     reader.Events.addEventsListener(ZebraRfidHandler.this);
-                    reader.Events.setHandheldEvent(true);
-                    reader.Events.setTagReadEvent(true);
-                    reader.Events.setAttachTagDataWithReadEvent(false);
+                    reader.Events.setHandheldEvent(true);        // gatilho físico
+                    reader.Events.setTagReadEvent(true);         // leituras de tag
+                    reader.Events.setAttachTagDataWithReadEvent(true); // tag inclusa no evento
+                    reader.Events.setInventoryStartEvent(true);  // log de início
+                    reader.Events.setInventoryStopEvent(true);   // log de fim
+                    reader.Events.setBatteryEvent(true);         // nível de bateria
+                    Log.d(TAG, "Eventos registrados");
 
-                    // Potência da antena: máximo (270 = 27.0 dBm)
-                    Antennas.AntennaRfConfig cfg = reader.Config.Antennas.getAntennaRfConfig(1);
-                    cfg.setTransmitPowerIndex(270);
-                    cfg.setrfModeTableIndex(0);
-                    cfg.setTari(0);
-                    reader.Config.Antennas.setAntennaRfConfig(1, cfg);
+                    // ── Potência da antena (falha não é fatal) ────────────────
+                    try {
+                        Antennas.AntennaRfConfig cfg = reader.Config.Antennas.getAntennaRfConfig(1);
+                        cfg.setTransmitPowerIndex(270);
+                        cfg.setrfModeTableIndex(0);
+                        cfg.setTari(0);
+                        reader.Config.Antennas.setAntennaRfConfig(1, cfg);
+                        Log.d(TAG, "Antena configurada: 27 dBm");
+                    } catch (Exception e) {
+                        Log.w(TAG, "Antenna config skipped: " + e.getMessage());
+                    }
 
-                    // Trigger por software: inicia/para via código
-                    StartTrigger startTrigger = new StartTrigger();
-                    startTrigger.setTriggerType(START_TRIGGER_TYPE.START_TRIGGER_TYPE_IMMEDIATE);
-                    reader.Config.setStartTrigger(startTrigger);
-
-                    StopTrigger stopTrigger = new StopTrigger();
-                    stopTrigger.setTriggerType(STOP_TRIGGER_TYPE.STOP_TRIGGER_TYPE_IMMEDIATE);
-                    reader.Config.setStopTrigger(stopTrigger);
+                    // Não configuramos triggers — usamos os padrões do SDK e controlamos
+                    // o inventário via Inventory.perform() / Inventory.stop() por software.
+                    Log.d(TAG, "Triggers: usando padrão do SDK");
 
                     String serial = "";
-                    try { serial = reader.ReaderCapabilities.getSerialNumber(); }
-                    catch (Exception ignored) {}
+                    try { serial = reader.ReaderCapabilities.getSerialNumber(); } catch (Exception ignored) {}
 
                     JSObject r = new JSObject();
                     r.put("nome",    readerDevice.getName());
@@ -174,9 +177,13 @@ public class ZebraRfidHandler implements RfidEventsListener {
             @Override
             protected String doInBackground(Void... v) {
                 try {
+                    Log.d(TAG, "Chamando Inventory.perform()");
+                    plugin.notifyStatusChanged(true, 100, "Iniciando inventário…");
                     reader.Actions.Inventory.perform();
+                    Log.d(TAG, "Inventory.perform() retornou OK");
                     return null;
                 } catch (Exception e) {
+                    Log.e(TAG, "Inventory.perform() ERRO: " + e.getMessage());
                     return e.getMessage();
                 }
             }
@@ -184,9 +191,10 @@ public class ZebraRfidHandler implements RfidEventsListener {
             @Override
             protected void onPostExecute(String err) {
                 if (err == null) {
-                    plugin.notifyStatusChanged(true, 100, "Lendo…");
+                    plugin.notifyStatusChanged(true, 100, "Inventário em curso — aproxime as etiquetas");
                     call.resolve();
                 } else {
+                    plugin.notifyStatusChanged(true, 0, "Erro inventário: " + err);
                     call.reject(err);
                 }
             }
@@ -201,7 +209,10 @@ public class ZebraRfidHandler implements RfidEventsListener {
         new AsyncTask<Void, Void, Void>() {
             @Override
             protected Void doInBackground(Void... v) {
-                try { reader.Actions.Inventory.stop(); } catch (Exception ignored) {}
+                try {
+                    reader.Actions.Inventory.stop();
+                    Log.d(TAG, "Inventory stopped via app");
+                } catch (Exception ignored) {}
                 return null;
             }
 
@@ -234,13 +245,15 @@ public class ZebraRfidHandler implements RfidEventsListener {
                     wp.setWriteData(epcNovo);
                     wp.setWriteRetries(3);
                     wp.setMemoryBank(MEMORY_BANK.MEMORY_BANK_EPC);
-                    wp.setOffset(2);  // word offset: pula CRC e PC
+                    wp.setOffset(2);
                     wp.setWriteDataLength(epcNovo.length() / 4);
                     reader.Actions.TagAccess.writeWait(
                         (epcAtual == null || epcAtual.isEmpty()) ? null : epcAtual,
                         wp, null, null);
+                    Log.d(TAG, "EPC gravado: " + epcNovo);
                     return null;
                 } catch (Exception e) {
+                    Log.e(TAG, "Erro ao gravar EPC: " + e.getMessage());
                     return e.getMessage();
                 }
             }
@@ -260,7 +273,6 @@ public class ZebraRfidHandler implements RfidEventsListener {
         if (potencia != null && reader != null && reader.isConnected()) {
             try {
                 Antennas.AntennaRfConfig cfg = reader.Config.Antennas.getAntennaRfConfig(1);
-                // índice em 0.1 dBm (ex: 30 dBm → 300, mas max aceito é 270 = 27 dBm)
                 cfg.setTransmitPowerIndex(Math.min(potencia * 10, 270));
                 reader.Config.Antennas.setAntennaRfConfig(1, cfg);
             } catch (Exception e) {
@@ -274,30 +286,95 @@ public class ZebraRfidHandler implements RfidEventsListener {
 
     @Override
     public void eventReadNotify(RfidReadEvents e) {
-        // Chamado em background thread a cada burst de leituras
         try {
-            TagData[] tags = reader.Actions.getReadTags(100);
-            if (tags == null) return;
-            for (TagData tag : tags) {
-                String epc = tag.getTagID();
+            Log.d(TAG, "eventReadNotify disparado");
+
+            // Abordagem 1: tag direto no evento (setAttachTagDataWithReadEvent = true)
+            if (e.getReadEventData() != null && e.getReadEventData().tagData != null) {
+                TagData td = e.getReadEventData().tagData;
+                String epc = td.getTagID();
+                Log.d(TAG, "Tag do evento: " + epc + " RSSI:" + td.getPeakRSSI());
                 if (epc != null && !epc.isEmpty()) {
-                    plugin.notifyTagRead(epc.toUpperCase(), tag.getPeakRSSI());
+                    plugin.notifyTagRead(epc.toUpperCase(), (float) td.getPeakRSSI());
+                }
+            }
+
+            // Abordagem 2: drenar buffer (garante que nenhuma tag seja perdida)
+            TagData[] tags = reader.Actions.getReadTags(100);
+            if (tags != null) {
+                Log.d(TAG, "Tags do buffer: " + tags.length);
+                for (TagData tag : tags) {
+                    String epc = tag.getTagID();
+                    if (epc != null && !epc.isEmpty()) {
+                        Log.d(TAG, "Tag buffer: " + epc);
+                        plugin.notifyTagRead(epc.toUpperCase(), (float) tag.getPeakRSSI());
+                    }
                 }
             }
         } catch (Exception ex) {
-            Log.e(TAG, "Erro ao processar leitura: " + ex.getMessage());
+            Log.e(TAG, "Erro em eventReadNotify: " + ex.getMessage());
         }
     }
 
     @Override
     public void eventStatusNotify(RfidStatusEvents e) {
         STATUS_EVENT_TYPE type = e.StatusEventData.getStatusEventType();
+        Log.d(TAG, "Status event: " + type);
+
         if (type == STATUS_EVENT_TYPE.DISCONNECTION_EVENT) {
             reader = null;
             plugin.notifyStatusChanged(false, 0, "Leitor desconectado");
+
         } else if (type == STATUS_EVENT_TYPE.BATTERY_EVENT) {
-            int bat = e.StatusEventData.BatteryData.getLevel();
-            plugin.notifyStatusChanged(true, bat, "Bateria: " + bat + "%");
+            try {
+                int bat = e.StatusEventData.BatteryData.getLevel();
+                plugin.notifyStatusChanged(true, bat, "Bateria: " + bat + "%");
+            } catch (Exception ex) {
+                Log.w(TAG, "Battery event error: " + ex.getMessage());
+            }
+
+        } else if (type == STATUS_EVENT_TYPE.HANDHELD_TRIGGER_EVENT) {
+            // Gatilho físico do RFD8500: pressionar inicia inventário, soltar para
+            try {
+                HANDHELD_TRIGGER_EVENT_TYPE trigEvent =
+                    e.StatusEventData.HandheldTriggerEventData.getHandheldEvent();
+                Log.d(TAG, "Trigger event: " + trigEvent);
+
+                if (trigEvent == HANDHELD_TRIGGER_EVENT_TYPE.HANDHELD_TRIGGER_PRESSED) {
+                    // IMPORTANTE: nunca chamar Inventory.perform() diretamente no callback do SDK
+                    // pois causa deadlock — usar Thread separada.
+                    new Thread(() -> {
+                        try {
+                            reader.Actions.Inventory.perform();
+                            Log.d(TAG, "Inventory started by physical trigger");
+                        } catch (Exception ex) {
+                            Log.e(TAG, "Erro trigger start: " + ex.getMessage());
+                        }
+                    }).start();
+                    plugin.notifyStatusChanged(true, -1, "Lendo…");
+
+                } else if (trigEvent == HANDHELD_TRIGGER_EVENT_TYPE.HANDHELD_TRIGGER_RELEASED) {
+                    new Thread(() -> {
+                        try {
+                            reader.Actions.Inventory.stop();
+                            Log.d(TAG, "Inventory stopped by physical trigger");
+                        } catch (Exception ex) {
+                            Log.e(TAG, "Erro trigger stop: " + ex.getMessage());
+                        }
+                    }).start();
+                    plugin.notifyStatusChanged(true, -1, "Parado");
+                }
+            } catch (Exception ex) {
+                Log.e(TAG, "Erro handheld trigger event: " + ex.getMessage());
+            }
+
+        } else if (type == STATUS_EVENT_TYPE.INVENTORY_START_EVENT) {
+            Log.d(TAG, "INVENTORY STARTED — aguardando tags");
+            plugin.notifyInventarioState(true);
+
+        } else if (type == STATUS_EVENT_TYPE.INVENTORY_STOP_EVENT) {
+            Log.d(TAG, "INVENTORY STOPPED");
+            plugin.notifyInventarioState(false);
         }
     }
 }

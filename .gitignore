@@ -29,9 +29,12 @@ Thumbs.db
 
 # ── Arquivos locais que não são do projeto ────────────────
 *.xlsx
+*.xls
 /*.html
 Node/
 Relatórios/
+Zebra/
+frontend/android/.idea/
 api-integration.js
 iniciar.bat
 iniciar-frontend.bat

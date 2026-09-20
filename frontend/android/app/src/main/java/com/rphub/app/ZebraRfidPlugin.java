@@ -2,11 +2,13 @@ package com.rphub.app;
 
 import android.Manifest;
 import com.getcapacitor.JSObject;
+import com.getcapacitor.PermissionState;
 import com.getcapacitor.Plugin;
 import com.getcapacitor.PluginCall;
 import com.getcapacitor.PluginMethod;
 import com.getcapacitor.annotation.CapacitorPlugin;
 import com.getcapacitor.annotation.Permission;
+import com.getcapacitor.annotation.PermissionCallback;
 
 /**
  * Plugin Capacitor que expõe o leitor RFID Zebra RFD8500 para o JavaScript.
@@ -38,7 +40,21 @@ public class ZebraRfidPlugin extends Plugin {
 
     @PluginMethod
     public void conectar(PluginCall call) {
+        // Android 12+ exige permissão BLUETOOTH_CONNECT em runtime
+        if (getPermissionState("bluetoothConnect") != PermissionState.GRANTED) {
+            requestAllPermissions(call, "permissaoBluetooth");
+            return;
+        }
         handler.conectar(call);
+    }
+
+    @PermissionCallback
+    private void permissaoBluetooth(PluginCall call) {
+        if (getPermissionState("bluetoothConnect") == PermissionState.GRANTED) {
+            handler.conectar(call);
+        } else {
+            call.reject("Permissão Bluetooth negada. Vá em Configurações → Aplicativos → RPHub → Permissões e ative Bluetooth.");
+        }
     }
 
     @PluginMethod
@@ -73,17 +89,31 @@ public class ZebraRfidPlugin extends Plugin {
 
     // Chamados pelo handler para emitir eventos ao JavaScript
     public void notifyTagRead(String epc, float rssi) {
-        JSObject data = new JSObject();
-        data.put("epc",  epc);
-        data.put("rssi", rssi);
-        notifyListeners("tagRead", data);
+        // Dispara window CustomEvent diretamente no WebView — contorna qualquer
+        // problema de entrega do notifyListeners em Capacitor 8.
+        String safe = epc.replace("\\", "\\\\").replace("'", "\\'");
+        String js = "window.dispatchEvent(new CustomEvent('rfidTagRead',{detail:{epc:'" + safe + "',rssi:" + rssi + "}}))";
+        getBridge().getWebView().post(() ->
+            getBridge().getWebView().evaluateJavascript(js, null)
+        );
     }
 
     public void notifyStatusChanged(boolean connected, int battery, String message) {
-        JSObject data = new JSObject();
-        data.put("connected", connected);
-        data.put("battery",   battery);
-        data.put("message",   message);
-        notifyListeners("statusChanged", data);
+        String safeMsg = (message == null ? "" : message)
+            .replace("\\", "\\\\").replace("'", "\\'");
+        String js = "window.dispatchEvent(new CustomEvent('rfidStatusChanged',{detail:{connected:"
+            + connected + ",battery:" + battery + ",message:'" + safeMsg + "'}}))";
+        getBridge().getWebView().post(() ->
+            getBridge().getWebView().evaluateJavascript(js, null)
+        );
+    }
+
+    /** Estado do inventário — dispara também no gatilho físico, não só no botão do app. */
+    public void notifyInventarioState(boolean ativo) {
+        String js = "window.dispatchEvent(new CustomEvent('rfidInventario',{detail:{ativo:"
+            + ativo + "}}))";
+        getBridge().getWebView().post(() ->
+            getBridge().getWebView().evaluateJavascript(js, null)
+        );
     }
 }

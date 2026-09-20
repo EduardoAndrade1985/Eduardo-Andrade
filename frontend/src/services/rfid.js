@@ -224,21 +224,34 @@ class RfidCapacitorWrapped {
     this._removeListeners = null;
   }
 
+  _despacharTag(d) {
+    this.ouvintesTag.forEach((cb) =>
+      cb({ epc: d.epc, rssi: d.rssi, contagem: 1, lidaEm: new Date().toISOString() })
+    );
+  }
+
+  _despacharStatus(d) {
+    this.ouvintesStatus.forEach((cb) =>
+      cb({ conectado: d.connected, bateria: d.battery, mensagem: d.message })
+    );
+  }
+
   async conectar() {
-    // Registra os listeners de eventos antes de conectar
-    const [h1, h2] = await Promise.all([
-      this.plugin.addListener("tagRead", (d) => {
-        this.ouvintesTag.forEach((cb) =>
-          cb({ epc: d.epc, rssi: d.rssi, contagem: 1, lidaEm: new Date().toISOString() })
-        );
-      }),
-      this.plugin.addListener("statusChanged", (d) => {
-        this.ouvintesStatus.forEach((cb) =>
-          cb({ conectado: d.connected, bateria: d.battery, mensagem: d.message })
-        );
-      }),
-    ]);
-    this._removeListeners = () => { h1.remove(); h2.remove(); };
+    // O Android injeta CustomEvents diretamente no window (contorna problema
+    // de entrega do notifyListeners no Capacitor 8).
+    const onTag    = (e) => this._despacharTag(e.detail);
+    const onStatus = (e) => this._despacharStatus(e.detail);
+    // O inventário também começa pelo gatilho físico do leitor, não só pelo app.
+    const onInv    = (e) =>
+      this.ouvintesStatus.forEach((cb) => cb({ lendo: e.detail.ativo }));
+    window.addEventListener("rfidTagRead",       onTag);
+    window.addEventListener("rfidStatusChanged", onStatus);
+    window.addEventListener("rfidInventario",    onInv);
+    this._removeListeners = () => {
+      window.removeEventListener("rfidTagRead",       onTag);
+      window.removeEventListener("rfidStatusChanged", onStatus);
+      window.removeEventListener("rfidInventario",    onInv);
+    };
 
     const r = await this.plugin.conectar();
     return { nome: r.nome, serial: r.serial, bateria: r.bateria };
@@ -285,19 +298,26 @@ class RfidCapacitorWrapped {
 // SELEÇÃO DA IMPLEMENTAÇÃO
 // ---------------------------------------------------------------
 
-function criarLeitor() {
-  // Plugin nativo registrado pelo Capacitor (Android com SDK Zebra)
-  const pluginNativo =
-    typeof window !== "undefined" &&
-    window.Capacitor?.isNativePlatform?.() &&
-    window.Capacitor?.Plugins?.ZebraRfid;
+// registerPlugin é a API oficial do Capacitor 3+ para plugins customizados.
+// window.Capacitor.Plugins.X.addListener() NÃO mantém o callback vivo para
+// eventos futuros — por isso as tags chegavam no nativo mas não no JS.
+import { registerPlugin, Capacitor } from "@capacitor/core";
 
-  if (pluginNativo) {
-    console.log("[rfid] Usando leitor nativo Zebra (Capacitor Android)");
-    return new RfidCapacitorWrapped(pluginNativo);
+function criarLeitor() {
+  if (typeof window === "undefined") {
+    return new RfidMock();
   }
 
-  // Navegador: mock para desenvolvimento e demonstração
+  if (Capacitor.isNativePlatform()) {
+    try {
+      const plugin = registerPlugin("ZebraRfid");
+      console.log("[rfid] Usando leitor nativo Zebra (registerPlugin)");
+      return new RfidCapacitorWrapped(plugin);
+    } catch (e) {
+      console.error("[rfid] Falha ao registrar plugin nativo:", e);
+    }
+  }
+
   console.log("[rfid] Usando mock (browser sem Capacitor)");
   return new RfidMock();
 }

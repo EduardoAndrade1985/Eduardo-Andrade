@@ -61,8 +61,14 @@ export function useRfid({ prefixo = "", rssiMinimo = null } = {}) {
     });
 
     const cancelarStatus = rfid.onStatus((s) => {
+      // Eventos de inventário só trazem { lendo } — não mexem no estado de conexão.
+      if (s.lendo !== undefined) {
+        setLendo(s.lendo);
+        setStatus(s.lendo ? StatusLeitor.LENDO : StatusLeitor.CONECTADO);
+        return;
+      }
       setStatus(s.conectado ? StatusLeitor.CONECTADO : StatusLeitor.DESCONECTADO);
-      if (s.bateria != null) {
+      if (s.bateria != null && s.bateria >= 0) {
         setInfo((atual) => ({ ...(atual || {}), bateria: s.bateria }));
       }
     });
