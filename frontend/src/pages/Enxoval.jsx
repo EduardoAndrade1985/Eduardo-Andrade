@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
+import { Capacitor } from '@capacitor/core'
 import api from '../services/api'
 import { useEmpresa } from '../contexts/EmpresaContext'
 import { useRfid } from '../hooks/useRfid'
@@ -6,6 +7,27 @@ import { StatusLeitor, montarEpc } from '../services/rfid'
 
 // ── helpers ───────────────────────────────────────────────────────────────────
 const EPC_PREFIXO = 'A100'
+
+// ── ícones ────────────────────────────────────────────────────────────────────
+const svg = (d, extra) => (p) => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"
+       strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" {...p}>
+    <path d={d} />
+    {extra}
+  </svg>
+)
+
+const Ico = {
+  Saida:    svg('M12 19V5M5 12l7-7 7 7'),
+  Entrada:  svg('M12 5v14M19 12l-7 7-7-7'),
+  Voltar:   svg('M15 18l-6-6 6-6'),
+  Alerta:   svg('M12 9v4M12 17h.01M10.3 3.9L1.8 18a2 2 0 001.7 3h17a2 2 0 001.7-3L14.7 3.9a2 2 0 00-3.4 0z'),
+  Check:    svg('M22 11.1V12a10 10 0 11-5.9-9.1M22 4L12 14l-3-3'),
+  Etiqueta: svg('M20.6 13.4L12 22l-9-9V3h10l7.6 7.6a2 2 0 010 2.8z', <circle cx="7.5" cy="7.5" r="1.5" fill="currentColor" stroke="none" />),
+  Gestao:   svg('M3 6h18M3 12h18M3 18h18'),
+  Antena:   svg('M5 12a7 7 0 0114 0M2 12a10 10 0 0120 0M8.5 12a3.5 3.5 0 017 0M12 12v9'),
+  Bateria:  svg('M3 7h14a2 2 0 012 2v6a2 2 0 01-2 2H3a2 2 0 01-2-2V9a2 2 0 012-2zM22 11v2'),
+}
 
 function inferirTipo(epc, tipos) {
   if (!epc || epc.length < 8) return null
@@ -32,10 +54,10 @@ function TabBtn({ active, onClick, children }) {
   return (
     <button
       onClick={onClick}
-      className={`px-4 py-2 text-sm font-medium rounded-lg transition ${
+      className={`px-3.5 py-2 text-sm font-medium rounded-lg transition whitespace-nowrap flex items-center gap-1.5 ${
         active
-          ? 'bg-primary/15 text-primary border border-primary/30'
-          : 'text-muted hover:text-dim border border-transparent hover:border-white/[0.08]'
+          ? 'bg-primary/15 text-primary'
+          : 'text-muted hover:text-dim hover:bg-white/[0.04]'
       }`}
     >
       {children}
@@ -68,12 +90,12 @@ function LeitorStatusBar({ status, info, erro }) {
 
   const isSimulado = info?.serial?.startsWith('MOCK') || info?.nome?.includes('simulado')
   const nomeLabel  = info?.nome ? ` · ${info.nome}` : ''
-  const bateriaLabel = info?.bateria != null ? ` · 🔋${info.bateria}%` : ''
+  const temBateria = info?.bateria != null && info.bateria >= 0
 
   const LABEL = {
     [StatusLeitor.DESCONECTADO]: 'Leitor desconectado',
     [StatusLeitor.CONECTANDO]:   'Conectando…',
-    [StatusLeitor.CONECTADO]:    `Conectado${nomeLabel}${bateriaLabel}`,
+    [StatusLeitor.CONECTADO]:    `Conectado${nomeLabel}`,
     [StatusLeitor.LENDO]:        `Lendo…${nomeLabel}`,
     [StatusLeitor.ERRO]:         `Erro: ${erro}`,
   }
@@ -84,6 +106,12 @@ function LeitorStatusBar({ status, info, erro }) {
     <div className="flex items-center gap-2 text-xs flex-wrap">
       <span className={`w-2 h-2 rounded-full flex-shrink-0 ${status === StatusLeitor.LENDO ? 'bg-primary animate-pulse' : 'bg-current'} ${COR[status]}`} />
       <span className={COR[status]}>{LABEL[status]}</span>
+      {conectadoOuLendo && temBateria && (
+        <span className="flex items-center gap-1 text-muted">
+          <Ico.Bateria className="w-3.5 h-3.5" />
+          {info.bateria}%
+        </span>
+      )}
       {conectadoOuLendo && isSimulado && (
         <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-amber-500/20 text-amber-400 border border-amber-500/40 tracking-wide">
           SIMULADO
@@ -99,23 +127,60 @@ function LeitorStatusBar({ status, info, erro }) {
 }
 
 // ── Dashboard ─────────────────────────────────────────────────────────────────
+function Skeleton({ className = '' }) {
+  return <div className={`bg-white/[0.06] rounded animate-pulse ${className}`} />
+}
+
 function TabDashboard({ dados, loading }) {
-  if (loading) return <p className="text-muted text-sm">Carregando…</p>
-  if (!dados)  return <p className="text-muted text-sm">Sem dados.</p>
+  if (loading) {
+    return (
+      <div className="space-y-4">
+        <div className="grid grid-cols-2 xl:grid-cols-4 gap-3">
+          {[0, 1, 2, 3].map(i => (
+            <Card key={i}>
+              <Skeleton className="h-3 w-20 mb-3" />
+              <Skeleton className="h-7 w-16" />
+            </Card>
+          ))}
+        </div>
+        <Card>
+          <Skeleton className="h-3 w-32 mb-4" />
+          {[0, 1, 2].map(i => (
+            <div key={i} className="mb-4">
+              <Skeleton className="h-3 w-40 mb-2" />
+              <Skeleton className="h-1.5 w-full" />
+            </div>
+          ))}
+        </Card>
+      </div>
+    )
+  }
+  if (!dados) return <p className="text-muted text-sm">Sem dados.</p>
+
+  const pctLavanderia = dados.total_pecas > 0
+    ? Math.round(dados.total_na_lavanderia / dados.total_pecas * 100)
+    : 0
+  const abaixoMinimo = dados.tipos.filter(
+    t => t.estoque_minimo > 0 && t.em_hotel < t.estoque_minimo
+  ).length
 
   return (
     <div className="space-y-4">
       {/* totalizadores */}
       <div className="grid grid-cols-2 xl:grid-cols-4 gap-3">
         {[
-          { label: 'Total cadastrado',  value: dados.total_pecas,         cls: 'text-dim' },
-          { label: 'Em Hotel',          value: dados.total_em_hotel,       cls: 'text-emerald-400' },
-          { label: 'Na Lavanderia',     value: dados.total_na_lavanderia,  cls: 'text-amber-400' },
-          { label: 'Na Lavanderia (%)', value: dados.total_pecas > 0 ? `${Math.round(dados.total_na_lavanderia / dados.total_pecas * 100)}%` : '—', cls: 'text-amber-400' },
+          { label: 'Total cadastrado', value: dados.total_pecas,        nota: 'peças com etiqueta', cls: 'text-dim',          barra: 'bg-white/20' },
+          { label: 'Em hotel',         value: dados.total_em_hotel,     nota: 'disponíveis para uso', cls: 'text-emerald-400', barra: 'bg-emerald-400' },
+          { label: 'Na lavanderia',    value: dados.total_na_lavanderia, nota: `${pctLavanderia}% do total`, cls: 'text-amber-400', barra: 'bg-amber-400' },
+          abaixoMinimo > 0
+            ? { label: 'Abaixo do mínimo', value: abaixoMinimo, nota: abaixoMinimo === 1 ? 'tipo precisa de reposição' : 'tipos precisam de reposição', cls: 'text-rose-400', barra: 'bg-rose-400' }
+            : { label: 'Abaixo do mínimo', value: 0, nota: 'estoque saudável', cls: 'text-dim', barra: 'bg-white/20' },
         ].map(item => (
-          <Card key={item.label}>
-            <p className="text-xs text-muted mb-1">{item.label}</p>
-            <p className={`text-2xl font-bold ${item.cls}`}>{item.value}</p>
+          <Card key={item.label} className="relative overflow-hidden">
+            <span className={`absolute left-0 top-0 bottom-0 w-0.5 ${item.barra}`} />
+            <p className="text-[11px] text-muted uppercase tracking-wide mb-1.5">{item.label}</p>
+            <p className={`text-3xl font-bold leading-none ${item.cls}`}>{item.value}</p>
+            <p className="text-[10px] text-muted mt-1.5">{item.nota}</p>
           </Card>
         ))}
       </div>
@@ -136,9 +201,11 @@ function TabDashboard({ dados, loading }) {
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center justify-between gap-2 mb-1">
                       <span className="text-sm text-dim font-medium truncate">{tipo.nome}</span>
-                      <span className="text-xs text-muted flex-shrink-0">
+                      <span className="text-xs text-muted flex-shrink-0 flex items-center gap-1">
                         {tipo.em_hotel} / {tipo.total}
-                        {baixoEstoque && <span className="ml-1 text-rose-400">⚠</span>}
+                        {baixoEstoque && (
+                          <Ico.Alerta className="w-3.5 h-3.5 text-rose-400" title="Abaixo do estoque mínimo" />
+                        )}
                       </span>
                     </div>
                     <div className="h-1.5 bg-white/[0.06] rounded-full overflow-hidden">
@@ -184,10 +251,14 @@ function TabDashboard({ dados, loading }) {
       )}
 
       {dados.tipos.length === 0 && dados.total_pecas === 0 && (
-        <div className="text-center py-12 text-muted">
-          <p className="text-4xl mb-3">🏷️</p>
+        <div className="text-center py-16">
+          <span className="inline-grid place-items-center w-14 h-14 rounded-2xl bg-white/[0.04] border border-white/[0.06] mb-4">
+            <Ico.Etiqueta className="w-6 h-6 text-muted" />
+          </span>
           <p className="font-medium text-dim">Nenhum enxoval cadastrado</p>
-          <p className="text-sm mt-1">Acesse a aba <strong className="text-primary">Cadastro</strong> para começar</p>
+          <p className="text-sm text-muted mt-1">
+            Abra <strong className="text-primary font-medium">Cadastro</strong> para criar os tipos e gravar as primeiras etiquetas
+          </p>
         </div>
       )}
     </div>
@@ -378,9 +449,11 @@ function TabMovimentacao({ tipoMov, tipos, rfidState, onSuccess }) {
 
       {/* resultado */}
       {resultado && (
-        <Card>
+        <div className="bg-emerald-500/[0.04] rounded-2xl border border-emerald-500/25 p-4">
           <div className="flex items-center gap-3">
-            <span className="text-2xl">✅</span>
+            <span className="w-10 h-10 rounded-xl bg-emerald-500/15 text-emerald-400 grid place-items-center flex-shrink-0">
+              <Ico.Check className="w-5 h-5" />
+            </span>
             <div>
               <p className="text-sm font-medium text-dim">
                 {tipoMov === 'SAIDA' ? 'Saída' : 'Entrada'} #{resultado.numero} registrada
@@ -394,7 +467,7 @@ function TabMovimentacao({ tipoMov, tipos, rfidState, onSuccess }) {
               Nova leitura
             </button>
           </div>
-        </Card>
+        </div>
       )}
     </div>
   )
@@ -926,9 +999,113 @@ function TabCadastro({ tipos, onRefresh, rfidState }) {
 }
 
 // ── Página principal ──────────────────────────────────────────────────────────
+// ── Visão do operador ─────────────────────────────────────────────────────────
+function AcaoGrande({ tipo, onClick }) {
+  const saida = tipo === 'SAIDA'
+  const Icone = saida ? Ico.Saida : Ico.Entrada
+  return (
+    <button
+      onClick={onClick}
+      className={`w-full rounded-2xl border p-5 flex items-center gap-4 transition active:scale-[0.98] ${
+        saida
+          ? 'bg-amber-500/[0.08] border-amber-500/25 hover:bg-amber-500/[0.12]'
+          : 'bg-emerald-500/[0.08] border-emerald-500/25 hover:bg-emerald-500/[0.12]'
+      }`}
+    >
+      <span className={`w-14 h-14 rounded-2xl grid place-items-center flex-shrink-0 ${
+        saida ? 'bg-amber-500/15 text-amber-400' : 'bg-emerald-500/15 text-emerald-400'
+      }`}>
+        <Icone className="w-7 h-7" />
+      </span>
+      <span className="text-left min-w-0">
+        <span className={`block text-lg font-semibold ${saida ? 'text-amber-400' : 'text-emerald-400'}`}>
+          {saida ? 'Saída' : 'Entrada'}
+        </span>
+        <span className="block text-xs text-muted mt-0.5">
+          {saida ? 'Enviar peças para a lavanderia' : 'Receber peças da lavanderia'}
+        </span>
+      </span>
+    </button>
+  )
+}
+
+function VistaOperacao({ tipos, rfidState, onSuccess, onGestao }) {
+  const [acao, setAcao] = useState(null)
+  const { status, info, erro, conectar } = rfidState
+  const desconectado = status === StatusLeitor.DESCONECTADO || status === StatusLeitor.ERRO
+
+  if (acao) {
+    return (
+      <div className="p-4 space-y-4">
+        <button
+          onClick={() => setAcao(null)}
+          className="flex items-center gap-1 -ml-1 text-sm text-muted hover:text-dim transition"
+        >
+          <Ico.Voltar className="w-4 h-4" />
+          Voltar
+        </button>
+        <TabMovimentacao
+          tipoMov={acao}
+          tipos={tipos}
+          rfidState={rfidState}
+          onSuccess={onSuccess}
+        />
+      </div>
+    )
+  }
+
+  return (
+    <div className="p-4 flex flex-col gap-4 min-h-[calc(100vh-2rem)]">
+      <div>
+        <h1 className="text-xl font-bold text-dim">Enxoval</h1>
+        <p className="text-xs text-muted mt-0.5">O que você vai fazer agora?</p>
+      </div>
+
+      <Card>
+        <div className="flex items-center gap-3">
+          <span className={`w-10 h-10 rounded-xl grid place-items-center flex-shrink-0 ${
+            desconectado ? 'bg-white/[0.06] text-muted' : 'bg-primary/15 text-primary'
+          }`}>
+            <Ico.Antena className="w-5 h-5" />
+          </span>
+          <div className="flex-1 min-w-0">
+            <LeitorStatusBar status={status} info={info} erro={erro} />
+          </div>
+          {desconectado && (
+            <button
+              onClick={() => { conectar().catch(() => {}) }}
+              className="px-3 py-1.5 text-xs bg-primary/15 text-primary border border-primary/30 rounded-lg hover:bg-primary/20 transition flex-shrink-0"
+            >
+              Conectar
+            </button>
+          )}
+        </div>
+      </Card>
+
+      <div className="flex flex-col gap-3">
+        <AcaoGrande tipo="SAIDA"   onClick={() => setAcao('SAIDA')} />
+        <AcaoGrande tipo="ENTRADA" onClick={() => setAcao('ENTRADA')} />
+      </div>
+
+      <button
+        onClick={onGestao}
+        className="mt-auto flex items-center justify-center gap-2 py-3 text-xs text-muted hover:text-dim transition"
+      >
+        <Ico.Gestao className="w-4 h-4" />
+        Painel de gestão
+      </button>
+    </div>
+  )
+}
+
 export default function Enxoval() {
   const { empresaAtiva: empresa } = useEmpresa()
   const [tab, setTab] = useState('dashboard')
+  // O APK só é instalado nos aparelhos que têm leitor, então ele abre direto na
+  // visão do operador. Quem acessa pelo navegador é gestor e cai no painel.
+  const [modoOperacao, setModoOperacao] = useState(() => {
+    try { return Capacitor.isNativePlatform() } catch { return false }
+  })
 
   const [dashboard, setDashboard]     = useState(null)
   const [dashLoading, setDashLoading] = useState(false)
@@ -994,27 +1171,49 @@ export default function Enxoval() {
 
   const TABS = [
     { id: 'dashboard', label: 'Dashboard' },
-    { id: 'saida',     label: '↑ Saída' },
-    { id: 'entrada',   label: '↓ Entrada' },
+    { id: 'saida',     label: 'Saída',     Icone: Ico.Saida },
+    { id: 'entrada',   label: 'Entrada',   Icone: Ico.Entrada },
     { id: 'historico', label: 'Histórico' },
     { id: 'cadastro',  label: 'Cadastro' },
   ]
 
+  if (modoOperacao) {
+    return (
+      <VistaOperacao
+        tipos={tipos}
+        rfidState={rfidState}
+        onSuccess={onMovimentacaoRegistrada}
+        onGestao={() => setModoOperacao(false)}
+      />
+    )
+  }
+
   return (
-    <div className="p-4 xl:p-6 space-y-4">
+    <div className="p-4 xl:p-6 space-y-5">
       {/* header */}
-      <div className="flex items-center justify-between flex-wrap gap-3">
+      <div className="flex items-start justify-between gap-3">
         <div>
           <h1 className="text-xl font-bold text-dim">Controle de Enxoval</h1>
           <p className="text-xs text-muted mt-0.5">Saídas e entradas com leitura RFID</p>
         </div>
-        <div className="flex flex-wrap gap-1.5">
-          {TABS.map(t => (
-            <TabBtn key={t.id} active={tab === t.id} onClick={() => setTab(t.id)}>
-              {t.label}
-            </TabBtn>
-          ))}
-        </div>
+        <button
+          onClick={() => setModoOperacao(true)}
+          className="flex items-center gap-1.5 px-3 py-1.5 text-xs text-muted hover:text-dim border border-white/[0.08] hover:border-white/[0.16] rounded-lg transition flex-shrink-0"
+          title="Tela simplificada para quem opera o leitor"
+        >
+          <Ico.Antena className="w-3.5 h-3.5" />
+          Modo operação
+        </button>
+      </div>
+
+      {/* abas */}
+      <div className="flex gap-1 p-1 bg-white/[0.03] rounded-xl border border-white/[0.06] overflow-x-auto">
+        {TABS.map(t => (
+          <TabBtn key={t.id} active={tab === t.id} onClick={() => setTab(t.id)}>
+            {t.Icone && <t.Icone className="w-3.5 h-3.5" />}
+            {t.label}
+          </TabBtn>
+        ))}
       </div>
 
       {/* conteúdo */}
