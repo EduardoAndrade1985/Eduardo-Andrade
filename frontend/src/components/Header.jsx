@@ -91,6 +91,7 @@ export default function Header({ title, onMenuClick }) {
           {/* Hamburger — só mobile */}
           <button
             onClick={onMenuClick}
+            hidden={!onMenuClick}
             className="lg:hidden p-2 -ml-1 rounded-lg text-muted hover:text-primary hover:bg-primary/5 transition"
           >
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"

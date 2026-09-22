@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
 import api from '../services/api'
+import { rotaInicial } from '../services/appModulo'
 
 function EyeIcon({ open }) {
   return open ? (
@@ -98,7 +99,7 @@ export default function Login() {
       } else if (empresas.length > 1) {
         navigate('/selecionar-empresa', { replace: true })
       } else {
-        navigate('/custos', { replace: true })
+        navigate(rotaInicial, { replace: true })
       }
     } catch (err) {
       const code = err.response?.data?.code

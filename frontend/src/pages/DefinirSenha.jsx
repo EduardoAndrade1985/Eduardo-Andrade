@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
 import api from '../services/api'
+import { rotaInicial } from '../services/appModulo'
 
 function EyeIcon({ open }) {
   return open ? (
@@ -62,7 +63,7 @@ export default function DefinirSenha() {
     try {
       await api.post('/empresas/change-password/', { nova_senha: nova })
       await refreshUser()
-      navigate('/custos', { replace: true })
+      navigate(rotaInicial, { replace: true })
     } catch (e) {
       setErro(e.response?.data?.error || 'Erro ao definir senha.')
     } finally {

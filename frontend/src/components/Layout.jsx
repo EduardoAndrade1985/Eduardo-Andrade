@@ -1,8 +1,9 @@
 import { useState, useEffect } from 'react'
-import { Outlet, useLocation } from 'react-router-dom'
+import { Outlet, Navigate, useLocation } from 'react-router-dom'
 import Sidebar from './Sidebar'
 import Header from './Header'
 import { EmpresaProvider, useEmpresa } from '../contexts/EmpresaContext'
+import { moduloDoApp, rotaInicial } from '../services/appModulo'
 
 const TITLES = {
   '/custos':    '📊 Dashboard de Custos',
@@ -37,6 +38,18 @@ function LayoutInner() {
   function openDrawer() {
     setCollapsed(false)
     setDrawerOpen(true)
+  }
+
+  if (moduloDoApp) {
+    if (!pathname.startsWith(rotaInicial)) return <Navigate to={rotaInicial} replace />
+    return (
+      <div className="flex flex-col h-screen overflow-hidden bg-bg">
+        <Header title={title} />
+        <main className="flex-1 overflow-y-scroll">
+          <Outlet key={empresaAtiva?.id ?? 'sem-empresa'} />
+        </main>
+      </div>
+    )
   }
 
   return (

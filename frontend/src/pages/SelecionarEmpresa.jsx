@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useEmpresa } from '../contexts/EmpresaContext'
 import { useAuth } from '../contexts/AuthContext'
+import { rotaInicial } from '../services/appModulo'
 
 function inicial(nome) {
   return (nome || '?').split(' ').slice(0, 2).map(p => p[0]).join('').toUpperCase()
@@ -48,7 +49,7 @@ export default function SelecionarEmpresa() {
   async function handleSelect(id) {
     setSelecionando(id)
     await trocarEmpresa(id)
-    navigate('/custos', { replace: true })
+    navigate(rotaInicial, { replace: true })
   }
 
   const filtradas = minhasEmpresas.filter(emp =>

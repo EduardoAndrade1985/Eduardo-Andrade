@@ -1,10 +1,12 @@
 {
   "appId": "com.rphub.app",
-  "appName": "RPHub",
+  "appName": "RPHub Enxoval",
   "webDir": "dist",
-  "android": {
-    "allowMixedContent": true
+  "server": {
+    "url": "https://www.rphub.com.br/enxoval",
+    "allowNavigation": ["www.rphub.com.br"]
   },
+  "appendUserAgent": "RPHubApp/enxoval",
   "plugins": {
     "SplashScreen": { "launchAutoHide": false }
   }
