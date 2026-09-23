@@ -126,6 +126,41 @@ function LeitorStatusBar({ status, info, erro }) {
   )
 }
 
+// Único ponto de conexão do leitor no módulo. As telas de ação só mostram
+// os botões do que fazer com ele (ler, parar, gravar).
+function BarraLeitor({ rfidState }) {
+  const { status, info, erro, conectar, desconectar, limpar } = rfidState
+  const desconectado = status === StatusLeitor.DESCONECTADO || status === StatusLeitor.ERRO
+
+  return (
+    <div className="flex items-center gap-3 bg-bg2 rounded-2xl border border-white/[0.06] px-4 py-3">
+      <span className={`w-9 h-9 rounded-xl grid place-items-center flex-shrink-0 ${
+        desconectado ? 'bg-white/[0.06] text-muted' : 'bg-primary/15 text-primary'
+      }`}>
+        <Ico.Antena className="w-5 h-5" />
+      </span>
+      <div className="flex-1 min-w-0">
+        <LeitorStatusBar status={status} info={info} erro={erro} />
+      </div>
+      {desconectado ? (
+        <button
+          onClick={() => { conectar().catch(() => {}) }}
+          className="px-3.5 py-1.5 text-xs bg-primary/15 text-primary border border-primary/30 rounded-lg hover:bg-primary/20 transition flex-shrink-0"
+        >
+          Conectar
+        </button>
+      ) : (
+        <button
+          onClick={() => { desconectar(); limpar() }}
+          className="px-3.5 py-1.5 text-xs text-muted border border-white/[0.08] rounded-lg hover:text-rose-400 hover:border-rose-500/30 transition flex-shrink-0"
+        >
+          Desconectar
+        </button>
+      )}
+    </div>
+  )
+}
+
 // ── Dashboard ─────────────────────────────────────────────────────────────────
 function Skeleton({ className = '' }) {
   return <div className={`bg-white/[0.06] rounded animate-pulse ${className}`} />
@@ -194,10 +229,6 @@ function TabDashboard({ dados, loading }) {
               const baixoEstoque = tipo.estoque_minimo > 0 && tipo.em_hotel < tipo.estoque_minimo
               return (
                 <div key={tipo.id} className="flex items-center gap-3">
-                  <span
-                    className="w-2.5 h-2.5 rounded-full flex-shrink-0"
-                    style={{ background: tipo.cor }}
-                  />
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center justify-between gap-2 mb-1">
                       <span className="text-sm text-dim font-medium truncate">{tipo.nome}</span>
@@ -210,8 +241,8 @@ function TabDashboard({ dados, loading }) {
                     </div>
                     <div className="h-1.5 bg-white/[0.06] rounded-full overflow-hidden">
                       <div
-                        className="h-full rounded-full transition-all"
-                        style={{ width: `${pct}%`, background: tipo.cor }}
+                        className="h-full rounded-full bg-primary transition-all"
+                        style={{ width: `${pct}%` }}
                       />
                     </div>
                     <div className="flex gap-3 mt-1 text-[10px] text-muted">
@@ -273,25 +304,14 @@ function TabMovimentacao({ tipoMov, tipos, rfidState, onSuccess }) {
   const [resultado, setResultado]       = useState(null)
 
   const {
-    status, info, erro, lendo, conectado,
+    lendo, conectado,
     tagsValidas, totalUnico, totalIgnorado,
-    conectar, desconectar, iniciar, parar, limpar, paraApi,
+    iniciar, parar, limpar, paraApi,
   } = rfidState
 
-  const podeConectar  = status === StatusLeitor.DESCONECTADO || status === StatusLeitor.ERRO
   const podeLer       = conectado && !lendo
   const podeParar     = lendo
   const podeConfirmar = conectado && !lendo && totalUnico > 0 && !resultado
-
-  async function handleConectar() {
-    try { await conectar() } catch {}
-  }
-
-  async function handleDesconectar() {
-    await desconectar()
-    limpar()
-    setResultado(null)
-  }
 
   async function handleIniciar() {
     limpar()
@@ -325,25 +345,11 @@ function TabMovimentacao({ tipoMov, tipos, rfidState, onSuccess }) {
       {/* controles do leitor */}
       <Card title={label}>
         <div className="flex flex-col gap-3">
-          <LeitorStatusBar status={status} info={info} erro={erro} />
+          {!conectado && (
+            <p className="text-xs text-amber-400">Conecte o leitor na barra acima para começar.</p>
+          )}
 
           <div className="flex flex-wrap gap-2">
-            {podeConectar ? (
-              <button
-                onClick={handleConectar}
-                className="px-4 py-2 text-sm bg-primary/15 text-primary border border-primary/30 rounded-lg hover:bg-primary/20 transition"
-              >
-                Conectar leitor
-              </button>
-            ) : (
-              <button
-                onClick={handleDesconectar}
-                className="px-4 py-2 text-sm bg-white/[0.06] text-muted border border-white/[0.08] rounded-lg hover:text-rose-400 hover:border-rose-500/30 transition"
-              >
-                Desconectar
-              </button>
-            )}
-
             {podeLer && (
               <button
                 onClick={handleIniciar}
@@ -376,7 +382,7 @@ function TabMovimentacao({ tipoMov, tipos, rfidState, onSuccess }) {
             {lendo && <span className="text-xs text-primary animate-pulse">lendo…</span>}
           </div>
 
-          <div className="max-h-64 overflow-y-auto space-y-1">
+          <div className="space-y-1">
             {tagsValidas.map(tag => {
               const tipo = inferirTipo(tag.epc, tipos)
               return (
@@ -384,10 +390,7 @@ function TabMovimentacao({ tipoMov, tipos, rfidState, onSuccess }) {
                   key={tag.epc}
                   className="flex items-center gap-3 py-1.5 px-2 rounded-lg bg-white/[0.03] border border-white/[0.04]"
                 >
-                  <span
-                    className="w-2 h-2 rounded-full flex-shrink-0"
-                    style={{ background: tipo?.cor || '#6366f1' }}
-                  />
+                  <span className="w-2 h-2 rounded-full flex-shrink-0 bg-primary" />
                   <div className="flex-1 min-w-0">
                     <p className="text-xs text-dim font-mono truncate">{fmtEpc(tag.epc)}</p>
                     <p className="text-[10px] text-muted">{tipo?.nome || 'Tipo desconhecido'}</p>
@@ -534,13 +537,10 @@ function TabHistorico({ movimentacoes, loading, onSelect, detalhe, loadingDetalh
           {loadingDetalhe ? (
             <p className="text-muted text-sm">Carregando…</p>
           ) : (
-            <div className="space-y-1 max-h-64 overflow-y-auto">
+            <div className="space-y-1">
               {detalhe.itens?.map(it => (
                 <div key={it.id} className="flex items-center gap-3 py-1 text-xs">
-                  <span
-                    className="w-2 h-2 rounded-full flex-shrink-0"
-                    style={{ background: it.tipo_cor || '#6366f1' }}
-                  />
+                  <span className="w-2 h-2 rounded-full flex-shrink-0 bg-primary" />
                   <span className="font-mono text-muted flex-1">{fmtEpc(it.epc_lido)}</span>
                   <span className="text-muted">{it.tipo_nome || 'Desconhecido'}</span>
                   <span className={`${it.status_item === 'RECONHECIDA' ? 'text-emerald-400' : 'text-amber-400'}`}>
@@ -557,17 +557,10 @@ function TabHistorico({ movimentacoes, loading, onSelect, detalhe, loadingDetalh
 }
 
 // ── Cadastro ──────────────────────────────────────────────────────────────────
-const CORES = ['#6366f1', '#06b6d4', '#f59e0b', '#ec4899', '#10b981', '#f97316', '#8b5cf6', '#ef4444']
-
 function TabCadastro({ tipos, onRefresh, rfidState }) {
-  const [form, setForm]         = useState({ nome: '', codigo: '', cor: CORES[0], estoque_minimo: 0 })
+  const [form, setForm]         = useState({ nome: '', codigo: '', estoque_minimo: 0 })
   const [salvando, setSalvando] = useState(false)
   const [editando, setEditando] = useState(null)
-
-  // lote (leitura de tags já gravadas)
-  const [tipoLoteId, setTipoLoteId]   = useState('')
-  const [registrando, setRegistrando] = useState(false)
-  const [resultadoLote, setResultLote] = useState(null)
 
   // programar (gravar EPC em tags em branco)
   const [progTipoId, setProgTipoId]       = useState('')
@@ -575,15 +568,7 @@ function TabCadastro({ tipos, onRefresh, rfidState }) {
   const [gravando, setGravando]           = useState(false)
   const [programadas, setProgramadas]     = useState([])
 
-  const {
-    status, info, erro, lendo, conectado,
-    tags, tagsValidas, totalUnico, totalIgnorado,
-    conectar, desconectar, iniciar, parar, limpar, paraApi, gravarEpc,
-  } = rfidState
-
-  const podeConectar  = status === StatusLeitor.DESCONECTADO || status === StatusLeitor.ERRO
-  const podeLer       = conectado && !lendo
-  const podeRegistrar = conectado && !lendo && totalUnico > 0 && tipoLoteId && !resultadoLote
+  const { lendo, conectado, gravarEpc } = rfidState
 
   // ── programar: calcula próximo serial quando tipo muda ────────────────────
   // montarEpc lança se o código do tipo não for hexadecimal. Como isso roda no
@@ -609,16 +594,6 @@ function TabCadastro({ tipos, onRefresh, rfidState }) {
       .catch(() => setProximoSerial(1))
   }, [progTipoId])
 
-  async function handleConectarLote() {
-    try { await conectar() } catch {}
-  }
-
-  async function handleIniciarLote() {
-    limpar()
-    setResultLote(null)
-    try { await iniciar() } catch {}
-  }
-
   async function handleGravar() {
     if (!epcProximo || !conectado || gravando) return
     setGravando(true)
@@ -635,29 +610,14 @@ function TabCadastro({ tipos, onRefresh, rfidState }) {
     }
   }
 
-  async function handleRegistrarLote() {
-    setRegistrando(true)
-    try {
-      const epcs = paraApi().map(t => t.epc)
-      const { data } = await api.post('/enxoval/pecas/lote/', { tipo_id: tipoLoteId, epcs })
-      setResultLote(data)
-      onRefresh()
-      limpar()
-    } catch (e) {
-      alert(e.response?.data?.erro || 'Erro ao registrar lote')
-    } finally {
-      setRegistrando(false)
-    }
-  }
-
   function iniciarEdicao(tipo) {
     setEditando(tipo.id)
-    setForm({ nome: tipo.nome, codigo: tipo.codigo, cor: tipo.cor, estoque_minimo: tipo.estoque_minimo })
+    setForm({ nome: tipo.nome, codigo: tipo.codigo, estoque_minimo: tipo.estoque_minimo })
   }
 
   function cancelar() {
     setEditando(null)
-    setForm({ nome: '', codigo: '', cor: CORES[0], estoque_minimo: 0 })
+    setForm({ nome: '', codigo: '', estoque_minimo: 0 })
   }
 
   async function salvar() {
@@ -687,8 +647,6 @@ function TabCadastro({ tipos, onRefresh, rfidState }) {
       alert(e.response?.data?.erro || 'Erro ao excluir')
     }
   }
-
-  const tipoLoteSel = tipos.find(t => String(t.id) === String(tipoLoteId))
 
   return (
     <div className="space-y-4">
@@ -724,42 +682,29 @@ function TabCadastro({ tipos, onRefresh, rfidState }) {
           </div>
         )}
 
-        <LeitorStatusBar status={status} info={info} erro={erro} />
-        <div className="flex flex-wrap gap-2 mt-3">
-          {podeConectar ? (
-            <button
-              onClick={handleConectarLote}
-              className="px-4 py-2 text-sm bg-primary/15 text-primary border border-primary/30 rounded-lg hover:bg-primary/20 transition"
-            >
-              Conectar leitor
-            </button>
-          ) : (
-            <button
-              onClick={() => { desconectar(); setProgramadas([]) }}
-              className="px-4 py-2 text-sm bg-white/[0.06] text-muted border border-white/[0.08] rounded-lg hover:text-rose-400 hover:border-rose-500/30 transition"
-            >
-              Desconectar
-            </button>
-          )}
+        {epcProximo && !conectado && (
+          <p className="text-xs text-amber-400">Conecte o leitor na barra acima para gravar.</p>
+        )}
 
-          {conectado && epcProximo && !lendo && (
-            <button
-              onClick={handleGravar}
-              disabled={gravando}
-              className="px-5 py-2 text-sm bg-primary text-white rounded-lg hover:bg-primary/90 transition font-medium disabled:opacity-50"
-            >
-              {gravando ? 'Gravando…' : 'Gravar etiqueta'}
-            </button>
-          )}
-        </div>
+        {conectado && epcProximo && !lendo && (
+          <button
+            onClick={handleGravar}
+            disabled={gravando}
+            className="px-5 py-2.5 text-sm bg-primary text-white rounded-lg hover:bg-primary/90 transition font-medium disabled:opacity-50"
+          >
+            {gravando ? 'Gravando…' : 'Gravar etiqueta'}
+          </button>
+        )}
 
         {programadas.length > 0 && (
           <div className="mt-4 border-t border-white/[0.06] pt-3">
-            <p className="text-xs text-emerald-400 font-medium mb-2">{programadas.length} etiqueta{programadas.length !== 1 ? 's' : ''} programada{programadas.length !== 1 ? 's' : ''} nesta sessão</p>
-            <div className="space-y-0.5 max-h-36 overflow-y-auto">
+            <p className="text-xs text-emerald-400 font-medium mb-2">
+              {programadas.length} etiqueta{programadas.length !== 1 ? 's' : ''} gravada{programadas.length !== 1 ? 's' : ''} nesta sessão
+            </p>
+            <div className="space-y-0.5">
               {programadas.map(epc => (
                 <div key={epc} className="flex items-center gap-2 text-xs">
-                  <span className="text-emerald-400 flex-shrink-0">✓</span>
+                  <Ico.Check className="w-3.5 h-3.5 text-emerald-400 flex-shrink-0" />
                   <span className="font-mono text-muted">{fmtEpc(epc)}</span>
                 </div>
               ))}
@@ -769,139 +714,6 @@ function TabCadastro({ tipos, onRefresh, rfidState }) {
 
         {tipos.length === 0 && (
           <p className="text-xs text-amber-400 mt-3">Crie um tipo de enxoval primeiro (seção abaixo).</p>
-        )}
-      </Card>
-
-      {/* ── cadastro em lote via RFID ── */}
-      <Card title="Cadastro em lote via RFID">
-        <p className="text-xs text-muted mb-4">
-          Aproxime todas as etiquetas do leitor de uma vez, selecione o tipo e registre tudo em um clique.
-        </p>
-
-        {/* seleção de tipo */}
-        <div className="mb-4">
-          <label className="text-xs text-muted mb-1 block">Tipo de enxoval</label>
-          <select
-            value={tipoLoteId}
-            onChange={e => { setTipoLoteId(e.target.value); setResultLote(null); limpar() }}
-            className="w-full max-w-xs bg-white/[0.04] border border-white/[0.08] rounded-lg px-3 py-2 text-sm text-dim focus:outline-none focus:border-primary/40"
-          >
-            <option value="">Selecione…</option>
-            {tipos.map(t => (
-              <option key={t.id} value={t.id}>{t.nome}</option>
-            ))}
-          </select>
-          {tipoLoteSel && (
-            <p className="text-[10px] text-muted mt-1 font-mono">
-              EPC: A100 <span className="text-primary">{tipoLoteSel.codigo}</span> SSSSSSSS 00000000
-            </p>
-          )}
-        </div>
-
-        {/* controles leitor */}
-        <LeitorStatusBar status={status} info={info} erro={erro} />
-        <div className="flex flex-wrap gap-2 mt-3">
-          {podeConectar ? (
-            <button
-              onClick={handleConectarLote}
-              className="px-4 py-2 text-sm bg-primary/15 text-primary border border-primary/30 rounded-lg hover:bg-primary/20 transition"
-            >
-              Conectar leitor
-            </button>
-          ) : (
-            <button
-              onClick={() => { desconectar(); limpar(); setResultLote(null) }}
-              className="px-4 py-2 text-sm bg-white/[0.06] text-muted border border-white/[0.08] rounded-lg hover:text-rose-400 hover:border-rose-500/30 transition"
-            >
-              Desconectar
-            </button>
-          )}
-          {podeLer && (
-            <button
-              onClick={handleIniciarLote}
-              disabled={!tipoLoteId}
-              className="px-4 py-2 text-sm bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 rounded-lg hover:bg-emerald-500/20 transition disabled:opacity-40"
-            >
-              Iniciar leitura
-            </button>
-          )}
-          {lendo && (
-            <button
-              onClick={parar}
-              className="px-4 py-2 text-sm bg-amber-500/15 text-amber-400 border border-amber-500/30 rounded-lg hover:bg-amber-500/20 transition animate-pulse"
-            >
-              Parar
-            </button>
-          )}
-        </div>
-
-        {/* contador em tempo real */}
-        {(tags.length > 0 || lendo) && (
-          <div className="mt-4 flex items-center gap-4">
-            <div className="flex items-center gap-2">
-              <span className="text-3xl font-bold text-primary">{totalUnico}</span>
-              <div>
-                <p className="text-xs text-dim font-medium">do sistema</p>
-                {totalIgnorado > 0 && <p className="text-[10px] text-muted">{totalIgnorado} em branco / de terceiros</p>}
-              </div>
-            </div>
-            {lendo && <span className="text-xs text-primary animate-pulse ml-auto">lendo…</span>}
-          </div>
-        )}
-
-        {/* lista de tags — mostra todas, para dar retorno visual da leitura */}
-        {tags.length > 0 && !lendo && (
-          <div className="mt-3 max-h-40 overflow-y-auto space-y-0.5 border border-white/[0.06] rounded-xl p-2">
-            {tags.map(tag => (
-              <div key={tag.epc} className="flex items-center gap-2 py-1 text-xs">
-                <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${tag.doSistema ? 'bg-emerald-400' : 'bg-white/20'}`} />
-                <span className={`font-mono flex-1 truncate ${tag.doSistema ? 'text-muted' : 'text-muted/40'}`}>{fmtEpc(tag.epc)}</span>
-                {!tag.doSistema && <span className="text-[10px] text-muted/40 flex-shrink-0">em branco</span>}
-                <span className="text-muted flex-shrink-0">{tag.contagem}×</span>
-              </div>
-            ))}
-          </div>
-        )}
-
-        {/* botão registrar */}
-        {podeRegistrar && (
-          <div className="mt-4 flex items-center gap-3">
-            <button
-              onClick={handleRegistrarLote}
-              disabled={registrando}
-              className="px-5 py-2.5 text-sm bg-primary text-white rounded-lg hover:bg-primary/90 transition font-medium disabled:opacity-50"
-            >
-              {registrando
-                ? 'Registrando…'
-                : `Cadastrar ${totalUnico} etiqueta${totalUnico !== 1 ? 's' : ''} como ${tipoLoteSel?.nome}`}
-            </button>
-          </div>
-        )}
-
-        {/* resultado */}
-        {resultadoLote && (
-          <div className="mt-4 flex items-center gap-3 p-3 bg-emerald-500/10 border border-emerald-500/20 rounded-xl">
-            <span className="text-xl">✅</span>
-            <div>
-              <p className="text-sm font-medium text-emerald-400">
-                {resultadoLote.criadas} peças cadastradas
-                {resultadoLote.atualizadas > 0 && `, ${resultadoLote.atualizadas} atualizadas`}
-              </p>
-              <p className="text-xs text-muted">{resultadoLote.total} etiquetas processadas no total</p>
-            </div>
-            <button
-              onClick={() => setResultLote(null)}
-              className="ml-auto text-xs text-muted hover:text-dim"
-            >
-              Novo lote
-            </button>
-          </div>
-        )}
-
-        {tipos.length === 0 && (
-          <p className="text-xs text-amber-400 mt-3">
-            Crie um tipo de enxoval primeiro (seção abaixo) para poder cadastrar etiquetas.
-          </p>
         )}
       </Card>
 
@@ -939,19 +751,6 @@ function TabCadastro({ tipos, onRefresh, rfidState }) {
           </div>
         </div>
 
-        <div className="flex items-center gap-2 mt-3">
-          <span className="text-xs text-muted">Cor:</span>
-          {CORES.map(c => (
-            <button
-              key={c}
-              onClick={() => setForm(f => ({ ...f, cor: c }))}
-              className={`w-5 h-5 rounded-full border-2 transition ${form.cor === c ? 'border-white scale-110' : 'border-transparent'}`}
-              style={{ background: c }}
-            />
-          ))}
-          <span className="text-xs font-mono text-muted ml-1">{form.cor}</span>
-        </div>
-
         <div className="flex gap-2 mt-4">
           <button
             onClick={salvar}
@@ -976,7 +775,6 @@ function TabCadastro({ tipos, onRefresh, rfidState }) {
           <div className="mt-4 pt-4 border-t border-white/[0.06] space-y-1">
             {tipos.map(tipo => (
               <div key={tipo.id} className="flex items-center gap-3 py-2 px-2 rounded-lg hover:bg-white/[0.03] transition">
-                <span className="w-3 h-3 rounded-full flex-shrink-0" style={{ background: tipo.cor }} />
                 <div className="flex-1 min-w-0">
                   <span className="text-sm text-dim">{tipo.nome}</span>
                   <span className="text-xs text-muted ml-2 font-mono">A100{tipo.codigo}</span>
@@ -1031,12 +829,11 @@ function AcaoGrande({ tipo, onClick }) {
 
 function VistaOperacao({ tipos, rfidState, onSuccess, onGestao }) {
   const [acao, setAcao] = useState(null)
-  const { status, info, erro, conectar } = rfidState
-  const desconectado = status === StatusLeitor.DESCONECTADO || status === StatusLeitor.ERRO
 
   if (acao) {
     return (
       <div className="p-4 space-y-4">
+        <BarraLeitor rfidState={rfidState} />
         <button
           onClick={() => setAcao(null)}
           className="flex items-center gap-1 -ml-1 text-sm text-muted hover:text-dim transition"
@@ -1061,26 +858,7 @@ function VistaOperacao({ tipos, rfidState, onSuccess, onGestao }) {
         <p className="text-xs text-muted mt-0.5">O que você vai fazer agora?</p>
       </div>
 
-      <Card>
-        <div className="flex items-center gap-3">
-          <span className={`w-10 h-10 rounded-xl grid place-items-center flex-shrink-0 ${
-            desconectado ? 'bg-white/[0.06] text-muted' : 'bg-primary/15 text-primary'
-          }`}>
-            <Ico.Antena className="w-5 h-5" />
-          </span>
-          <div className="flex-1 min-w-0">
-            <LeitorStatusBar status={status} info={info} erro={erro} />
-          </div>
-          {desconectado && (
-            <button
-              onClick={() => { conectar().catch(() => {}) }}
-              className="px-3 py-1.5 text-xs bg-primary/15 text-primary border border-primary/30 rounded-lg hover:bg-primary/20 transition flex-shrink-0"
-            >
-              Conectar
-            </button>
-          )}
-        </div>
-      </Card>
+      <BarraLeitor rfidState={rfidState} />
 
       <div className="flex flex-col gap-3">
         <AcaoGrande tipo="SAIDA"   onClick={() => setAcao('SAIDA')} />
@@ -1215,6 +993,11 @@ export default function Enxoval() {
           </TabBtn>
         ))}
       </div>
+
+      {/* leitor: um ponto só de conexão, nas abas que o usam */}
+      {['saida', 'entrada', 'cadastro'].includes(tab) && (
+        <BarraLeitor rfidState={rfidState} />
+      )}
 
       {/* conteúdo */}
       {tab === 'dashboard' && (
