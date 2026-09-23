@@ -323,7 +323,8 @@ def api_movimentacoes(request):
         mov.finalizado = True
         mov.save(update_fields=['finalizado'])
 
-    return JsonResponse({'ok': True, 'movimentacao': _mov_dict(mov)}, status=201)
+    # com itens: a tela emite o rol logo após confirmar, sem outra requisição
+    return JsonResponse({'ok': True, 'movimentacao': _mov_dict(mov, itens=True)}, status=201)
 
 
 @csrf_exempt

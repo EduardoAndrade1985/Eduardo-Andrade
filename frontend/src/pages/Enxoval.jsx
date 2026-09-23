@@ -4,6 +4,7 @@ import api from '../services/api'
 import { useEmpresa } from '../contexts/EmpresaContext'
 import { useRfid } from '../hooks/useRfid'
 import { StatusLeitor, montarEpc } from '../services/rfid'
+import { agruparPorTipo, exportarRolPdf, exportarRolExcel } from '../services/rolEnxoval'
 
 // ── helpers ───────────────────────────────────────────────────────────────────
 const EPC_PREFIXO = 'A100'
@@ -27,6 +28,7 @@ const Ico = {
   Gestao:   svg('M3 6h18M3 12h18M3 18h18'),
   Antena:   svg('M5 12a7 7 0 0114 0M2 12a10 10 0 0120 0M8.5 12a3.5 3.5 0 017 0M12 12v9'),
   Bateria:  svg('M3 7h14a2 2 0 012 2v6a2 2 0 01-2 2H3a2 2 0 01-2-2V9a2 2 0 012-2zM22 11v2'),
+  Baixar:   svg('M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3'),
 }
 
 function inferirTipo(epc, tipos) {
@@ -157,6 +159,49 @@ function BarraLeitor({ rfidState }) {
           Desconectar
         </button>
       )}
+    </div>
+  )
+}
+
+// Rol agrupado por item — é assim que a lavanderia confere, não etiqueta a etiqueta.
+function ResumoRol({ mov }) {
+  const { empresaAtiva } = useEmpresa()
+  const linhas = agruparPorTipo(mov?.itens)
+  if (!linhas.length) return null
+  const total = linhas.reduce((s, l) => s + l.quantidade, 0)
+
+  return (
+    <div className="mt-4 border-t border-white/[0.06] pt-3">
+      <p className="text-xs font-semibold text-muted uppercase tracking-wider mb-2">Rol por item</p>
+      <div className="space-y-0.5">
+        {linhas.map(l => (
+          <div key={l.item} className="flex items-center justify-between py-1 text-sm">
+            <span className="text-dim truncate">{l.item}</span>
+            <span className="text-muted font-medium flex-shrink-0 ml-3">{l.quantidade}</span>
+          </div>
+        ))}
+        <div className="flex items-center justify-between pt-2 mt-1 border-t border-white/[0.06] text-sm font-semibold">
+          <span className="text-dim">Total</span>
+          <span className="text-primary">{total}</span>
+        </div>
+      </div>
+
+      <div className="flex flex-wrap gap-2 mt-3">
+        <button
+          onClick={() => exportarRolPdf(mov, empresaAtiva?.nome)}
+          className="flex items-center gap-1.5 px-3.5 py-2 text-xs text-muted border border-white/[0.08] rounded-lg hover:text-primary hover:border-primary/30 transition"
+        >
+          <Ico.Baixar className="w-3.5 h-3.5" />
+          Rol em PDF
+        </button>
+        <button
+          onClick={() => exportarRolExcel(mov, empresaAtiva?.nome)}
+          className="flex items-center gap-1.5 px-3.5 py-2 text-xs text-muted border border-white/[0.08] rounded-lg hover:text-primary hover:border-primary/30 transition"
+        >
+          <Ico.Baixar className="w-3.5 h-3.5" />
+          Excel
+        </button>
+      </div>
     </div>
   )
 }
@@ -470,6 +515,7 @@ function TabMovimentacao({ tipoMov, tipos, rfidState, onSuccess }) {
               Nova leitura
             </button>
           </div>
+          <ResumoRol mov={resultado} />
         </div>
       )}
     </div>
@@ -537,6 +583,9 @@ function TabHistorico({ movimentacoes, loading, onSelect, detalhe, loadingDetalh
           {loadingDetalhe ? (
             <p className="text-muted text-sm">Carregando…</p>
           ) : (
+            <>
+            <ResumoRol mov={detalhe} />
+            <p className="text-xs font-semibold text-muted uppercase tracking-wider mt-4 mb-2">Etiquetas lidas</p>
             <div className="space-y-1">
               {detalhe.itens?.map(it => (
                 <div key={it.id} className="flex items-center gap-3 py-1 text-xs">
@@ -549,6 +598,7 @@ function TabHistorico({ movimentacoes, loading, onSelect, detalhe, loadingDetalh
                 </div>
               ))}
             </div>
+            </>
           )}
         </Card>
       )}
