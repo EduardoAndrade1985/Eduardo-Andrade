@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { Capacitor } from '@capacitor/core'
 import api from '../services/api'
 import { useEmpresa } from '../contexts/EmpresaContext'
+import { useAuth } from '../contexts/AuthContext'
 import { useRfid } from '../hooks/useRfid'
 import { StatusLeitor, montarEpc } from '../services/rfid'
 import { agruparPorTipo, exportarRolPdf, exportarRolExcel } from '../services/rolEnxoval'
@@ -342,8 +343,11 @@ function TabDashboard({ dados, loading }) {
 }
 
 // ── Sessão RFID (saída / entrada) ─────────────────────────────────────────────
-function TabMovimentacao({ tipoMov, tipos, rfidState, onSuccess }) {
-  const [responsavel, setResponsavel]   = useState('')
+function TabMovimentacao({ tipoMov, tipos, usuarios, rfidState, onSuccess }) {
+  const { user } = useAuth()
+  // Já vem preenchido com quem está logado, mas dá para trocar: o celular do
+  // setor costuma ser compartilhado entre as camareiras.
+  const [responsavel, setResponsavel]   = useState(user?.username || '')
   const [observacoes, setObservacoes]   = useState('')
   const [confirmando, setConfirmando]   = useState(false)
   const [resultado, setResultado]       = useState(null)
@@ -353,6 +357,11 @@ function TabMovimentacao({ tipoMov, tipos, rfidState, onSuccess }) {
     tagsValidas, totalUnico, totalIgnorado,
     iniciar, parar, limpar, paraApi,
   } = rfidState
+
+  // o usuário pode chegar depois da montagem (contexto ainda carregando)
+  useEffect(() => {
+    if (user?.username) setResponsavel(atual => atual || user.username)
+  }, [user])
 
   const podeLer       = conectado && !lendo
   const podeParar     = lendo
@@ -457,13 +466,17 @@ function TabMovimentacao({ tipoMov, tipos, rfidState, onSuccess }) {
           <div className="space-y-3">
             <div className="grid grid-cols-1 xl:grid-cols-2 gap-3">
               <div>
-                <label className="text-xs text-muted mb-1 block">Responsável</label>
-                <input
+                <label className="text-xs text-muted mb-1 block">Responsável pela coleta</label>
+                <select
                   value={responsavel}
                   onChange={e => setResponsavel(e.target.value)}
-                  placeholder="Nome do responsável"
                   className="w-full bg-white/[0.04] border border-white/[0.08] rounded-lg px-3 py-2 text-sm text-dim focus:outline-none focus:border-primary/40"
-                />
+                >
+                  <option value="">Selecione…</option>
+                  {usuarios.map(u => (
+                    <option key={u.id} value={u.username}>{u.username}</option>
+                  ))}
+                </select>
               </div>
               <div>
                 <label className="text-xs text-muted mb-1 block">Observações</label>
@@ -485,7 +498,8 @@ function TabMovimentacao({ tipoMov, tipos, rfidState, onSuccess }) {
               </p>
               <button
                 onClick={handleConfirmar}
-                disabled={confirmando}
+                disabled={confirmando || !responsavel}
+                title={!responsavel ? 'Selecione o responsável pela coleta' : undefined}
                 className="px-5 py-2 text-sm bg-primary text-white rounded-lg hover:bg-primary/90 transition disabled:opacity-50"
               >
                 {confirmando ? 'Registrando…' : `Confirmar ${tipoMov === 'SAIDA' ? 'Saída' : 'Entrada'}`}
@@ -877,7 +891,7 @@ function AcaoGrande({ tipo, onClick }) {
   )
 }
 
-function VistaOperacao({ tipos, rfidState, onSuccess, onGestao }) {
+function VistaOperacao({ tipos, usuarios, rfidState, onSuccess, onGestao }) {
   const [acao, setAcao] = useState(null)
 
   if (acao) {
@@ -894,6 +908,7 @@ function VistaOperacao({ tipos, rfidState, onSuccess, onGestao }) {
         <TabMovimentacao
           tipoMov={acao}
           tipos={tipos}
+          usuarios={usuarios}
           rfidState={rfidState}
           onSuccess={onSuccess}
         />
@@ -938,6 +953,7 @@ export default function Enxoval() {
   const [dashboard, setDashboard]     = useState(null)
   const [dashLoading, setDashLoading] = useState(false)
   const [tipos, setTipos]             = useState([])
+  const [usuarios, setUsuarios]       = useState([])
   const [movimentacoes, setMovs]      = useState([])
   const [movsLoading, setMovsLoading] = useState(false)
   const [detalheId, setDetalheId]     = useState(null)
@@ -959,6 +975,13 @@ export default function Enxoval() {
     try {
       const { data } = await api.get('/enxoval/tipos/')
       setTipos(data.tipos || [])
+    } catch {}
+  }, [])
+
+  const carregarUsuarios = useCallback(async () => {
+    try {
+      const { data } = await api.get('/empresas/membros/')
+      setUsuarios((data || []).filter(m => m.ativo && m.usuario_ativo))
     } catch {}
   }, [])
 
@@ -985,7 +1008,8 @@ export default function Enxoval() {
     if (!empresa) return
     carregarDashboard()
     carregarTipos()
-  }, [empresa, carregarDashboard, carregarTipos])
+    carregarUsuarios()
+  }, [empresa, carregarDashboard, carregarTipos, carregarUsuarios])
 
   useEffect(() => {
     if (tab === 'historico') carregarMovs()
@@ -1009,6 +1033,7 @@ export default function Enxoval() {
     return (
       <VistaOperacao
         tipos={tipos}
+        usuarios={usuarios}
         rfidState={rfidState}
         onSuccess={onMovimentacaoRegistrada}
         onGestao={() => setModoOperacao(false)}
@@ -1057,6 +1082,7 @@ export default function Enxoval() {
         <TabMovimentacao
           tipoMov="SAIDA"
           tipos={tipos}
+          usuarios={usuarios}
           rfidState={rfidState}
           onSuccess={onMovimentacaoRegistrada}
         />
@@ -1065,6 +1091,7 @@ export default function Enxoval() {
         <TabMovimentacao
           tipoMov="ENTRADA"
           tipos={tipos}
+          usuarios={usuarios}
           rfidState={rfidState}
           onSuccess={onMovimentacaoRegistrada}
         />

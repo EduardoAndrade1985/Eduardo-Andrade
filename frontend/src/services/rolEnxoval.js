@@ -81,7 +81,10 @@ export function exportarRolPdf(mov, empresaNome = '') {
   doc.line(M, y, M + largura, y)
   doc.line(M + largura + 20, y, M + largura * 2 + 20, y)
   doc.setFontSize(8)
-  doc.text('Entregue por (nome e data)', M, y + 5)
+  doc.text(
+    mov.responsavel ? `Entregue por: ${mov.responsavel}` : 'Entregue por (nome e data)',
+    M, y + 5
+  )
   doc.text('Recebido por (nome e data)', M + largura + 20, y + 5)
 
   doc.setFontSize(7); doc.setTextColor(130)
