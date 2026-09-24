@@ -4,7 +4,9 @@ from django.http import JsonResponse
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_http_methods
 
-from .models import TipoEnxoval, PecaEnxoval, MovimentacaoEnxoval, ItemMovimentacao
+from .models import (
+    TipoEnxoval, ColetorEnxoval, PecaEnxoval, MovimentacaoEnxoval, ItemMovimentacao
+)
 
 
 def _empresa(request):
@@ -174,6 +176,66 @@ def api_tipo_detail(request, pk):
         tipo.ativo = bool(data['ativo'])
     tipo.save()
     return JsonResponse({'ok': True, 'tipo': _tipo_dict(tipo)})
+
+
+# ── Coletores ──────────────────────────────────────────────────────────────────
+
+@csrf_exempt
+@require_http_methods(['GET', 'POST'])
+def api_coletores(request):
+    empresa = _empresa(request)
+    if not empresa:
+        return _err('empresa required', 400)
+
+    if request.method == 'GET':
+        qs = ColetorEnxoval.objects.filter(empresa=empresa)
+        if request.GET.get('ativos') == '1':
+            qs = qs.filter(ativo=True)
+        return JsonResponse({'coletores': [
+            {'id': c.id, 'nome': c.nome, 'ativo': c.ativo} for c in qs
+        ]})
+
+    data = json.loads(request.body or '{}')
+    nome = (data.get('nome') or '').strip()
+    if not nome:
+        return _err('nome obrigatório')
+    if ColetorEnxoval.objects.filter(empresa=empresa, nome__iexact=nome).exists():
+        return _err('já existe um coletor com esse nome')
+
+    coletor = ColetorEnxoval.objects.create(empresa=empresa, nome=nome, ativo=True)
+    return JsonResponse(
+        {'ok': True, 'coletor': {'id': coletor.id, 'nome': coletor.nome, 'ativo': coletor.ativo}},
+        status=201,
+    )
+
+
+@csrf_exempt
+@require_http_methods(['PUT', 'DELETE'])
+def api_coletor_detail(request, pk):
+    empresa = _empresa(request)
+    if not empresa:
+        return _err('empresa required', 400)
+
+    try:
+        coletor = ColetorEnxoval.objects.get(pk=pk, empresa=empresa)
+    except ColetorEnxoval.DoesNotExist:
+        return _err('coletor não encontrado', 404)
+
+    if request.method == 'DELETE':
+        # o nome já pode constar em rols emitidos: inativa em vez de apagar
+        coletor.ativo = False
+        coletor.save(update_fields=['ativo'])
+        return JsonResponse({'ok': True, 'inativado': True})
+
+    data = json.loads(request.body or '{}')
+    if 'nome' in data:
+        coletor.nome = (data['nome'] or '').strip()
+    if 'ativo' in data:
+        coletor.ativo = bool(data['ativo'])
+    coletor.save()
+    return JsonResponse(
+        {'ok': True, 'coletor': {'id': coletor.id, 'nome': coletor.nome, 'ativo': coletor.ativo}}
+    )
 
 
 # ── Peças ──────────────────────────────────────────────────────────────────────

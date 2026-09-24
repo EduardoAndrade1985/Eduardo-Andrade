@@ -2,7 +2,6 @@ import { useState, useEffect, useCallback } from 'react'
 import { Capacitor } from '@capacitor/core'
 import api from '../services/api'
 import { useEmpresa } from '../contexts/EmpresaContext'
-import { useAuth } from '../contexts/AuthContext'
 import { useRfid } from '../hooks/useRfid'
 import { StatusLeitor, montarEpc } from '../services/rfid'
 import { agruparPorTipo, exportarRolPdf, exportarRolExcel } from '../services/rolEnxoval'
@@ -343,11 +342,8 @@ function TabDashboard({ dados, loading }) {
 }
 
 // ── Sessão RFID (saída / entrada) ─────────────────────────────────────────────
-function TabMovimentacao({ tipoMov, tipos, usuarios, rfidState, onSuccess }) {
-  const { user } = useAuth()
-  // Já vem preenchido com quem está logado, mas dá para trocar: o celular do
-  // setor costuma ser compartilhado entre as camareiras.
-  const [responsavel, setResponsavel]   = useState(user?.username || '')
+function TabMovimentacao({ tipoMov, tipos, coletores, rfidState, onSuccess }) {
+  const [responsavel, setResponsavel]   = useState('')
   const [observacoes, setObservacoes]   = useState('')
   const [confirmando, setConfirmando]   = useState(false)
   const [resultado, setResultado]       = useState(null)
@@ -357,11 +353,6 @@ function TabMovimentacao({ tipoMov, tipos, usuarios, rfidState, onSuccess }) {
     tagsValidas, totalUnico, totalIgnorado,
     iniciar, parar, limpar, paraApi,
   } = rfidState
-
-  // o usuário pode chegar depois da montagem (contexto ainda carregando)
-  useEffect(() => {
-    if (user?.username) setResponsavel(atual => atual || user.username)
-  }, [user])
 
   const podeLer       = conectado && !lendo
   const podeParar     = lendo
@@ -466,17 +457,22 @@ function TabMovimentacao({ tipoMov, tipos, usuarios, rfidState, onSuccess }) {
           <div className="space-y-3">
             <div className="grid grid-cols-1 xl:grid-cols-2 gap-3">
               <div>
-                <label className="text-xs text-muted mb-1 block">Responsável pela coleta</label>
+                <label className="text-xs text-muted mb-1 block">Quem fez a coleta</label>
                 <select
                   value={responsavel}
                   onChange={e => setResponsavel(e.target.value)}
                   className="w-full bg-white/[0.04] border border-white/[0.08] rounded-lg px-3 py-2 text-sm text-dim focus:outline-none focus:border-primary/40"
                 >
                   <option value="">Selecione…</option>
-                  {usuarios.map(u => (
-                    <option key={u.id} value={u.username}>{u.username}</option>
+                  {coletores.filter(c => c.ativo).map(c => (
+                    <option key={c.id} value={c.nome}>{c.nome}</option>
                   ))}
                 </select>
+                {coletores.filter(c => c.ativo).length === 0 && (
+                  <p className="text-[10px] text-amber-400 mt-1">
+                    Nenhum coletor cadastrado — adicione na aba Cadastro.
+                  </p>
+                )}
               </div>
               <div>
                 <label className="text-xs text-muted mb-1 block">Observações</label>
@@ -621,7 +617,102 @@ function TabHistorico({ movimentacoes, loading, onSelect, detalhe, loadingDetalh
 }
 
 // ── Cadastro ──────────────────────────────────────────────────────────────────
-function TabCadastro({ tipos, onRefresh, rfidState }) {
+function CardColetores({ coletores, onRefresh }) {
+  const [nome, setNome]       = useState('')
+  const [salvando, setSalvando] = useState(false)
+
+  const ativos   = coletores.filter(c => c.ativo)
+  const inativos = coletores.filter(c => !c.ativo)
+
+  async function adicionar() {
+    const limpo = nome.trim()
+    if (!limpo || salvando) return
+    setSalvando(true)
+    try {
+      await api.post('/enxoval/coletores/', { nome: limpo })
+      setNome('')
+      onRefresh()
+    } catch (e) {
+      alert(e.response?.data?.erro || 'Erro ao adicionar')
+    } finally {
+      setSalvando(false)
+    }
+  }
+
+  async function alternar(c) {
+    try {
+      await api.put(`/enxoval/coletores/${c.id}/`, { ativo: !c.ativo })
+      onRefresh()
+    } catch (e) {
+      alert(e.response?.data?.erro || 'Erro ao atualizar')
+    }
+  }
+
+  return (
+    <Card title="Quem faz a coleta">
+      <p className="text-xs text-muted mb-4">
+        Lista própria do enxoval, independente dos usuários do sistema. Quem sai da
+        equipe é desativado, não excluído, para não apagar o nome dos rols já emitidos.
+      </p>
+
+      <div className="flex gap-2">
+        <input
+          value={nome}
+          onChange={e => setNome(e.target.value)}
+          onKeyDown={e => { if (e.key === 'Enter') adicionar() }}
+          placeholder="Nome da pessoa"
+          className="flex-1 bg-white/[0.04] border border-white/[0.08] rounded-lg px-3 py-2 text-sm text-dim focus:outline-none focus:border-primary/40"
+        />
+        <button
+          onClick={adicionar}
+          disabled={salvando || !nome.trim()}
+          className="px-4 py-2 text-sm bg-primary text-white rounded-lg hover:bg-primary/90 transition disabled:opacity-40"
+        >
+          Adicionar
+        </button>
+      </div>
+
+      {ativos.length > 0 && (
+        <div className="mt-4 space-y-1">
+          {ativos.map(c => (
+            <div key={c.id} className="flex items-center gap-3 py-2 px-2 rounded-lg hover:bg-white/[0.03] transition">
+              <span className="flex-1 text-sm text-dim truncate">{c.nome}</span>
+              <button
+                onClick={() => alternar(c)}
+                className="text-xs px-2 py-1 text-muted hover:text-rose-400 transition"
+              >
+                Desativar
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {inativos.length > 0 && (
+        <div className="mt-4 pt-3 border-t border-white/[0.06] space-y-1">
+          <p className="text-[10px] text-muted uppercase tracking-wide mb-1">Inativos</p>
+          {inativos.map(c => (
+            <div key={c.id} className="flex items-center gap-3 py-1.5 px-2 rounded-lg">
+              <span className="flex-1 text-sm text-muted/50 truncate">{c.nome}</span>
+              <button
+                onClick={() => alternar(c)}
+                className="text-xs px-2 py-1 text-muted hover:text-primary transition"
+              >
+                Reativar
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {coletores.length === 0 && (
+        <p className="text-xs text-muted mt-3">Nenhuma pessoa cadastrada ainda.</p>
+      )}
+    </Card>
+  )
+}
+
+function TabCadastro({ tipos, coletores, onRefresh, rfidState }) {
   const [form, setForm]         = useState({ nome: '', codigo: '', estoque_minimo: 0 })
   const [salvando, setSalvando] = useState(false)
   const [editando, setEditando] = useState(null)
@@ -781,6 +872,8 @@ function TabCadastro({ tipos, onRefresh, rfidState }) {
         )}
       </Card>
 
+      <CardColetores coletores={coletores} onRefresh={onRefresh} />
+
       {/* ── gerenciar tipos ── */}
       <Card title={editando ? 'Editar tipo' : 'Tipos de enxoval'}>
         <div className="grid grid-cols-1 xl:grid-cols-4 gap-3">
@@ -891,7 +984,7 @@ function AcaoGrande({ tipo, onClick }) {
   )
 }
 
-function VistaOperacao({ tipos, usuarios, rfidState, onSuccess, onGestao }) {
+function VistaOperacao({ tipos, coletores, rfidState, onSuccess, onGestao }) {
   const [acao, setAcao] = useState(null)
 
   if (acao) {
@@ -908,7 +1001,7 @@ function VistaOperacao({ tipos, usuarios, rfidState, onSuccess, onGestao }) {
         <TabMovimentacao
           tipoMov={acao}
           tipos={tipos}
-          usuarios={usuarios}
+          coletores={coletores}
           rfidState={rfidState}
           onSuccess={onSuccess}
         />
@@ -953,7 +1046,7 @@ export default function Enxoval() {
   const [dashboard, setDashboard]     = useState(null)
   const [dashLoading, setDashLoading] = useState(false)
   const [tipos, setTipos]             = useState([])
-  const [usuarios, setUsuarios]       = useState([])
+  const [coletores, setColetores]     = useState([])
   const [movimentacoes, setMovs]      = useState([])
   const [movsLoading, setMovsLoading] = useState(false)
   const [detalheId, setDetalheId]     = useState(null)
@@ -978,10 +1071,10 @@ export default function Enxoval() {
     } catch {}
   }, [])
 
-  const carregarUsuarios = useCallback(async () => {
+  const carregarColetores = useCallback(async () => {
     try {
-      const { data } = await api.get('/empresas/membros/')
-      setUsuarios((data || []).filter(m => m.ativo && m.usuario_ativo))
+      const { data } = await api.get('/enxoval/coletores/')
+      setColetores(data.coletores || [])
     } catch {}
   }, [])
 
@@ -1008,8 +1101,8 @@ export default function Enxoval() {
     if (!empresa) return
     carregarDashboard()
     carregarTipos()
-    carregarUsuarios()
-  }, [empresa, carregarDashboard, carregarTipos, carregarUsuarios])
+    carregarColetores()
+  }, [empresa, carregarDashboard, carregarTipos, carregarColetores])
 
   useEffect(() => {
     if (tab === 'historico') carregarMovs()
@@ -1033,7 +1126,7 @@ export default function Enxoval() {
     return (
       <VistaOperacao
         tipos={tipos}
-        usuarios={usuarios}
+        coletores={coletores}
         rfidState={rfidState}
         onSuccess={onMovimentacaoRegistrada}
         onGestao={() => setModoOperacao(false)}
@@ -1082,7 +1175,7 @@ export default function Enxoval() {
         <TabMovimentacao
           tipoMov="SAIDA"
           tipos={tipos}
-          usuarios={usuarios}
+          coletores={coletores}
           rfidState={rfidState}
           onSuccess={onMovimentacaoRegistrada}
         />
@@ -1091,7 +1184,7 @@ export default function Enxoval() {
         <TabMovimentacao
           tipoMov="ENTRADA"
           tipos={tipos}
-          usuarios={usuarios}
+          coletores={coletores}
           rfidState={rfidState}
           onSuccess={onMovimentacaoRegistrada}
         />
@@ -1108,8 +1201,9 @@ export default function Enxoval() {
       {tab === 'cadastro' && (
         <TabCadastro
           tipos={tipos}
+          coletores={coletores}
           rfidState={rfidState}
-          onRefresh={() => { carregarTipos(); carregarDashboard() }}
+          onRefresh={() => { carregarTipos(); carregarColetores(); carregarDashboard() }}
         />
       )}
     </div>

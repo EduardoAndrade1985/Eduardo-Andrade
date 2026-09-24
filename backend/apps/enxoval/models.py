@@ -22,6 +22,26 @@ class TipoEnxoval(EmpresaBaseModel):
         return f'{self.nome} ({self.codigo})'
 
 
+class ColetorEnxoval(EmpresaBaseModel):
+    """Quem faz a coleta — camareiras e auxiliares, que em geral não têm login.
+
+    É uma lista própria do módulo, e não os usuários do sistema, porque a
+    rotatividade no setor é alta. Quem sai é inativado, não excluído, para
+    não apagar o nome dos rols já emitidos.
+    """
+    nome  = models.CharField(max_length=120)
+    ativo = models.BooleanField(default=True)
+
+    class Meta:
+        ordering        = ['nome']
+        unique_together = [('empresa', 'nome')]
+        verbose_name        = 'Coletor de Enxoval'
+        verbose_name_plural = 'Coletores de Enxoval'
+
+    def __str__(self):
+        return self.nome
+
+
 class PecaEnxoval(EmpresaBaseModel):
     EM_HOTEL       = 'EM_HOTEL'
     NA_LAVANDERIA  = 'NA_LAVANDERIA'
