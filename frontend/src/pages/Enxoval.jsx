@@ -748,6 +748,163 @@ function TabPecas({ tipos }) {
   )
 }
 
+// ── Descarte no navegador ─────────────────────────────────────────────────────
+// Sem leitor, a baixa é por seleção. Existe porque quem tem alçada para
+// validar a perda trabalha no notebook, não com o coletor na mão.
+function DescarteManual({ tipos, onSuccess }) {
+  const [tipoId, setTipoId]       = useState('')
+  const [status, setStatus]       = useState('')
+  const [pecas, setPecas]         = useState([])
+  const [marcadas, setMarcadas]   = useState(new Set())
+  const [motivo, setMotivo]       = useState('')
+  const [baixando, setBaixando]   = useState(false)
+  const [resultado, setResultado] = useState(null)
+  const [recarga, setRecarga]     = useState(0)
+
+  useEffect(() => {
+    const p = new URLSearchParams({ limite: '300' })
+    if (tipoId) p.set('tipo', tipoId)
+    p.set('status', status || 'EM_HOTEL')
+    api.get(`/enxoval/pecas/?${p}`)
+      .then(({ data }) => setPecas(data.pecas || []))
+      .catch(() => setPecas([]))
+    setMarcadas(new Set())
+  }, [tipoId, status, recarga])
+
+  function alternar(epc) {
+    setMarcadas(m => {
+      const n = new Set(m)
+      n.has(epc) ? n.delete(epc) : n.add(epc)
+      return n
+    })
+  }
+
+  async function handleBaixar() {
+    if (!marcadas.size || baixando) return
+    if (!confirm(`Dar baixa em ${marcadas.size} peça(s)? A etiqueta fica livre para reuso.`)) return
+    setBaixando(true)
+    try {
+      const { data } = await api.post('/enxoval/pecas/baixa/', {
+        epcs: [...marcadas], motivo,
+      })
+      setResultado(data)
+      setMotivo('')
+      setRecarga(r => r + 1)
+      onSuccess()
+    } catch (e) {
+      alert(e.response?.data?.erro || 'Erro ao dar baixa')
+    } finally {
+      setBaixando(false)
+    }
+  }
+
+  return (
+    <div className="space-y-4">
+      <Card title="Descarte de peças">
+        <p className="text-xs text-muted mb-4">
+          Marque as peças que saem de circulação por desgaste. Elas deixam o estoque,
+          mas a <strong className="text-dim">etiqueta continua válida</strong> e volta a
+          ficar disponível para uma peça nova. Ler pelo coletor é feito no aplicativo.
+        </p>
+
+        <div className="grid grid-cols-1 xl:grid-cols-3 gap-3">
+          <div>
+            <label className="text-xs text-muted mb-1 block">Tipo</label>
+            <select
+              value={tipoId}
+              onChange={e => setTipoId(e.target.value)}
+              className="w-full bg-white/[0.04] border border-white/[0.08] rounded-lg px-3 py-2 text-sm text-dim focus:outline-none focus:border-primary/40"
+            >
+              <option value="">Todos</option>
+              {tipos.map(t => <option key={t.id} value={t.id}>{t.nome}</option>)}
+            </select>
+          </div>
+          <div>
+            <label className="text-xs text-muted mb-1 block">Situação</label>
+            <select
+              value={status}
+              onChange={e => setStatus(e.target.value)}
+              className="w-full bg-white/[0.04] border border-white/[0.08] rounded-lg px-3 py-2 text-sm text-dim focus:outline-none focus:border-primary/40"
+            >
+              <option value="EM_HOTEL">Em hotel</option>
+              <option value="NA_LAVANDERIA">Na lavanderia</option>
+            </select>
+          </div>
+          <div>
+            <label className="text-xs text-muted mb-1 block">Motivo (opcional)</label>
+            <input
+              value={motivo}
+              onChange={e => setMotivo(e.target.value)}
+              placeholder="Ex: desgaste, rasgo"
+              className="w-full bg-white/[0.04] border border-white/[0.08] rounded-lg px-3 py-2 text-sm text-dim focus:outline-none focus:border-primary/40"
+            />
+          </div>
+        </div>
+
+        {resultado && (
+          <div className="mt-4 flex items-center gap-3 p-3 bg-emerald-500/10 border border-emerald-500/20 rounded-xl">
+            <Ico.Check className="w-5 h-5 text-emerald-400 flex-shrink-0" />
+            <p className="text-sm text-emerald-400 font-medium">
+              {resultado.baixadas} peça{resultado.baixadas !== 1 ? 's' : ''} descartada{resultado.baixadas !== 1 ? 's' : ''}
+            </p>
+            <button onClick={() => setResultado(null)} className="ml-auto text-xs text-muted hover:text-dim">
+              Fechar
+            </button>
+          </div>
+        )}
+      </Card>
+
+      <Card>
+        {pecas.length === 0 ? (
+          <p className="text-sm text-muted text-center py-8">Nenhuma peça nessa situação.</p>
+        ) : (
+          <>
+            <div className="flex items-center justify-between mb-3">
+              <button
+                onClick={() => setMarcadas(m => m.size === pecas.length ? new Set() : new Set(pecas.map(p => p.epc)))}
+                className="text-xs text-primary hover:underline"
+              >
+                {marcadas.size === pecas.length ? 'Desmarcar todas' : 'Marcar todas'}
+              </button>
+              <span className="text-xs text-muted">{marcadas.size} de {pecas.length} marcadas</span>
+            </div>
+
+            <div className="space-y-0.5">
+              {pecas.map(p => (
+                <label
+                  key={p.epc}
+                  className="flex items-center gap-3 py-2 px-2 rounded-lg hover:bg-white/[0.03] cursor-pointer transition"
+                >
+                  <input
+                    type="checkbox"
+                    checked={marcadas.has(p.epc)}
+                    onChange={() => alternar(p.epc)}
+                    className="accent-rose-500 w-4 h-4 flex-shrink-0"
+                  />
+                  <span className="font-mono text-xs text-muted flex-1 truncate">{fmtEpc(p.epc)}</span>
+                  <span className="text-sm text-dim">{p.tipo_nome}</span>
+                  <span className="text-xs text-muted w-16 text-right">#{p.serial}</span>
+                  <StatusBadge status={p.status} />
+                </label>
+              ))}
+            </div>
+
+            {marcadas.size > 0 && (
+              <button
+                onClick={handleBaixar}
+                disabled={baixando}
+                className="mt-4 px-5 py-2.5 text-sm bg-rose-500/15 text-rose-400 border border-rose-500/30 rounded-lg hover:bg-rose-500/20 transition font-medium disabled:opacity-50"
+              >
+                {baixando ? 'Dando baixa…' : `Dar baixa em ${marcadas.size} peça${marcadas.size !== 1 ? 's' : ''}`}
+              </button>
+            )}
+          </>
+        )}
+      </Card>
+    </div>
+  )
+}
+
 // ── Descarte ──────────────────────────────────────────────────────────────────
 function TabDescarte({ tipos, rfidState, onSuccess }) {
   const [motivo, setMotivo]         = useState('')
@@ -1599,9 +1756,9 @@ export default function Enxoval() {
     { id: 'entrada',   label: 'Entrada',   Icone: Ico.Entrada, soApp: true },
     { id: 'pecas',     label: 'Peças' },
     { id: 'historico', label: 'Histórico' },
-    { id: 'descarte',  label: 'Descarte',  soApp: true },
+    { id: 'descarte',  label: 'Descarte',  soGestor: true },
     { id: 'cadastro',  label: 'Cadastro' },
-  ].filter(t => noApp || !t.soApp)
+  ].filter(t => (noApp || !t.soApp) && (podeGerir || !t.soGestor))
 
   // no app, quem não tem alçada fica só na operação
   if (modoOperacao || (noApp && !podeGerir)) {
@@ -1687,11 +1844,11 @@ export default function Enxoval() {
         <TabPecas tipos={tipos} />
       )}
       {tab === 'descarte' && (
-        <TabDescarte
-          tipos={tipos}
-          rfidState={rfidState}
-          onSuccess={carregarDashboard}
-        />
+        noApp ? (
+          <TabDescarte tipos={tipos} rfidState={rfidState} onSuccess={carregarDashboard} />
+        ) : (
+          <DescarteManual tipos={tipos} onSuccess={carregarDashboard} />
+        )
       )}
       {tab === 'cadastro' && (
         <TabCadastro
