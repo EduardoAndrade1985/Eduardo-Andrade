@@ -17,6 +17,16 @@ def _err(msg, status=400):
     return JsonResponse({'ok': False, 'erro': msg}, status=status)
 
 
+def _pode_gerir(request):
+    """Administrar o módulo — tipos e coletores — é de quem responde pelo setor.
+    Operar o leitor (saída, entrada, descarte) continua liberado a todos."""
+    user = getattr(request, 'user', None)
+    if getattr(user, 'is_staff', False) or getattr(user, 'is_superuser', False):
+        return True
+    membro = getattr(request, 'membro', None)
+    return bool(membro and membro.papel in ('admin', 'gerente'))
+
+
 def _norm_epc(epc):
     return (epc or '').strip().upper()
 
@@ -125,6 +135,9 @@ def api_tipos(request):
         tipos = TipoEnxoval.objects.filter(empresa=empresa).order_by('nome')
         return JsonResponse({'tipos': [_tipo_dict(t) for t in tipos]})
 
+    if not _pode_gerir(request):
+        return _err('sem permissão para alterar tipos de enxoval', 403)
+
     data    = json.loads(request.body or '{}')
     nome    = (data.get('nome') or '').strip()
     codigo  = (data.get('codigo') or '').strip().upper()
@@ -151,6 +164,9 @@ def api_tipo_detail(request, pk):
     empresa = _empresa(request)
     if not empresa:
         return _err('empresa required', 400)
+
+    if not _pode_gerir(request):
+        return _err('sem permissão para alterar tipos de enxoval', 403)
 
     try:
         tipo = TipoEnxoval.objects.get(pk=pk, empresa=empresa)
@@ -195,6 +211,9 @@ def api_coletores(request):
             {'id': c.id, 'nome': c.nome, 'ativo': c.ativo} for c in qs
         ]})
 
+    if not _pode_gerir(request):
+        return _err('sem permissão para alterar a lista de coletores', 403)
+
     data = json.loads(request.body or '{}')
     nome = (data.get('nome') or '').strip()
     if not nome:
@@ -215,6 +234,9 @@ def api_coletor_detail(request, pk):
     empresa = _empresa(request)
     if not empresa:
         return _err('empresa required', 400)
+
+    if not _pode_gerir(request):
+        return _err('sem permissão para alterar a lista de coletores', 403)
 
     try:
         coletor = ColetorEnxoval.objects.get(pk=pk, empresa=empresa)

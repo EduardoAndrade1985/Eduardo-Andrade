@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { Capacitor } from '@capacitor/core'
 import api from '../services/api'
 import { useEmpresa } from '../contexts/EmpresaContext'
+import { useAuth } from '../contexts/AuthContext'
 import { useRfid } from '../hooks/useRfid'
 import { StatusLeitor, montarEpc, epcParcial, epcVirgem } from '../services/rfid'
 import { agruparPorTipo, exportarRolPdf, exportarRolExcel } from '../services/rolEnxoval'
@@ -1395,37 +1396,60 @@ function TabCadastro({ tipos, coletores, onRefresh, rfidState }) {
 
 // ── Página principal ──────────────────────────────────────────────────────────
 // ── Visão do operador ─────────────────────────────────────────────────────────
+const ACOES = {
+  SAIDA: {
+    rotulo: 'Saída', Icone: Ico.Saida, descricao: 'Enviar peças para a lavanderia',
+    fundo: 'bg-amber-500/[0.08] border-amber-500/25 hover:bg-amber-500/[0.12]',
+    chip: 'bg-amber-500/15 text-amber-400', texto: 'text-amber-400',
+  },
+  ENTRADA: {
+    rotulo: 'Entrada', Icone: Ico.Entrada, descricao: 'Receber peças da lavanderia',
+    fundo: 'bg-emerald-500/[0.08] border-emerald-500/25 hover:bg-emerald-500/[0.12]',
+    chip: 'bg-emerald-500/15 text-emerald-400', texto: 'text-emerald-400',
+  },
+  DESCARTE: {
+    rotulo: 'Descarte', Icone: Ico.Etiqueta, descricao: 'Tirar peças gastas de circulação',
+    fundo: 'bg-rose-500/[0.08] border-rose-500/25 hover:bg-rose-500/[0.12]',
+    chip: 'bg-rose-500/15 text-rose-400', texto: 'text-rose-400',
+  },
+}
+
 function AcaoGrande({ tipo, onClick }) {
-  const saida = tipo === 'SAIDA'
-  const Icone = saida ? Ico.Saida : Ico.Entrada
+  const a = ACOES[tipo]
   return (
     <button
       onClick={onClick}
-      className={`w-full rounded-2xl border p-5 flex items-center gap-4 transition active:scale-[0.98] ${
-        saida
-          ? 'bg-amber-500/[0.08] border-amber-500/25 hover:bg-amber-500/[0.12]'
-          : 'bg-emerald-500/[0.08] border-emerald-500/25 hover:bg-emerald-500/[0.12]'
-      }`}
+      className={`w-full rounded-2xl border p-5 flex items-center gap-4 transition active:scale-[0.98] ${a.fundo}`}
     >
-      <span className={`w-14 h-14 rounded-2xl grid place-items-center flex-shrink-0 ${
-        saida ? 'bg-amber-500/15 text-amber-400' : 'bg-emerald-500/15 text-emerald-400'
-      }`}>
-        <Icone className="w-7 h-7" />
+      <span className={`w-14 h-14 rounded-2xl grid place-items-center flex-shrink-0 ${a.chip}`}>
+        <a.Icone className="w-7 h-7" />
       </span>
       <span className="text-left min-w-0">
-        <span className={`block text-lg font-semibold ${saida ? 'text-amber-400' : 'text-emerald-400'}`}>
-          {saida ? 'Saída' : 'Entrada'}
-        </span>
-        <span className="block text-xs text-muted mt-0.5">
-          {saida ? 'Enviar peças para a lavanderia' : 'Receber peças da lavanderia'}
-        </span>
+        <span className={`block text-lg font-semibold ${a.texto}`}>{a.rotulo}</span>
+        <span className="block text-xs text-muted mt-0.5">{a.descricao}</span>
       </span>
     </button>
   )
 }
 
-function VistaOperacao({ tipos, coletores, rfidState, onSuccess, onGestao }) {
+function VistaOperacao({ tipos, coletores, rfidState, onSuccess, onGestao, podeGerir }) {
   const [acao, setAcao] = useState(null)
+
+  if (acao === 'DESCARTE') {
+    return (
+      <div className="p-4 space-y-4">
+        <BarraLeitor rfidState={rfidState} />
+        <button
+          onClick={() => setAcao(null)}
+          className="flex items-center gap-1 -ml-1 text-sm text-muted hover:text-dim transition"
+        >
+          <Ico.Voltar className="w-4 h-4" />
+          Voltar
+        </button>
+        <TabDescarte tipos={tipos} rfidState={rfidState} onSuccess={onSuccess} />
+      </div>
+    )
+  }
 
   if (acao) {
     return (
@@ -1459,24 +1483,32 @@ function VistaOperacao({ tipos, coletores, rfidState, onSuccess, onGestao }) {
       <BarraLeitor rfidState={rfidState} />
 
       <div className="flex flex-col gap-3">
-        <AcaoGrande tipo="SAIDA"   onClick={() => setAcao('SAIDA')} />
-        <AcaoGrande tipo="ENTRADA" onClick={() => setAcao('ENTRADA')} />
+        <AcaoGrande tipo="SAIDA"    onClick={() => setAcao('SAIDA')} />
+        <AcaoGrande tipo="ENTRADA"  onClick={() => setAcao('ENTRADA')} />
+        <AcaoGrande tipo="DESCARTE" onClick={() => setAcao('DESCARTE')} />
       </div>
 
-      <button
-        onClick={onGestao}
-        className="mt-auto flex items-center justify-center gap-2 py-3 text-xs text-muted hover:text-dim transition"
-      >
-        <Ico.Gestao className="w-4 h-4" />
-        Painel de gestão
-      </button>
+      {podeGerir && (
+        <button
+          onClick={onGestao}
+          className="mt-auto flex items-center justify-center gap-2 py-3 text-xs text-muted hover:text-dim transition"
+        >
+          <Ico.Gestao className="w-4 h-4" />
+          Painel de gestão
+        </button>
+      )}
     </div>
   )
 }
 
 export default function Enxoval() {
   const { empresaAtiva: empresa } = useEmpresa()
+  const { user } = useAuth()
   const [tab, setTab] = useState('dashboard')
+
+  // Quem opera o leitor não administra o módulo: cadastrar tipos, dar baixa em
+  // massa e ver os relatórios é trabalho de quem responde pelo setor.
+  const podeGerir = ['admin', 'gerente'].includes(user?.papel) || !!user?.is_staff
   // O APK só é instalado nos aparelhos que têm leitor, então ele abre direto na
   // visão do operador. Quem acessa pelo navegador é gestor e cai no painel.
   const [modoOperacao, setModoOperacao] = useState(() => {
@@ -1564,7 +1596,8 @@ export default function Enxoval() {
     { id: 'cadastro',  label: 'Cadastro' },
   ].filter(t => noApp || !t.soApp)
 
-  if (modoOperacao) {
+  // no app, quem não tem alçada fica só na operação
+  if (modoOperacao || (noApp && !podeGerir)) {
     return (
       <VistaOperacao
         tipos={tipos}
@@ -1572,6 +1605,7 @@ export default function Enxoval() {
         rfidState={rfidState}
         onSuccess={onMovimentacaoRegistrada}
         onGestao={() => setModoOperacao(false)}
+        podeGerir={podeGerir}
       />
     )
   }
