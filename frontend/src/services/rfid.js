@@ -349,6 +349,19 @@ export function epcDoSistema(epc, prefixo) {
   return normalizarEpc(epc).startsWith(normalizarEpc(prefixo));
 }
 
+/**
+ * Etiqueta virgem de fábrica: EPC quase todo zerado, com um número de série
+ * curto no fim (000000000000000000001010).
+ *
+ * O ambiente tem etiquetas de terceiros — crachás, ativos, embalagens — que
+ * também não são do sistema. Gravar por exclusão ("tudo que não é nosso")
+ * sobrescreveria o EPC delas, de forma irreversível. Por isso a regra é de
+ * inclusão: só é virgem o que tem a assinatura de fábrica.
+ */
+export function epcVirgem(epc) {
+  return /^0{16,}/.test(normalizarEpc(epc));
+}
+
 /** Serial embutido no EPC (posições 8 a 16). Retorna 0 se não der para ler. */
 export function serialDoEpc(epc) {
   const s = parseInt(normalizarEpc(epc).slice(8, 16), 16);

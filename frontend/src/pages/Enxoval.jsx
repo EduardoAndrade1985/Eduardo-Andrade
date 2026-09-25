@@ -3,7 +3,7 @@ import { Capacitor } from '@capacitor/core'
 import api from '../services/api'
 import { useEmpresa } from '../contexts/EmpresaContext'
 import { useRfid } from '../hooks/useRfid'
-import { StatusLeitor, montarEpc, epcParcial } from '../services/rfid'
+import { StatusLeitor, montarEpc, epcParcial, epcVirgem } from '../services/rfid'
 import { agruparPorTipo, exportarRolPdf, exportarRolExcel } from '../services/rolEnxoval'
 
 // ── helpers ───────────────────────────────────────────────────────────────────
@@ -732,10 +732,13 @@ function TabCadastro({ tipos, coletores, onRefresh, rfidState }) {
   // Graváveis: as virgens de fábrica e também as que ficaram pela metade numa
   // tentativa anterior — estas têm prefixo do sistema mas serial zero, e sem
   // isso ficariam presas nesse estado para sempre.
-  const parciais   = tags.filter(t => epcParcial(t.epc, EPC_PREFIXO)).map(t => t.epc)
-  const virgens    = tags.filter(t => !t.doSistema).map(t => t.epc)
-  const emBranco   = [...virgens, ...parciais]
-  const jaGravadas = tags.length - emBranco.length
+  const parciais  = tags.filter(t => epcParcial(t.epc, EPC_PREFIXO)).map(t => t.epc)
+  const virgens   = tags.filter(t => epcVirgem(t.epc)).map(t => t.epc)
+  const emBranco  = [...virgens, ...parciais]
+  // do sistema e já íntegras
+  const jaGravadas = tags.filter(t => t.doSistema && !epcParcial(t.epc, EPC_PREFIXO)).length
+  // etiquetas alheias no ambiente: nunca entram no lote
+  const deTerceiros = tags.length - emBranco.length - jaGravadas
 
   // ── programar: calcula próximo serial quando tipo muda ────────────────────
   // montarEpc lança se o código do tipo não for hexadecimal. Como isso roda no
@@ -908,8 +911,23 @@ function TabCadastro({ tipos, coletores, onRefresh, rfidState }) {
           </div>
         )}
 
+        {gravando && (
+          <div className="mt-4">
+            <div className="flex justify-between text-[10px] text-muted mb-1">
+              <span>Gravando uma a uma — cada etiqueta leva alguns segundos</span>
+              <span>{progresso.feitas} / {progresso.total}</span>
+            </div>
+            <div className="h-1.5 bg-white/[0.06] rounded-full overflow-hidden">
+              <div
+                className="h-full bg-primary rounded-full transition-all"
+                style={{ width: `${progresso.total ? (progresso.feitas / progresso.total) * 100 : 0}%` }}
+              />
+            </div>
+          </div>
+        )}
+
         {/* encontradas */}
-        {(emBranco.length > 0 || lendo) && !resultadoProg && (
+        {(emBranco.length > 0 || lendo) && !gravando && !resultadoProg && (
           <div className="mt-4 flex items-center gap-2">
             <span className="text-3xl font-bold text-primary">{emBranco.length}</span>
             <div>
@@ -922,6 +940,11 @@ function TabCadastro({ tipos, coletores, onRefresh, rfidState }) {
               {parciais.length > 0 && (
                 <p className="text-[10px] text-amber-400">
                   {parciais.length} com gravação incompleta, {parciais.length !== 1 ? 'serão refeitas' : 'será refeita'}
+                </p>
+              )}
+              {deTerceiros > 0 && (
+                <p className="text-[10px] text-muted">
+                  {deTerceiros} de terceiros no ambiente, não {deTerceiros !== 1 ? 'serão tocadas' : 'será tocada'}
                 </p>
               )}
             </div>
