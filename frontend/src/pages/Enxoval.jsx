@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useMemo } from 'react'
 import { Capacitor } from '@capacitor/core'
 import api from '../services/api'
 import { useEmpresa } from '../contexts/EmpresaContext'
@@ -356,12 +356,26 @@ function TabMovimentacao({ tipoMov, tipos, coletores, rfidState, onSuccess }) {
   const [observacoes, setObservacoes]   = useState('')
   const [confirmando, setConfirmando]   = useState(false)
   const [resultado, setResultado]       = useState(null)
+  const [verDetalhe, setVerDetalhe]     = useState(false)
 
   const {
     lendo, conectado,
     tagsValidas, totalUnico, totalIgnorado,
     iniciar, parar, limpar, paraApi,
   } = rfidState
+
+  // o leitor dispara dezenas de eventos por segundo: reagrupa só quando a
+  // lista muda de fato, não a cada evento
+  const resumoPorTipo = useMemo(() => {
+    const m = new Map()
+    for (const t of tagsValidas) {
+      const nome = inferirTipo(t.epc, tipos)?.nome || 'Tipo desconhecido'
+      m.set(nome, (m.get(nome) || 0) + 1)
+    }
+    return [...m]
+      .map(([nome, qtd]) => ({ nome, qtd }))
+      .sort((a, b) => b.qtd - a.qtd || a.nome.localeCompare(b.nome))
+  }, [tagsValidas, tipos])
 
   const podeLer       = conectado && !lendo
   const podeParar     = lendo
@@ -425,38 +439,50 @@ function TabMovimentacao({ tipoMov, tipos, coletores, rfidState, onSuccess }) {
         </div>
       </Card>
 
-      {/* lista de tags lidas */}
+      {/* contagem ao vivo — por item, que é como se confere */}
       {(totalUnico > 0 || lendo) && (
         <Card>
           <div className="flex items-center justify-between mb-3">
-            <div className="flex gap-4 text-xs">
-              <span className="text-emerald-400 font-medium">{totalUnico} reconhecidas</span>
-              {totalIgnorado > 0 && <span className="text-muted">{totalIgnorado} ignoradas</span>}
+            <div className="flex items-baseline gap-2">
+              <span className="text-3xl font-bold text-primary leading-none">{totalUnico}</span>
+              <span className="text-xs text-muted">
+                peça{totalUnico !== 1 ? 's' : ''} lida{totalUnico !== 1 ? 's' : ''}
+                {totalIgnorado > 0 && ` · ${totalIgnorado} ignorada${totalIgnorado !== 1 ? 's' : ''}`}
+              </span>
             </div>
             {lendo && <span className="text-xs text-primary animate-pulse">lendo…</span>}
           </div>
 
+          {/* consolidado: a contagem sobe conforme o leitor encontra as peças */}
           <div className="space-y-1">
-            {tagsValidas.map(tag => {
-              const tipo = inferirTipo(tag.epc, tipos)
-              return (
-                <div
-                  key={tag.epc}
-                  className="flex items-center gap-3 py-1.5 px-2 rounded-lg bg-white/[0.03] border border-white/[0.04]"
-                >
-                  <span className="w-2 h-2 rounded-full flex-shrink-0 bg-primary" />
-                  <div className="flex-1 min-w-0">
-                    <p className="text-xs text-dim font-mono truncate">{fmtEpc(tag.epc)}</p>
-                    <p className="text-[10px] text-muted">{tipo?.nome || 'Tipo desconhecido'}</p>
-                  </div>
-                  <div className="text-right flex-shrink-0">
-                    <p className="text-[10px] text-muted">{tag.contagem}×</p>
-                    {tag.rssi && <p className="text-[10px] text-muted">{tag.rssi} dBm</p>}
-                  </div>
-                </div>
-              )
-            })}
+            {resumoPorTipo.map(({ nome, qtd }) => (
+              <div key={nome} className="flex items-center gap-3 py-2 px-3 rounded-lg bg-white/[0.03] border border-white/[0.04]">
+                <span className="flex-1 min-w-0 text-sm text-dim truncate">{nome}</span>
+                <span className="text-xl font-semibold text-primary tabular-nums">{qtd}</span>
+              </div>
+            ))}
           </div>
+
+          {tagsValidas.length > 0 && (
+            <button
+              onClick={() => setVerDetalhe(v => !v)}
+              className="mt-3 text-xs text-primary hover:underline"
+            >
+              {verDetalhe ? 'Ocultar etiquetas' : `Ver as ${tagsValidas.length} etiquetas`}
+            </button>
+          )}
+
+          {verDetalhe && (
+            <div className="mt-3 pt-3 border-t border-white/[0.06] space-y-0.5">
+              {tagsValidas.map(tag => (
+                <div key={tag.epc} className="flex items-center gap-3 py-1 text-xs">
+                  <span className="w-1.5 h-1.5 rounded-full flex-shrink-0 bg-primary" />
+                  <span className="font-mono text-muted flex-1 truncate">{fmtEpc(tag.epc)}</span>
+                  <span className="text-muted">{inferirTipo(tag.epc, tipos)?.nome || 'Desconhecido'}</span>
+                </div>
+              ))}
+            </div>
+          )}
         </Card>
       )}
 
