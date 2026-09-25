@@ -623,6 +623,129 @@ function TabHistorico({ movimentacoes, loading, onSelect, detalhe, loadingDetalh
   )
 }
 
+// ── Consulta de peças ─────────────────────────────────────────────────────────
+function TabPecas({ tipos }) {
+  const [busca, setBusca]     = useState('')
+  const [tipoId, setTipoId]   = useState('')
+  const [status, setStatus]   = useState('')
+  const [dados, setDados]     = useState(null)
+  const [carregando, setCarregando] = useState(false)
+
+  // espera o usuário parar de digitar antes de consultar
+  useEffect(() => {
+    const t = setTimeout(() => {
+      setCarregando(true)
+      const p = new URLSearchParams()
+      if (busca.trim()) p.set('q', busca.trim())
+      if (tipoId) p.set('tipo', tipoId)
+      if (status) p.set('status', status)
+      api.get(`/enxoval/pecas/?${p}`)
+        .then(({ data }) => setDados(data))
+        .catch(() => setDados(null))
+        .finally(() => setCarregando(false))
+    }, 300)
+    return () => clearTimeout(t)
+  }, [busca, tipoId, status])
+
+  const pecas = dados?.pecas || []
+
+  return (
+    <div className="space-y-4">
+      <Card title="Consultar peças">
+        <p className="text-xs text-muted mb-4">
+          Achou uma etiqueta solta? Digite qualquer trecho do EPC para descobrir de
+          que peça ela é e onde ela está.
+        </p>
+
+        <div className="grid grid-cols-1 xl:grid-cols-3 gap-3">
+          <div className="xl:col-span-1">
+            <label className="text-xs text-muted mb-1 block">Etiqueta (EPC)</label>
+            <input
+              value={busca}
+              onChange={e => setBusca(e.target.value.toUpperCase())}
+              placeholder="Ex: 0005 ou A1000002"
+              className="w-full bg-white/[0.04] border border-white/[0.08] rounded-lg px-3 py-2 text-sm font-mono text-dim focus:outline-none focus:border-primary/40"
+            />
+          </div>
+          <div>
+            <label className="text-xs text-muted mb-1 block">Tipo</label>
+            <select
+              value={tipoId}
+              onChange={e => setTipoId(e.target.value)}
+              className="w-full bg-white/[0.04] border border-white/[0.08] rounded-lg px-3 py-2 text-sm text-dim focus:outline-none focus:border-primary/40"
+            >
+              <option value="">Todos</option>
+              {tipos.map(t => <option key={t.id} value={t.id}>{t.nome}</option>)}
+            </select>
+          </div>
+          <div>
+            <label className="text-xs text-muted mb-1 block">Situação</label>
+            <select
+              value={status}
+              onChange={e => setStatus(e.target.value)}
+              className="w-full bg-white/[0.04] border border-white/[0.08] rounded-lg px-3 py-2 text-sm text-dim focus:outline-none focus:border-primary/40"
+            >
+              <option value="">Todas</option>
+              <option value="EM_HOTEL">Em hotel</option>
+              <option value="NA_LAVANDERIA">Na lavanderia</option>
+              <option value="BAIXADA">Baixada</option>
+            </select>
+          </div>
+        </div>
+
+        {dados && (
+          <p className="text-xs text-muted mt-4">
+            {dados.total} peça{dados.total !== 1 ? 's' : ''}
+            {pecas.length < dados.total && ` · mostrando as ${pecas.length} primeiras`}
+          </p>
+        )}
+      </Card>
+
+      <Card>
+        {carregando && !dados && <Skeleton className="h-4 w-40" />}
+
+        {pecas.length > 0 && (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="text-[10px] text-muted uppercase tracking-wide border-b border-white/[0.06]">
+                  <th className="text-left font-medium py-2">Etiqueta</th>
+                  <th className="text-left font-medium py-2">Item</th>
+                  <th className="text-right font-medium py-2">Serial</th>
+                  <th className="text-left font-medium py-2 pl-4">Situação</th>
+                  <th className="text-left font-medium py-2 pl-4">Atualizada</th>
+                </tr>
+              </thead>
+              <tbody>
+                {pecas.map(p => (
+                  <tr key={p.id} className="border-b border-white/[0.04] last:border-0">
+                    <td className="py-2 font-mono text-xs text-muted">{fmtEpc(p.epc)}</td>
+                    <td className="py-2 text-dim">{p.tipo_nome}</td>
+                    <td className="py-2 text-right text-muted">#{p.serial}</td>
+                    <td className="py-2 pl-4"><StatusBadge status={p.status} /></td>
+                    <td className="py-2 pl-4 text-xs text-muted">{p.atualizado_em}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+
+        {dados && pecas.length === 0 && (
+          <div className="text-center py-12">
+            <span className="inline-grid place-items-center w-12 h-12 rounded-2xl bg-white/[0.04] border border-white/[0.06] mb-3">
+              <Ico.Etiqueta className="w-5 h-5 text-muted" />
+            </span>
+            <p className="text-sm text-dim">
+              {busca || tipoId || status ? 'Nenhuma peça com esses filtros' : 'Nenhuma peça cadastrada ainda'}
+            </p>
+          </div>
+        )}
+      </Card>
+    </div>
+  )
+}
+
 // ── Descarte ──────────────────────────────────────────────────────────────────
 function TabDescarte({ tipos, rfidState, onSuccess }) {
   const [motivo, setMotivo]         = useState('')
@@ -1435,6 +1558,7 @@ export default function Enxoval() {
     { id: 'dashboard', label: 'Dashboard' },
     { id: 'saida',     label: 'Saída',     Icone: Ico.Saida, soApp: true },
     { id: 'entrada',   label: 'Entrada',   Icone: Ico.Entrada, soApp: true },
+    { id: 'pecas',     label: 'Peças' },
     { id: 'historico', label: 'Histórico' },
     { id: 'descarte',  label: 'Descarte',  soApp: true },
     { id: 'cadastro',  label: 'Cadastro' },
@@ -1517,6 +1641,9 @@ export default function Enxoval() {
           detalhe={detalhe}
           loadingDetalhe={detalheLoading}
         />
+      )}
+      {tab === 'pecas' && (
+        <TabPecas tipos={tipos} />
       )}
       {tab === 'descarte' && (
         <TabDescarte

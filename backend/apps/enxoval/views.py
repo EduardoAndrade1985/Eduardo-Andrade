@@ -253,7 +253,28 @@ def api_pecas(request):
             qs = qs.filter(status=request.GET['status'])
         if request.GET.get('tipo'):
             qs = qs.filter(tipo_id=request.GET['tipo'])
-        return JsonResponse({'pecas': [_peca_dict(p) for p in qs[:500]]})
+
+        # busca por trecho do EPC: serve para identificar uma etiqueta avulsa
+        # a partir do que se consegue ler dela
+        busca = _norm_epc(request.GET.get('q'))
+        if busca:
+            qs = qs.filter(epc__contains=busca)
+
+        qs = qs.order_by('tipo__nome', 'serial')
+        total = qs.count()
+
+        try:
+            limite = min(int(request.GET.get('limite', 200)), 500)
+            inicio = max(int(request.GET.get('inicio', 0)), 0)
+        except ValueError:
+            limite, inicio = 200, 0
+
+        return JsonResponse({
+            'pecas':  [_peca_dict(p) for p in qs[inicio:inicio + limite]],
+            'total':  total,
+            'inicio': inicio,
+            'limite': limite,
+        })
 
     data   = json.loads(request.body or '{}')
     epc    = _norm_epc(data.get('epc'))
