@@ -513,6 +513,10 @@ def api_pecas_baixa(request):
     if not empresa:
         return _err('empresa required', 400)
 
+    # baixa de peça é baixa de ativo: quem valida a perda é a controladoria
+    if not _pode_gerir(request):
+        return _err('descarte precisa ser validado pela gerência ou controladoria', 403)
+
     data   = json.loads(request.body or '{}')
     epcs   = list(dict.fromkeys(_norm_epc(e) for e in data.get('epcs', []) if e))
     motivo = (data.get('motivo') or '').strip()

@@ -1485,7 +1485,7 @@ function VistaOperacao({ tipos, coletores, rfidState, onSuccess, onGestao, podeG
       <div className="flex flex-col gap-3">
         <AcaoGrande tipo="SAIDA"    onClick={() => setAcao('SAIDA')} />
         <AcaoGrande tipo="ENTRADA"  onClick={() => setAcao('ENTRADA')} />
-        <AcaoGrande tipo="DESCARTE" onClick={() => setAcao('DESCARTE')} />
+        {podeGerir && <AcaoGrande tipo="DESCARTE" onClick={() => setAcao('DESCARTE')} />}
       </div>
 
       {podeGerir && (
