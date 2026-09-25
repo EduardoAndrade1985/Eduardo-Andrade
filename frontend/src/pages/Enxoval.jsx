@@ -3,7 +3,7 @@ import { Capacitor } from '@capacitor/core'
 import api from '../services/api'
 import { useEmpresa } from '../contexts/EmpresaContext'
 import { useRfid } from '../hooks/useRfid'
-import { StatusLeitor, montarEpc } from '../services/rfid'
+import { StatusLeitor, montarEpc, epcParcial } from '../services/rfid'
 import { agruparPorTipo, exportarRolPdf, exportarRolExcel } from '../services/rolEnxoval'
 
 // ── helpers ───────────────────────────────────────────────────────────────────
@@ -729,9 +729,12 @@ function TabCadastro({ tipos, coletores, onRefresh, rfidState }) {
 
   const { tags, lendo, conectado, gravarEpc, iniciar, parar, limpar } = rfidState
 
-  // etiquetas virgens: as que ainda não têm EPC do sistema. Cada uma vem de
-  // fábrica com um EPC distinto, e é por ele que endereçamos a gravação.
-  const emBranco   = tags.filter(t => !t.doSistema).map(t => t.epc)
+  // Graváveis: as virgens de fábrica e também as que ficaram pela metade numa
+  // tentativa anterior — estas têm prefixo do sistema mas serial zero, e sem
+  // isso ficariam presas nesse estado para sempre.
+  const parciais   = tags.filter(t => epcParcial(t.epc, EPC_PREFIXO)).map(t => t.epc)
+  const virgens    = tags.filter(t => !t.doSistema).map(t => t.epc)
+  const emBranco   = [...virgens, ...parciais]
   const jaGravadas = tags.length - emBranco.length
 
   // ── programar: calcula próximo serial quando tipo muda ────────────────────
@@ -916,6 +919,11 @@ function TabCadastro({ tipos, coletores, onRefresh, rfidState }) {
               {jaGravadas > 0 && (
                 <p className="text-[10px] text-muted">{jaGravadas} já gravada{jaGravadas !== 1 ? 's' : ''}, serão ignoradas</p>
               )}
+              {parciais.length > 0 && (
+                <p className="text-[10px] text-amber-400">
+                  {parciais.length} com gravação incompleta, {parciais.length !== 1 ? 'serão refeitas' : 'será refeita'}
+                </p>
+              )}
             </div>
             {lendo && <span className="text-xs text-primary animate-pulse ml-auto">procurando…</span>}
           </div>
@@ -942,10 +950,19 @@ function TabCadastro({ tipos, coletores, onRefresh, rfidState }) {
                 <p className="text-xs text-amber-400 font-medium mb-1">
                   {resultadoProg.falhas.length} não gravada{resultadoProg.falhas.length !== 1 ? 's' : ''}
                 </p>
-                <p className="text-[10px] text-muted">
-                  Em geral é distância: a etiqueta precisa estar bem próxima para receber a gravação.
-                  Aproxime as que faltaram e rode um novo lote.
+                <p className="text-[10px] text-muted mb-2">
+                  Em geral é distância: gravar exige a etiqueta bem mais perto que ler.
+                  Aproxime as que faltaram e rode outro lote — o sistema reaproveita
+                  inclusive as que ficaram pela metade.
                 </p>
+                <div className="space-y-0.5">
+                  {resultadoProg.falhas.map(f => (
+                    <div key={f.epc} className="flex items-center gap-2 text-[10px]">
+                      <span className="font-mono text-muted/60">{fmtEpc(f.epc)}</span>
+                      <span className="text-amber-400/70 truncate">{f.erro}</span>
+                    </div>
+                  ))}
+                </div>
               </div>
             )}
           </div>

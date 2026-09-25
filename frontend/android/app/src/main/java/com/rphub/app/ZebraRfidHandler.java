@@ -237,24 +237,59 @@ public class ZebraRfidHandler implements RfidEventsListener {
         }
 
         new AsyncTask<Void, Void, String>() {
+            /** OperationFailureException traz o motivo real; getMessage() vem nulo. */
+            private String descreverErro(Exception e) {
+                if (e instanceof OperationFailureException) {
+                    OperationFailureException op = (OperationFailureException) e;
+                    String desc = op.getVendorMessage();
+                    if (desc == null || desc.isEmpty()) desc = op.getStatusDescription();
+                    if (desc == null || desc.isEmpty()) desc = String.valueOf(op.getResults());
+                    return desc;
+                }
+                if (e instanceof InvalidUsageException) {
+                    InvalidUsageException iu = (InvalidUsageException) e;
+                    String desc = iu.getInfo();
+                    if (desc != null && !desc.isEmpty()) return desc;
+                }
+                String m = e.getMessage();
+                return (m == null || m.isEmpty()) ? e.getClass().getSimpleName() : m;
+            }
+
+            private void escrever() throws Exception {
+                TagAccess tagAccess = new TagAccess();
+                TagAccess.WriteAccessParams wp = tagAccess.new WriteAccessParams();
+                wp.setWriteData(epcNovo);
+                wp.setWriteRetries(3);
+                wp.setMemoryBank(MEMORY_BANK.MEMORY_BANK_EPC);
+                wp.setOffset(2);
+                wp.setWriteDataLength(epcNovo.length() / 4);
+                reader.Actions.TagAccess.writeWait(
+                    (epcAtual == null || epcAtual.isEmpty()) ? null : epcAtual,
+                    wp, null, null);
+            }
+
             @Override
             protected String doInBackground(Void... v) {
                 try {
-                    TagAccess tagAccess = new TagAccess();
-                    TagAccess.WriteAccessParams wp = tagAccess.new WriteAccessParams();
-                    wp.setWriteData(epcNovo);
-                    wp.setWriteRetries(3);
-                    wp.setMemoryBank(MEMORY_BANK.MEMORY_BANK_EPC);
-                    wp.setOffset(2);
-                    wp.setWriteDataLength(epcNovo.length() / 4);
-                    reader.Actions.TagAccess.writeWait(
-                        (epcAtual == null || epcAtual.isEmpty()) ? null : epcAtual,
-                        wp, null, null);
+                    escrever();
                     Log.d(TAG, "EPC gravado: " + epcNovo);
                     return null;
                 } catch (Exception e) {
-                    Log.e(TAG, "Erro ao gravar EPC: " + e.getMessage());
-                    return e.getMessage();
+                    String motivo = descreverErro(e);
+                    Log.w(TAG, "Falha ao gravar (tentativa 1): " + motivo);
+                    // Uma segunda tentativa cobre o caso comum de a etiqueta ter saído
+                    // do campo por um instante. Também recupera gravação parcial, pois
+                    // o alvo é o EPC antigo, que ainda está lá se nada foi escrito.
+                    try {
+                        Thread.sleep(250);
+                        escrever();
+                        Log.d(TAG, "EPC gravado na 2a tentativa: " + epcNovo);
+                        return null;
+                    } catch (Exception e2) {
+                        String motivo2 = descreverErro(e2);
+                        Log.e(TAG, "Erro ao gravar EPC: " + motivo2);
+                        return motivo2;
+                    }
                 }
             }
 

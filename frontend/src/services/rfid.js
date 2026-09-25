@@ -349,6 +349,21 @@ export function epcDoSistema(epc, prefixo) {
   return normalizarEpc(epc).startsWith(normalizarEpc(prefixo));
 }
 
+/** Serial embutido no EPC (posições 8 a 16). Retorna 0 se não der para ler. */
+export function serialDoEpc(epc) {
+  const s = parseInt(normalizarEpc(epc).slice(8, 16), 16);
+  return Number.isNaN(s) ? 0 : s;
+}
+
+/**
+ * Gravação interrompida no meio deixa a etiqueta com o prefixo novo e o resto
+ * do EPC de fábrica — ela passa a parecer do sistema, mas com serial zero.
+ * Como todo serial válido começa em 1, zero denuncia a gravação parcial.
+ */
+export function epcParcial(epc, prefixo = "A100") {
+  return epcDoSistema(epc, prefixo) && serialDoEpc(epc) === 0;
+}
+
 /**
  * Monta um EPC-96 estruturado.
  *
