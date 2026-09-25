@@ -413,35 +413,51 @@ def api_pecas_lote(request):
         return _err('nenhum EPC válido')
 
     with transaction.atomic():
-        existentes = {p.epc: p for p in PecaEnxoval.objects.filter(epc__in=epcs_norm)}
+        # o EPC é único no sistema inteiro, então a busca é global de propósito:
+        # uma etiqueta de outra empresa é conflito, não peça a ser assumida
+        existentes = {
+            p.epc: p for p in
+            PecaEnxoval.objects.select_related('tipo', 'empresa').filter(epc__in=epcs_norm)
+        }
+
+        # Uma etiqueta já cadastrada não pode trocar de item: o código do tipo
+        # está gravado dentro do EPC, então mudar só no banco faria a etiqueta
+        # física e o cadastro discordarem. Recusamos e avisamos qual é o motivo.
+        conflitos = []
+        for epc, peca in existentes.items():
+            if peca.empresa_id != empresa.id:
+                conflitos.append({'epc': epc, 'motivo': 'já cadastrada em outra empresa'})
+            elif peca.tipo_id != tipo.id:
+                conflitos.append({'epc': epc, 'motivo': f'já cadastrada como {peca.tipo.nome}'})
+
+        conflitantes = {c['epc'] for c in conflitos}
 
         novos = []
         for epc in epcs_norm:
-            if epc not in existentes:
-                try:
-                    serial = int(epc[8:16], 16) if len(epc) >= 16 else 0
-                except Exception:
-                    serial = 0
-                novos.append(PecaEnxoval(
-                    empresa=empresa,
-                    tipo=tipo,
-                    epc=epc,
-                    serial=serial,
-                    status=PecaEnxoval.EM_HOTEL,
-                ))
+            if epc in existentes or epc in conflitantes:
+                continue
+            try:
+                serial = int(epc[8:16], 16) if len(epc) >= 16 else 0
+            except Exception:
+                serial = 0
+            novos.append(PecaEnxoval(
+                empresa=empresa,
+                tipo=tipo,
+                epc=epc,
+                serial=serial,
+                status=PecaEnxoval.EM_HOTEL,
+            ))
 
         if novos:
             PecaEnxoval.objects.bulk_create(novos, ignore_conflicts=True)
 
-        ids_atualizar = [p.id for p in existentes.values() if p.tipo_id != tipo.id]
-        if ids_atualizar:
-            PecaEnxoval.objects.filter(id__in=ids_atualizar).update(tipo=tipo)
-
     return JsonResponse({
-        'ok':          True,
-        'criadas':     len(novos),
-        'atualizadas': len(ids_atualizar),
-        'total':       len(epcs_norm),
+        'ok':        True,
+        'criadas':   len(novos),
+        # já existiam com o mesmo tipo: reenvio do mesmo lote não é erro
+        'repetidas': len(existentes) - len(conflitos),
+        'conflitos': conflitos,
+        'total':     len(epcs_norm),
     })
 
 

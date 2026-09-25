@@ -790,12 +790,14 @@ function TabCadastro({ tipos, coletores, onRefresh, rfidState }) {
         setProgresso({ feitas: i + 1, total: emBranco.length })
       }
 
+      let conflitos = []
       if (ok.length) {
-        await api.post('/enxoval/pecas/lote/', { tipo_id: progTipoId, epcs: ok })
+        const { data } = await api.post('/enxoval/pecas/lote/', { tipo_id: progTipoId, epcs: ok })
+        conflitos = data.conflitos || []
         setProximoSerial(s => s + ok.length)
         onRefresh()
       }
-      setResultadoProg({ ok, falhas })
+      setResultadoProg({ ok, falhas, conflitos })
     } catch (e) {
       alert(e.response?.data?.erro || e.message || 'Erro ao gravar o lote')
     } finally {
@@ -958,7 +960,7 @@ function TabCadastro({ tipos, coletores, onRefresh, rfidState }) {
             <div className="flex items-center gap-3 p-3 bg-emerald-500/10 border border-emerald-500/20 rounded-xl">
               <Ico.Check className="w-5 h-5 text-emerald-400 flex-shrink-0" />
               <p className="text-sm text-emerald-400 font-medium">
-                {resultadoProg.ok.length} etiqueta{resultadoProg.ok.length !== 1 ? 's' : ''} gravada{resultadoProg.ok.length !== 1 ? 's' : ''} e cadastrada{resultadoProg.ok.length !== 1 ? 's' : ''}
+                {resultadoProg.ok.length - (resultadoProg.conflitos?.length || 0)} etiqueta{resultadoProg.ok.length - (resultadoProg.conflitos?.length || 0) !== 1 ? 's' : ''} gravada{resultadoProg.ok.length - (resultadoProg.conflitos?.length || 0) !== 1 ? 's' : ''} e cadastrada{resultadoProg.ok.length - (resultadoProg.conflitos?.length || 0) !== 1 ? 's' : ''}
               </p>
               <button
                 onClick={() => { setResultadoProg(null); limpar() }}
@@ -967,6 +969,27 @@ function TabCadastro({ tipos, coletores, onRefresh, rfidState }) {
                 Novo lote
               </button>
             </div>
+
+            {resultadoProg.conflitos?.length > 0 && (
+              <div className="p-3 bg-rose-500/10 border border-rose-500/30 rounded-xl">
+                <p className="text-xs text-rose-400 font-medium mb-1">
+                  {resultadoProg.conflitos.length} etiqueta{resultadoProg.conflitos.length !== 1 ? 's' : ''} recusada{resultadoProg.conflitos.length !== 1 ? 's' : ''}
+                </p>
+                <p className="text-[10px] text-muted mb-2">
+                  Uma etiqueta não pode trocar de item: o código do tipo fica gravado
+                  dentro do EPC, e mudar só no cadastro faria a peça física e o sistema
+                  discordarem.
+                </p>
+                <div className="space-y-0.5">
+                  {resultadoProg.conflitos.map(c => (
+                    <div key={c.epc} className="flex items-center gap-2 text-[10px]">
+                      <span className="font-mono text-muted/60">{fmtEpc(c.epc)}</span>
+                      <span className="text-rose-400/70 truncate">{c.motivo}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
 
             {resultadoProg.falhas.length > 0 && (
               <div className="p-3 bg-amber-500/10 border border-amber-500/30 rounded-xl">
