@@ -27,6 +27,7 @@ const Ico = {
   Saida:    svg('M12 19V5M5 12l7-7 7 7'),
   Entrada:  svg('M12 5v14M19 12l-7 7-7-7'),
   Voltar:   svg('M15 18l-6-6 6-6'),
+  Avancar:  svg('M9 18l6-6-6-6'),
   Alerta:   svg('M12 9v4M12 17h.01M10.3 3.9L1.8 18a2 2 0 001.7 3h17a2 2 0 001.7-3L14.7 3.9a2 2 0 00-3.4 0z'),
   Check:    svg('M22 11.1V12a10 10 0 11-5.9-9.1M22 4L12 14l-3-3'),
   Etiqueta: svg('M20.6 13.4L12 22l-9-9V3h10l7.6 7.6a2 2 0 010 2.8z', <circle cx="7.5" cy="7.5" r="1.5" fill="currentColor" stroke="none" />),
@@ -1396,21 +1397,25 @@ function TabCadastro({ tipos, coletores, onRefresh, rfidState }) {
 
 // ── Página principal ──────────────────────────────────────────────────────────
 // ── Visão do operador ─────────────────────────────────────────────────────────
+// Tons fechados (700/800) sobre fundo quase branco: a visão do operador é
+// sempre clara, e os tons -400 do tema escuro ficavam lavados aqui.
+// Azul para o que sai, verde da marca para o que volta, vermelho para o que
+// não volta mais — a leitura é imediata mesmo de longe.
 const ACOES = {
   SAIDA: {
     rotulo: 'Saída', Icone: Ico.Saida, descricao: 'Enviar peças para a lavanderia',
-    fundo: 'bg-amber-500/[0.08] border-amber-500/25 hover:bg-amber-500/[0.12]',
-    chip: 'bg-amber-500/15 text-amber-400', texto: 'text-amber-400',
+    fundo: 'bg-sky-50 border-sky-200 hover:border-sky-300 hover:bg-sky-100/70',
+    chip: 'bg-sky-600 text-white', texto: 'text-sky-900', seta: 'text-sky-400',
   },
   ENTRADA: {
     rotulo: 'Entrada', Icone: Ico.Entrada, descricao: 'Receber peças da lavanderia',
-    fundo: 'bg-emerald-500/[0.08] border-emerald-500/25 hover:bg-emerald-500/[0.12]',
-    chip: 'bg-emerald-500/15 text-emerald-400', texto: 'text-emerald-400',
+    fundo: 'bg-emerald-50 border-emerald-200 hover:border-emerald-300 hover:bg-emerald-100/70',
+    chip: 'bg-emerald-600 text-white', texto: 'text-emerald-900', seta: 'text-emerald-400',
   },
   DESCARTE: {
     rotulo: 'Descarte', Icone: Ico.Etiqueta, descricao: 'Tirar peças gastas de circulação',
-    fundo: 'bg-rose-500/[0.08] border-rose-500/25 hover:bg-rose-500/[0.12]',
-    chip: 'bg-rose-500/15 text-rose-400', texto: 'text-rose-400',
+    fundo: 'bg-rose-50 border-rose-200 hover:border-rose-300 hover:bg-rose-100/70',
+    chip: 'bg-rose-600 text-white', texto: 'text-rose-900', seta: 'text-rose-400',
   },
 }
 
@@ -1419,15 +1424,17 @@ function AcaoGrande({ tipo, onClick }) {
   return (
     <button
       onClick={onClick}
-      className={`w-full rounded-2xl border p-5 flex items-center gap-4 transition active:scale-[0.98] ${a.fundo}`}
+      className={`w-full rounded-2xl border p-5 flex items-center gap-4 text-left
+                  shadow-sm transition active:scale-[0.98] ${a.fundo}`}
     >
-      <span className={`w-14 h-14 rounded-2xl grid place-items-center flex-shrink-0 ${a.chip}`}>
+      <span className={`w-14 h-14 rounded-2xl grid place-items-center flex-shrink-0 shadow-sm ${a.chip}`}>
         <a.Icone className="w-7 h-7" />
       </span>
-      <span className="text-left min-w-0">
+      <span className="flex-1 min-w-0">
         <span className={`block text-lg font-semibold ${a.texto}`}>{a.rotulo}</span>
-        <span className="block text-xs text-muted mt-0.5">{a.descricao}</span>
+        <span className="block text-xs text-slate-500 mt-0.5">{a.descricao}</span>
       </span>
+      <Ico.Avancar className={`w-5 h-5 flex-shrink-0 ${a.seta}`} />
     </button>
   )
 }
