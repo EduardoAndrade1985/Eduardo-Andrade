@@ -90,7 +90,6 @@ function LeitorStatusBar({ status, info, erro }) {
     [StatusLeitor.ERRO]:         'text-rose-400',
   }
 
-  const isSimulado = info?.serial?.startsWith('MOCK') || info?.nome?.includes('simulado')
   const nomeLabel  = info?.nome ? ` · ${info.nome}` : ''
   const temBateria = info?.bateria != null && info.bateria >= 0
 
@@ -114,16 +113,6 @@ function LeitorStatusBar({ status, info, erro }) {
           {info.bateria}%
         </span>
       )}
-      {conectadoOuLendo && isSimulado && (
-        <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-amber-500/20 text-amber-400 border border-amber-500/40 tracking-wide">
-          SIMULADO
-        </span>
-      )}
-      {conectadoOuLendo && !isSimulado && (
-        <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-emerald-500/20 text-emerald-400 border border-emerald-500/40 tracking-wide">
-          REAL
-        </span>
-      )}
     </div>
   )
 }
@@ -133,6 +122,20 @@ function LeitorStatusBar({ status, info, erro }) {
 function BarraLeitor({ rfidState }) {
   const { status, info, erro, conectar, desconectar, limpar } = rfidState
   const desconectado = status === StatusLeitor.DESCONECTADO || status === StatusLeitor.ERRO
+
+  // Sem Capacitor não há leitor: o navegador é para gestão, a leitura é no app.
+  if (!Capacitor.isNativePlatform()) {
+    return (
+      <div className="flex items-center gap-3 bg-bg2 rounded-2xl border border-white/[0.06] px-4 py-3">
+        <span className="w-9 h-9 rounded-xl grid place-items-center flex-shrink-0 bg-white/[0.06] text-muted">
+          <Ico.Antena className="w-5 h-5" />
+        </span>
+        <p className="text-xs text-muted">
+          A leitura RFID acontece no aplicativo do celular, junto do leitor.
+        </p>
+      </div>
+    )
+  }
 
   return (
     <div className="flex items-center gap-3 bg-bg2 rounded-2xl border border-white/[0.06] px-4 py-3">
@@ -717,23 +720,28 @@ function TabCadastro({ tipos, coletores, onRefresh, rfidState }) {
   const [salvando, setSalvando] = useState(false)
   const [editando, setEditando] = useState(null)
 
-  // programar (gravar EPC em tags em branco)
+  // programar (gravar EPC em tags em branco, em lote)
   const [progTipoId, setProgTipoId]       = useState('')
   const [proximoSerial, setProximoSerial] = useState(1)
   const [gravando, setGravando]           = useState(false)
-  const [programadas, setProgramadas]     = useState([])
+  const [progresso, setProgresso]         = useState({ feitas: 0, total: 0 })
+  const [resultadoProg, setResultadoProg] = useState(null)
 
-  const { lendo, conectado, gravarEpc } = rfidState
+  const { tags, lendo, conectado, gravarEpc, iniciar, parar, limpar } = rfidState
+
+  // etiquetas virgens: as que ainda não têm EPC do sistema. Cada uma vem de
+  // fábrica com um EPC distinto, e é por ele que endereçamos a gravação.
+  const emBranco   = tags.filter(t => !t.doSistema).map(t => t.epc)
+  const jaGravadas = tags.length - emBranco.length
 
   // ── programar: calcula próximo serial quando tipo muda ────────────────────
   // montarEpc lança se o código do tipo não for hexadecimal. Como isso roda no
   // render, a exceção derrubaria a página inteira — daí o try.
   const tipoPrograma = tipos.find(t => String(t.id) === String(progTipoId))
-  let epcProximo = null
-  let epcErro    = null
+  let epcErro = null
   if (tipoPrograma) {
     try {
-      epcProximo = montarEpc({ prefixo: 'A100', tipoCodigo: tipoPrograma.codigo, serial: proximoSerial })
+      montarEpc({ prefixo: 'A100', tipoCodigo: tipoPrograma.codigo, serial: proximoSerial })
     } catch {
       epcErro = `O código "${tipoPrograma.codigo}" do tipo ${tipoPrograma.nome} não é hexadecimal de 4 dígitos (0-9, A-F). Corrija o tipo para poder gravar etiquetas.`
     }
@@ -749,17 +757,41 @@ function TabCadastro({ tipos, coletores, onRefresh, rfidState }) {
       .catch(() => setProximoSerial(1))
   }, [progTipoId])
 
-  async function handleGravar() {
-    if (!epcProximo || !conectado || gravando) return
+  async function handleGravarLote() {
+    if (!tipoPrograma || epcErro || !conectado || gravando || !emBranco.length) return
+
     setGravando(true)
+    setProgresso({ feitas: 0, total: emBranco.length })
+    const ok = []
+    const falhas = []
+
     try {
-      await gravarEpc({ epcAtual: '', epcNovo: epcProximo })
-      await api.post('/enxoval/pecas/lote/', { tipo_id: progTipoId, epcs: [epcProximo] })
-      setProgramadas(prev => [...prev, epcProximo])
-      setProximoSerial(s => s + 1)
-      onRefresh()
+      if (lendo) await parar()   // não dá para gravar com o inventário rodando
+
+      for (let i = 0; i < emBranco.length; i++) {
+        const epcAtual = emBranco[i]
+        const epcNovo  = montarEpc({
+          prefixo: 'A100',
+          tipoCodigo: tipoPrograma.codigo,
+          serial: proximoSerial + ok.length,
+        })
+        try {
+          await gravarEpc({ epcAtual, epcNovo })
+          ok.push(epcNovo)
+        } catch (e) {
+          falhas.push({ epc: epcAtual, erro: e.message || 'falha na gravação' })
+        }
+        setProgresso({ feitas: i + 1, total: emBranco.length })
+      }
+
+      if (ok.length) {
+        await api.post('/enxoval/pecas/lote/', { tipo_id: progTipoId, epcs: ok })
+        setProximoSerial(s => s + ok.length)
+        onRefresh()
+      }
+      setResultadoProg({ ok, falhas })
     } catch (e) {
-      alert(e.message || e.response?.data?.erro || 'Erro ao gravar etiqueta')
+      alert(e.response?.data?.erro || e.message || 'Erro ao gravar o lote')
     } finally {
       setGravando(false)
     }
@@ -806,17 +838,18 @@ function TabCadastro({ tipos, coletores, onRefresh, rfidState }) {
   return (
     <div className="space-y-4">
 
-      {/* ── programar etiquetas em branco ── */}
+      {/* ── programar etiquetas em branco, em lote ── */}
       <Card title="Programar etiquetas em branco">
         <p className="text-xs text-muted mb-4">
-          Grave o EPC do sistema em etiquetas RFID virgens. Posicione <strong className="text-dim">uma etiqueta por vez</strong> bem próxima ao leitor e clique em Gravar.
+          Espalhe as etiquetas virgens perto do leitor, aperte o gatilho para encontrá-las
+          e grave todas de uma vez. Cada uma recebe um serial sequencial.
         </p>
 
         <div className="mb-4">
           <label className="text-xs text-muted mb-1 block">Tipo de enxoval</label>
           <select
             value={progTipoId}
-            onChange={e => { setProgTipoId(e.target.value); setProgramadas([]) }}
+            onChange={e => { setProgTipoId(e.target.value); setResultadoProg(null); limpar() }}
             className="w-full max-w-xs bg-white/[0.04] border border-white/[0.08] rounded-lg px-3 py-2 text-sm text-dim focus:outline-none focus:border-primary/40"
           >
             <option value="">Selecione…</option>
@@ -824,46 +857,97 @@ function TabCadastro({ tipos, coletores, onRefresh, rfidState }) {
           </select>
         </div>
 
-        {epcProximo && (
-          <div className="mb-4 p-3 bg-white/[0.03] rounded-xl border border-white/[0.06]">
-            <p className="text-[10px] text-muted mb-1">Próximo EPC a gravar — serial #{proximoSerial}</p>
-            <p className="text-sm font-mono text-primary tracking-wider">{fmtEpc(epcProximo)}</p>
-          </div>
-        )}
-
         {epcErro && (
           <div className="mb-4 p-3 bg-amber-500/10 rounded-xl border border-amber-500/30">
             <p className="text-xs text-amber-400">{epcErro}</p>
           </div>
         )}
 
-        {epcProximo && !conectado && (
-          <p className="text-xs text-amber-400">Conecte o leitor na barra acima para gravar.</p>
+        {tipoPrograma && !epcErro && (
+          <p className="text-[10px] text-muted mb-3 font-mono">
+            Seriais a partir de #{proximoSerial} · A100 <span className="text-primary">{tipoPrograma.codigo}</span> SSSSSSSS 00000000
+          </p>
         )}
 
-        {conectado && epcProximo && !lendo && (
-          <button
-            onClick={handleGravar}
-            disabled={gravando}
-            className="px-5 py-2.5 text-sm bg-primary text-white rounded-lg hover:bg-primary/90 transition font-medium disabled:opacity-50"
-          >
-            {gravando ? 'Gravando…' : 'Gravar etiqueta'}
-          </button>
+        {!conectado && (
+          <p className="text-xs text-amber-400">Conecte o leitor na barra acima para procurar etiquetas.</p>
         )}
 
-        {programadas.length > 0 && (
-          <div className="mt-4 border-t border-white/[0.06] pt-3">
-            <p className="text-xs text-emerald-400 font-medium mb-2">
-              {programadas.length} etiqueta{programadas.length !== 1 ? 's' : ''} gravada{programadas.length !== 1 ? 's' : ''} nesta sessão
-            </p>
-            <div className="space-y-0.5">
-              {programadas.map(epc => (
-                <div key={epc} className="flex items-center gap-2 text-xs">
-                  <Ico.Check className="w-3.5 h-3.5 text-emerald-400 flex-shrink-0" />
-                  <span className="font-mono text-muted">{fmtEpc(epc)}</span>
-                </div>
-              ))}
+        {conectado && progTipoId && !epcErro && (
+          <div className="flex flex-wrap gap-2">
+            {!lendo ? (
+              <button
+                onClick={() => { setResultadoProg(null); limpar(); iniciar().catch(() => {}) }}
+                className="px-4 py-2 text-sm bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 rounded-lg hover:bg-emerald-500/20 transition"
+              >
+                Procurar etiquetas
+              </button>
+            ) : (
+              <button
+                onClick={parar}
+                className="px-4 py-2 text-sm bg-amber-500/15 text-amber-400 border border-amber-500/30 rounded-lg hover:bg-amber-500/20 transition animate-pulse"
+              >
+                Parar busca
+              </button>
+            )}
+
+            {emBranco.length > 0 && !lendo && (
+              <button
+                onClick={handleGravarLote}
+                disabled={gravando}
+                className="px-5 py-2 text-sm bg-primary text-white rounded-lg hover:bg-primary/90 transition font-medium disabled:opacity-50"
+              >
+                {gravando
+                  ? `Gravando ${progresso.feitas + 1} de ${progresso.total}…`
+                  : `Gravar ${emBranco.length} etiqueta${emBranco.length !== 1 ? 's' : ''}`}
+              </button>
+            )}
+          </div>
+        )}
+
+        {/* encontradas */}
+        {(emBranco.length > 0 || lendo) && !resultadoProg && (
+          <div className="mt-4 flex items-center gap-2">
+            <span className="text-3xl font-bold text-primary">{emBranco.length}</span>
+            <div>
+              <p className="text-xs text-dim font-medium">
+                etiqueta{emBranco.length !== 1 ? 's' : ''} em branco
+              </p>
+              {jaGravadas > 0 && (
+                <p className="text-[10px] text-muted">{jaGravadas} já gravada{jaGravadas !== 1 ? 's' : ''}, serão ignoradas</p>
+              )}
             </div>
+            {lendo && <span className="text-xs text-primary animate-pulse ml-auto">procurando…</span>}
+          </div>
+        )}
+
+        {/* resultado da gravação */}
+        {resultadoProg && (
+          <div className="mt-4 space-y-2">
+            <div className="flex items-center gap-3 p-3 bg-emerald-500/10 border border-emerald-500/20 rounded-xl">
+              <Ico.Check className="w-5 h-5 text-emerald-400 flex-shrink-0" />
+              <p className="text-sm text-emerald-400 font-medium">
+                {resultadoProg.ok.length} etiqueta{resultadoProg.ok.length !== 1 ? 's' : ''} gravada{resultadoProg.ok.length !== 1 ? 's' : ''} e cadastrada{resultadoProg.ok.length !== 1 ? 's' : ''}
+              </p>
+              <button
+                onClick={() => { setResultadoProg(null); limpar() }}
+                className="ml-auto text-xs text-muted hover:text-dim"
+              >
+                Novo lote
+              </button>
+            </div>
+
+            {resultadoProg.falhas.length > 0 && (
+              <div className="p-3 bg-amber-500/10 border border-amber-500/30 rounded-xl">
+                <p className="text-xs text-amber-400 font-medium mb-1">
+                  {resultadoProg.falhas.length} não gravada{resultadoProg.falhas.length !== 1 ? 's' : ''}
+                </p>
+                <p className="text-[10px] text-muted">
+                  Em geral é distância: a etiqueta precisa estar bem próxima para receber a gravação.
+                  Aproxime as que faltaram e rode um novo lote.
+                </p>
+              </div>
+            )}
           </div>
         )}
 
