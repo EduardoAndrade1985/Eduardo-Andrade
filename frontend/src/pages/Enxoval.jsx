@@ -9,6 +9,10 @@ import { agruparPorTipo, exportarRolPdf, exportarRolExcel } from '../services/ro
 // ── helpers ───────────────────────────────────────────────────────────────────
 const EPC_PREFIXO = 'A100'
 
+// Tudo que depende do leitor existe só no app. No navegador o módulo é de
+// gestão: painel, histórico e cadastros.
+const noApp = Capacitor.isNativePlatform()
+
 // ── ícones ────────────────────────────────────────────────────────────────────
 const svg = (d, extra) => (p) => (
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"
@@ -1003,183 +1007,187 @@ function TabCadastro({ tipos, coletores, onRefresh, rfidState }) {
   return (
     <div className="space-y-4">
 
-      {/* ── programar etiquetas em branco, em lote ── */}
-      <Card title="Programar etiquetas em branco">
-        <p className="text-xs text-muted mb-4">
-          Espalhe as etiquetas virgens perto do leitor, aperte o gatilho para encontrá-las
-          e grave todas de uma vez. Cada uma recebe um serial sequencial.
-        </p>
-
-        <div className="mb-4">
-          <label className="text-xs text-muted mb-1 block">Tipo de enxoval</label>
-          <select
-            value={progTipoId}
-            onChange={e => { setProgTipoId(e.target.value); setResultadoProg(null); limpar() }}
-            className="w-full max-w-xs bg-white/[0.04] border border-white/[0.08] rounded-lg px-3 py-2 text-sm text-dim focus:outline-none focus:border-primary/40"
-          >
-            <option value="">Selecione…</option>
-            {tipos.map(t => <option key={t.id} value={t.id}>{t.nome}</option>)}
-          </select>
-        </div>
-
-        {epcErro && (
-          <div className="mb-4 p-3 bg-amber-500/10 rounded-xl border border-amber-500/30">
-            <p className="text-xs text-amber-400">{epcErro}</p>
-          </div>
-        )}
-
-        {tipoPrograma && !epcErro && (
-          <p className="text-[10px] text-muted mb-3 font-mono">
-            Seriais a partir de #{proximoSerial} · A100 <span className="text-primary">{tipoPrograma.codigo}</span> SSSSSSSS 00000000
+      {noApp && (
+        <>
+        {/* ── programar etiquetas em branco, em lote ── */}
+        <Card title="Programar etiquetas em branco">
+          <p className="text-xs text-muted mb-4">
+            Espalhe as etiquetas virgens perto do leitor, aperte o gatilho para encontrá-las
+            e grave todas de uma vez. Cada uma recebe um serial sequencial.
           </p>
-        )}
 
-        {!conectado && (
-          <p className="text-xs text-amber-400">Conecte o leitor na barra acima para procurar etiquetas.</p>
-        )}
-
-        {conectado && progTipoId && !epcErro && (
-          <div className="flex flex-wrap gap-2">
-            {!lendo ? (
-              <button
-                onClick={() => { setResultadoProg(null); limpar(); iniciar().catch(() => {}) }}
-                className="px-4 py-2 text-sm bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 rounded-lg hover:bg-emerald-500/20 transition"
-              >
-                Procurar etiquetas
-              </button>
-            ) : (
-              <button
-                onClick={parar}
-                className="px-4 py-2 text-sm bg-amber-500/15 text-amber-400 border border-amber-500/30 rounded-lg hover:bg-amber-500/20 transition animate-pulse"
-              >
-                Parar busca
-              </button>
-            )}
-
-            {emBranco.length > 0 && !lendo && (
-              <button
-                onClick={handleGravarLote}
-                disabled={gravando}
-                className="px-5 py-2 text-sm bg-primary text-white rounded-lg hover:bg-primary/90 transition font-medium disabled:opacity-50"
-              >
-                {gravando
-                  ? `Gravando ${progresso.feitas + 1} de ${progresso.total}…`
-                  : `Gravar ${emBranco.length} etiqueta${emBranco.length !== 1 ? 's' : ''}`}
-              </button>
-            )}
+          <div className="mb-4">
+            <label className="text-xs text-muted mb-1 block">Tipo de enxoval</label>
+            <select
+              value={progTipoId}
+              onChange={e => { setProgTipoId(e.target.value); setResultadoProg(null); limpar() }}
+              className="w-full max-w-xs bg-white/[0.04] border border-white/[0.08] rounded-lg px-3 py-2 text-sm text-dim focus:outline-none focus:border-primary/40"
+            >
+              <option value="">Selecione…</option>
+              {tipos.map(t => <option key={t.id} value={t.id}>{t.nome}</option>)}
+            </select>
           </div>
-        )}
 
-        {gravando && (
-          <div className="mt-4">
-            <div className="flex justify-between text-[10px] text-muted mb-1">
-              <span>Gravando uma a uma — cada etiqueta leva alguns segundos</span>
-              <span>{progresso.feitas} / {progresso.total}</span>
+          {epcErro && (
+            <div className="mb-4 p-3 bg-amber-500/10 rounded-xl border border-amber-500/30">
+              <p className="text-xs text-amber-400">{epcErro}</p>
             </div>
-            <div className="h-1.5 bg-white/[0.06] rounded-full overflow-hidden">
-              <div
-                className="h-full bg-primary rounded-full transition-all"
-                style={{ width: `${progresso.total ? (progresso.feitas / progresso.total) * 100 : 0}%` }}
-              />
-            </div>
-          </div>
-        )}
+          )}
 
-        {/* encontradas */}
-        {(emBranco.length > 0 || lendo) && !gravando && !resultadoProg && (
-          <div className="mt-4 flex items-center gap-2">
-            <span className="text-3xl font-bold text-primary">{emBranco.length}</span>
-            <div>
-              <p className="text-xs text-dim font-medium">
-                etiqueta{emBranco.length !== 1 ? 's' : ''} em branco
-              </p>
-              {jaGravadas > 0 && (
-                <p className="text-[10px] text-muted">{jaGravadas} já gravada{jaGravadas !== 1 ? 's' : ''}, serão ignoradas</p>
+          {tipoPrograma && !epcErro && (
+            <p className="text-[10px] text-muted mb-3 font-mono">
+              Seriais a partir de #{proximoSerial} · A100 <span className="text-primary">{tipoPrograma.codigo}</span> SSSSSSSS 00000000
+            </p>
+          )}
+
+          {!conectado && (
+            <p className="text-xs text-amber-400">Conecte o leitor na barra acima para procurar etiquetas.</p>
+          )}
+
+          {conectado && progTipoId && !epcErro && (
+            <div className="flex flex-wrap gap-2">
+              {!lendo ? (
+                <button
+                  onClick={() => { setResultadoProg(null); limpar(); iniciar().catch(() => {}) }}
+                  className="px-4 py-2 text-sm bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 rounded-lg hover:bg-emerald-500/20 transition"
+                >
+                  Procurar etiquetas
+                </button>
+              ) : (
+                <button
+                  onClick={parar}
+                  className="px-4 py-2 text-sm bg-amber-500/15 text-amber-400 border border-amber-500/30 rounded-lg hover:bg-amber-500/20 transition animate-pulse"
+                >
+                  Parar busca
+                </button>
               )}
-              {parciais.length > 0 && (
-                <p className="text-[10px] text-amber-400">
-                  {parciais.length} com gravação incompleta, {parciais.length !== 1 ? 'serão refeitas' : 'será refeita'}
-                </p>
-              )}
-              {liberadas.length > 0 && (
-                <p className="text-[10px] text-emerald-400">
-                  {liberadas.length} liberada{liberadas.length !== 1 ? 's' : ''} por descarte, {liberadas.length !== 1 ? 'serão reaproveitadas' : 'será reaproveitada'}
-                </p>
-              )}
-              {deTerceiros > 0 && (
-                <p className="text-[10px] text-muted">
-                  {deTerceiros} de terceiros no ambiente, não {deTerceiros !== 1 ? 'serão tocadas' : 'será tocada'}
-                </p>
+
+              {emBranco.length > 0 && !lendo && (
+                <button
+                  onClick={handleGravarLote}
+                  disabled={gravando}
+                  className="px-5 py-2 text-sm bg-primary text-white rounded-lg hover:bg-primary/90 transition font-medium disabled:opacity-50"
+                >
+                  {gravando
+                    ? `Gravando ${progresso.feitas + 1} de ${progresso.total}…`
+                    : `Gravar ${emBranco.length} etiqueta${emBranco.length !== 1 ? 's' : ''}`}
+                </button>
               )}
             </div>
-            {lendo && <span className="text-xs text-primary animate-pulse ml-auto">procurando…</span>}
-          </div>
-        )}
+          )}
 
-        {/* resultado da gravação */}
-        {resultadoProg && (
-          <div className="mt-4 space-y-2">
-            <div className="flex items-center gap-3 p-3 bg-emerald-500/10 border border-emerald-500/20 rounded-xl">
-              <Ico.Check className="w-5 h-5 text-emerald-400 flex-shrink-0" />
-              <p className="text-sm text-emerald-400 font-medium">
-                {resultadoProg.ok.length - (resultadoProg.conflitos?.length || 0)} etiqueta{resultadoProg.ok.length - (resultadoProg.conflitos?.length || 0) !== 1 ? 's' : ''} gravada{resultadoProg.ok.length - (resultadoProg.conflitos?.length || 0) !== 1 ? 's' : ''} e cadastrada{resultadoProg.ok.length - (resultadoProg.conflitos?.length || 0) !== 1 ? 's' : ''}
-              </p>
-              <button
-                onClick={() => { setResultadoProg(null); limpar() }}
-                className="ml-auto text-xs text-muted hover:text-dim"
-              >
-                Novo lote
-              </button>
-            </div>
-
-            {resultadoProg.conflitos?.length > 0 && (
-              <div className="p-3 bg-rose-500/10 border border-rose-500/30 rounded-xl">
-                <p className="text-xs text-rose-400 font-medium mb-1">
-                  {resultadoProg.conflitos.length} etiqueta{resultadoProg.conflitos.length !== 1 ? 's' : ''} recusada{resultadoProg.conflitos.length !== 1 ? 's' : ''}
-                </p>
-                <p className="text-[10px] text-muted mb-2">
-                  Uma etiqueta não pode trocar de item: o código do tipo fica gravado
-                  dentro do EPC, e mudar só no cadastro faria a peça física e o sistema
-                  discordarem.
-                </p>
-                <div className="space-y-0.5">
-                  {resultadoProg.conflitos.map(c => (
-                    <div key={c.epc} className="flex items-center gap-2 text-[10px]">
-                      <span className="font-mono text-muted/60">{fmtEpc(c.epc)}</span>
-                      <span className="text-rose-400/70 truncate">{c.motivo}</span>
-                    </div>
-                  ))}
-                </div>
+          {gravando && (
+            <div className="mt-4">
+              <div className="flex justify-between text-[10px] text-muted mb-1">
+                <span>Gravando uma a uma — cada etiqueta leva alguns segundos</span>
+                <span>{progresso.feitas} / {progresso.total}</span>
               </div>
-            )}
-
-            {resultadoProg.falhas.length > 0 && (
-              <div className="p-3 bg-amber-500/10 border border-amber-500/30 rounded-xl">
-                <p className="text-xs text-amber-400 font-medium mb-1">
-                  {resultadoProg.falhas.length} não gravada{resultadoProg.falhas.length !== 1 ? 's' : ''}
-                </p>
-                <p className="text-[10px] text-muted mb-2">
-                  Em geral é distância: gravar exige a etiqueta bem mais perto que ler.
-                  Aproxime as que faltaram e rode outro lote — o sistema reaproveita
-                  inclusive as que ficaram pela metade.
-                </p>
-                <div className="space-y-0.5">
-                  {resultadoProg.falhas.map(f => (
-                    <div key={f.epc} className="flex items-center gap-2 text-[10px]">
-                      <span className="font-mono text-muted/60">{fmtEpc(f.epc)}</span>
-                      <span className="text-amber-400/70 truncate">{f.erro}</span>
-                    </div>
-                  ))}
-                </div>
+              <div className="h-1.5 bg-white/[0.06] rounded-full overflow-hidden">
+                <div
+                  className="h-full bg-primary rounded-full transition-all"
+                  style={{ width: `${progresso.total ? (progresso.feitas / progresso.total) * 100 : 0}%` }}
+                />
               </div>
-            )}
-          </div>
-        )}
+            </div>
+          )}
 
-        {tipos.length === 0 && (
-          <p className="text-xs text-amber-400 mt-3">Crie um tipo de enxoval primeiro (seção abaixo).</p>
-        )}
-      </Card>
+          {/* encontradas */}
+          {(emBranco.length > 0 || lendo) && !gravando && !resultadoProg && (
+            <div className="mt-4 flex items-center gap-2">
+              <span className="text-3xl font-bold text-primary">{emBranco.length}</span>
+              <div>
+                <p className="text-xs text-dim font-medium">
+                  etiqueta{emBranco.length !== 1 ? 's' : ''} em branco
+                </p>
+                {jaGravadas > 0 && (
+                  <p className="text-[10px] text-muted">{jaGravadas} já gravada{jaGravadas !== 1 ? 's' : ''}, serão ignoradas</p>
+                )}
+                {parciais.length > 0 && (
+                  <p className="text-[10px] text-amber-400">
+                    {parciais.length} com gravação incompleta, {parciais.length !== 1 ? 'serão refeitas' : 'será refeita'}
+                  </p>
+                )}
+                {liberadas.length > 0 && (
+                  <p className="text-[10px] text-emerald-400">
+                    {liberadas.length} liberada{liberadas.length !== 1 ? 's' : ''} por descarte, {liberadas.length !== 1 ? 'serão reaproveitadas' : 'será reaproveitada'}
+                  </p>
+                )}
+                {deTerceiros > 0 && (
+                  <p className="text-[10px] text-muted">
+                    {deTerceiros} de terceiros no ambiente, não {deTerceiros !== 1 ? 'serão tocadas' : 'será tocada'}
+                  </p>
+                )}
+              </div>
+              {lendo && <span className="text-xs text-primary animate-pulse ml-auto">procurando…</span>}
+            </div>
+          )}
+
+          {/* resultado da gravação */}
+          {resultadoProg && (
+            <div className="mt-4 space-y-2">
+              <div className="flex items-center gap-3 p-3 bg-emerald-500/10 border border-emerald-500/20 rounded-xl">
+                <Ico.Check className="w-5 h-5 text-emerald-400 flex-shrink-0" />
+                <p className="text-sm text-emerald-400 font-medium">
+                  {resultadoProg.ok.length - (resultadoProg.conflitos?.length || 0)} etiqueta{resultadoProg.ok.length - (resultadoProg.conflitos?.length || 0) !== 1 ? 's' : ''} gravada{resultadoProg.ok.length - (resultadoProg.conflitos?.length || 0) !== 1 ? 's' : ''} e cadastrada{resultadoProg.ok.length - (resultadoProg.conflitos?.length || 0) !== 1 ? 's' : ''}
+                </p>
+                <button
+                  onClick={() => { setResultadoProg(null); limpar() }}
+                  className="ml-auto text-xs text-muted hover:text-dim"
+                >
+                  Novo lote
+                </button>
+              </div>
+
+              {resultadoProg.conflitos?.length > 0 && (
+                <div className="p-3 bg-rose-500/10 border border-rose-500/30 rounded-xl">
+                  <p className="text-xs text-rose-400 font-medium mb-1">
+                    {resultadoProg.conflitos.length} etiqueta{resultadoProg.conflitos.length !== 1 ? 's' : ''} recusada{resultadoProg.conflitos.length !== 1 ? 's' : ''}
+                  </p>
+                  <p className="text-[10px] text-muted mb-2">
+                    Uma etiqueta não pode trocar de item: o código do tipo fica gravado
+                    dentro do EPC, e mudar só no cadastro faria a peça física e o sistema
+                    discordarem.
+                  </p>
+                  <div className="space-y-0.5">
+                    {resultadoProg.conflitos.map(c => (
+                      <div key={c.epc} className="flex items-center gap-2 text-[10px]">
+                        <span className="font-mono text-muted/60">{fmtEpc(c.epc)}</span>
+                        <span className="text-rose-400/70 truncate">{c.motivo}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {resultadoProg.falhas.length > 0 && (
+                <div className="p-3 bg-amber-500/10 border border-amber-500/30 rounded-xl">
+                  <p className="text-xs text-amber-400 font-medium mb-1">
+                    {resultadoProg.falhas.length} não gravada{resultadoProg.falhas.length !== 1 ? 's' : ''}
+                  </p>
+                  <p className="text-[10px] text-muted mb-2">
+                    Em geral é distância: gravar exige a etiqueta bem mais perto que ler.
+                    Aproxime as que faltaram e rode outro lote — o sistema reaproveita
+                    inclusive as que ficaram pela metade.
+                  </p>
+                  <div className="space-y-0.5">
+                    {resultadoProg.falhas.map(f => (
+                      <div key={f.epc} className="flex items-center gap-2 text-[10px]">
+                        <span className="font-mono text-muted/60">{fmtEpc(f.epc)}</span>
+                        <span className="text-amber-400/70 truncate">{f.erro}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {tipos.length === 0 && (
+            <p className="text-xs text-amber-400 mt-3">Crie um tipo de enxoval primeiro (seção abaixo).</p>
+          )}
+        </Card>
+        </>
+      )}
 
       <CardColetores coletores={coletores} onRefresh={onRefresh} />
 
@@ -1425,12 +1433,12 @@ export default function Enxoval() {
 
   const TABS = [
     { id: 'dashboard', label: 'Dashboard' },
-    { id: 'saida',     label: 'Saída',     Icone: Ico.Saida },
-    { id: 'entrada',   label: 'Entrada',   Icone: Ico.Entrada },
+    { id: 'saida',     label: 'Saída',     Icone: Ico.Saida, soApp: true },
+    { id: 'entrada',   label: 'Entrada',   Icone: Ico.Entrada, soApp: true },
     { id: 'historico', label: 'Histórico' },
-    { id: 'descarte',  label: 'Descarte' },
+    { id: 'descarte',  label: 'Descarte',  soApp: true },
     { id: 'cadastro',  label: 'Cadastro' },
-  ]
+  ].filter(t => noApp || !t.soApp)
 
   if (modoOperacao) {
     return (
@@ -1452,14 +1460,16 @@ export default function Enxoval() {
           <h1 className="text-xl font-bold text-dim">Controle de Enxoval</h1>
           <p className="text-xs text-muted mt-0.5">Saídas e entradas com leitura RFID</p>
         </div>
-        <button
-          onClick={() => setModoOperacao(true)}
-          className="flex items-center gap-1.5 px-3 py-1.5 text-xs text-muted hover:text-dim border border-white/[0.08] hover:border-white/[0.16] rounded-lg transition flex-shrink-0"
-          title="Tela simplificada para quem opera o leitor"
-        >
-          <Ico.Antena className="w-3.5 h-3.5" />
-          Modo operação
-        </button>
+        {noApp && (
+          <button
+            onClick={() => setModoOperacao(true)}
+            className="flex items-center gap-1.5 px-3 py-1.5 text-xs text-muted hover:text-dim border border-white/[0.08] hover:border-white/[0.16] rounded-lg transition flex-shrink-0"
+            title="Tela simplificada para quem opera o leitor"
+          >
+            <Ico.Antena className="w-3.5 h-3.5" />
+            Modo operação
+          </button>
+        )}
       </div>
 
       {/* abas */}
@@ -1473,7 +1483,7 @@ export default function Enxoval() {
       </div>
 
       {/* leitor: um ponto só de conexão, nas abas que o usam */}
-      {['saida', 'entrada', 'descarte', 'cadastro'].includes(tab) && (
+      {noApp && ['saida', 'entrada', 'descarte', 'cadastro'].includes(tab) && (
         <BarraLeitor rfidState={rfidState} />
       )}
 
