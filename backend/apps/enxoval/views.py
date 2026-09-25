@@ -461,6 +461,48 @@ def api_pecas_lote(request):
     })
 
 
+@csrf_exempt
+@require_http_methods(['POST'])
+def api_pecas_baixa(request):
+    """Tira peças de circulação. A etiqueta continua válida e pode ser regravada
+    para outra peça depois — o que se descarta é o tecido, não o transponder."""
+    empresa = _empresa(request)
+    if not empresa:
+        return _err('empresa required', 400)
+
+    data   = json.loads(request.body or '{}')
+    epcs   = list(dict.fromkeys(_norm_epc(e) for e in data.get('epcs', []) if e))
+    motivo = (data.get('motivo') or '').strip()
+
+    if not epcs:
+        return _err('lista de epcs vazia')
+
+    with transaction.atomic():
+        encontradas = {
+            p.epc: p for p in
+            PecaEnxoval.objects.select_related('tipo').filter(empresa=empresa, epc__in=epcs)
+        }
+        desconhecidas = [e for e in epcs if e not in encontradas]
+        ja_baixadas   = [e for e, p in encontradas.items() if p.status == PecaEnxoval.BAIXADA]
+
+        alvos = [p for p in encontradas.values() if p.status != PecaEnxoval.BAIXADA]
+        for p in alvos:
+            p.status = PecaEnxoval.BAIXADA
+            if motivo:
+                p.observacoes = motivo
+        if alvos:
+            PecaEnxoval.objects.bulk_update(alvos, ['status', 'observacoes'])
+
+    return JsonResponse({
+        'ok':            True,
+        'baixadas':      len(alvos),
+        'ja_baixadas':   len(ja_baixadas),
+        'desconhecidas': desconhecidas,
+        'itens':         [{'epc': p.epc, 'tipo_nome': p.tipo.nome} for p in alvos],
+        'total':         len(epcs),
+    })
+
+
 @require_http_methods(['GET'])
 def api_movimentacao_detail(request, pk):
     empresa = _empresa(request)

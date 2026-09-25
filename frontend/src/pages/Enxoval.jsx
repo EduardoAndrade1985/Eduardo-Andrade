@@ -619,6 +619,151 @@ function TabHistorico({ movimentacoes, loading, onSelect, detalhe, loadingDetalh
   )
 }
 
+// ── Descarte ──────────────────────────────────────────────────────────────────
+function TabDescarte({ tipos, rfidState, onSuccess }) {
+  const [motivo, setMotivo]         = useState('')
+  const [baixando, setBaixando]     = useState(false)
+  const [resultado, setResultado]   = useState(null)
+
+  const { tags, tagsValidas, lendo, conectado, iniciar, parar, limpar } = rfidState
+
+  async function handleBaixar() {
+    if (!tagsValidas.length || baixando) return
+    setBaixando(true)
+    try {
+      if (lendo) await parar()
+      const { data } = await api.post('/enxoval/pecas/baixa/', {
+        epcs: tagsValidas.map(t => t.epc),
+        motivo,
+      })
+      setResultado(data)
+      limpar()
+      onSuccess()
+    } catch (e) {
+      alert(e.response?.data?.erro || 'Erro ao dar baixa')
+    } finally {
+      setBaixando(false)
+    }
+  }
+
+  return (
+    <div className="space-y-4">
+      <Card title="Descarte de peças">
+        <p className="text-xs text-muted mb-4">
+          Leia as peças que saem de circulação por desgaste. Elas deixam o estoque,
+          mas a <strong className="text-dim">etiqueta continua válida</strong> e volta
+          a ficar disponível para ser gravada em uma peça nova, de qualquer tipo.
+        </p>
+
+        {!conectado && (
+          <p className="text-xs text-amber-400">Conecte o leitor na barra acima para começar.</p>
+        )}
+
+        {conectado && (
+          <div className="flex flex-wrap gap-2">
+            {!lendo ? (
+              <button
+                onClick={() => { setResultado(null); limpar(); iniciar().catch(() => {}) }}
+                className="px-4 py-2 text-sm bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 rounded-lg hover:bg-emerald-500/20 transition"
+              >
+                Ler peças
+              </button>
+            ) : (
+              <button
+                onClick={parar}
+                className="px-4 py-2 text-sm bg-amber-500/15 text-amber-400 border border-amber-500/30 rounded-lg hover:bg-amber-500/20 transition animate-pulse"
+              >
+                Parar leitura
+              </button>
+            )}
+          </div>
+        )}
+
+        {(tagsValidas.length > 0 || lendo) && !resultado && (
+          <div className="mt-4 flex items-center gap-2">
+            <span className="text-3xl font-bold text-rose-400">{tagsValidas.length}</span>
+            <div>
+              <p className="text-xs text-dim font-medium">peça{tagsValidas.length !== 1 ? 's' : ''} para descarte</p>
+              {tags.length > tagsValidas.length && (
+                <p className="text-[10px] text-muted">{tags.length - tagsValidas.length} fora do sistema, ignorada{tags.length - tagsValidas.length !== 1 ? 's' : ''}</p>
+              )}
+            </div>
+            {lendo && <span className="text-xs text-primary animate-pulse ml-auto">lendo…</span>}
+          </div>
+        )}
+
+        {tagsValidas.length > 0 && !lendo && !resultado && (
+          <>
+            <div className="mt-3 space-y-0.5">
+              {tagsValidas.map(t => {
+                const tipo = inferirTipo(t.epc, tipos)
+                return (
+                  <div key={t.epc} className="flex items-center gap-2 py-1 text-xs">
+                    <span className="w-1.5 h-1.5 rounded-full bg-rose-400 flex-shrink-0" />
+                    <span className="font-mono text-muted flex-1 truncate">{fmtEpc(t.epc)}</span>
+                    <span className="text-muted">{tipo?.nome || 'Tipo desconhecido'}</span>
+                  </div>
+                )
+              })}
+            </div>
+
+            <div className="mt-4">
+              <label className="text-xs text-muted mb-1 block">Motivo (opcional)</label>
+              <input
+                value={motivo}
+                onChange={e => setMotivo(e.target.value)}
+                placeholder="Ex: desgaste, mancha permanente, rasgo"
+                className="w-full bg-white/[0.04] border border-white/[0.08] rounded-lg px-3 py-2 text-sm text-dim focus:outline-none focus:border-primary/40"
+              />
+            </div>
+
+            <button
+              onClick={handleBaixar}
+              disabled={baixando}
+              className="mt-3 px-5 py-2.5 text-sm bg-rose-500/15 text-rose-400 border border-rose-500/30 rounded-lg hover:bg-rose-500/20 transition font-medium disabled:opacity-50"
+            >
+              {baixando ? 'Dando baixa…' : `Dar baixa em ${tagsValidas.length} peça${tagsValidas.length !== 1 ? 's' : ''}`}
+            </button>
+          </>
+        )}
+
+        {resultado && (
+          <div className="mt-4 space-y-2">
+            <div className="flex items-center gap-3 p-3 bg-emerald-500/10 border border-emerald-500/20 rounded-xl">
+              <Ico.Check className="w-5 h-5 text-emerald-400 flex-shrink-0" />
+              <div>
+                <p className="text-sm text-emerald-400 font-medium">
+                  {resultado.baixadas} peça{resultado.baixadas !== 1 ? 's' : ''} descartada{resultado.baixadas !== 1 ? 's' : ''}
+                </p>
+                <p className="text-[10px] text-muted">
+                  As etiquetas já podem ser regravadas na aba Cadastro
+                </p>
+              </div>
+              <button
+                onClick={() => { setResultado(null); setMotivo('') }}
+                className="ml-auto text-xs text-muted hover:text-dim"
+              >
+                Novo lote
+              </button>
+            </div>
+
+            {resultado.ja_baixadas > 0 && (
+              <p className="text-[10px] text-muted">
+                {resultado.ja_baixadas} já estava{resultado.ja_baixadas !== 1 ? 'm' : ''} descartada{resultado.ja_baixadas !== 1 ? 's' : ''}
+              </p>
+            )}
+            {resultado.desconhecidas?.length > 0 && (
+              <p className="text-[10px] text-amber-400">
+                {resultado.desconhecidas.length} etiqueta{resultado.desconhecidas.length !== 1 ? 's' : ''} não {resultado.desconhecidas.length !== 1 ? 'estavam' : 'estava'} cadastrada{resultado.desconhecidas.length !== 1 ? 's' : ''}
+              </p>
+            )}
+          </div>
+        )}
+      </Card>
+    </div>
+  )
+}
+
 // ── Cadastro ──────────────────────────────────────────────────────────────────
 function CardColetores({ coletores, onRefresh }) {
   const [nome, setNome]       = useState('')
@@ -729,14 +874,26 @@ function TabCadastro({ tipos, coletores, onRefresh, rfidState }) {
 
   const { tags, lendo, conectado, gravarEpc, iniciar, parar, limpar } = rfidState
 
+  // Etiquetas de peças descartadas voltam ao estoque de etiquetas: o tecido saiu
+  // de circulação, o transponder não. Podem ser regravadas para qualquer tipo.
+  const [reaproveitaveis, setReaproveitaveis] = useState(new Set())
+  useEffect(() => {
+    api.get('/enxoval/pecas/?status=BAIXADA')
+      .then(({ data }) => setReaproveitaveis(new Set((data.pecas || []).map(p => p.epc))))
+      .catch(() => setReaproveitaveis(new Set()))
+  }, [tipos])
+
   // Graváveis: as virgens de fábrica e também as que ficaram pela metade numa
   // tentativa anterior — estas têm prefixo do sistema mas serial zero, e sem
   // isso ficariam presas nesse estado para sempre.
   const parciais  = tags.filter(t => epcParcial(t.epc, EPC_PREFIXO)).map(t => t.epc)
   const virgens   = tags.filter(t => epcVirgem(t.epc)).map(t => t.epc)
-  const emBranco  = [...virgens, ...parciais]
-  // do sistema e já íntegras
-  const jaGravadas = tags.filter(t => t.doSistema && !epcParcial(t.epc, EPC_PREFIXO)).length
+  const liberadas = tags.filter(t => reaproveitaveis.has(t.epc)).map(t => t.epc)
+  const emBranco  = [...new Set([...virgens, ...parciais, ...liberadas])]
+  // do sistema, íntegras e ainda em uso
+  const jaGravadas = tags.filter(
+    t => t.doSistema && !epcParcial(t.epc, EPC_PREFIXO) && !reaproveitaveis.has(t.epc)
+  ).length
   // etiquetas alheias no ambiente: nunca entram no lote
   const deTerceiros = tags.length - emBranco.length - jaGravadas
 
@@ -942,6 +1099,11 @@ function TabCadastro({ tipos, coletores, onRefresh, rfidState }) {
               {parciais.length > 0 && (
                 <p className="text-[10px] text-amber-400">
                   {parciais.length} com gravação incompleta, {parciais.length !== 1 ? 'serão refeitas' : 'será refeita'}
+                </p>
+              )}
+              {liberadas.length > 0 && (
+                <p className="text-[10px] text-emerald-400">
+                  {liberadas.length} liberada{liberadas.length !== 1 ? 's' : ''} por descarte, {liberadas.length !== 1 ? 'serão reaproveitadas' : 'será reaproveitada'}
                 </p>
               )}
               {deTerceiros > 0 && (
@@ -1266,6 +1428,7 @@ export default function Enxoval() {
     { id: 'saida',     label: 'Saída',     Icone: Ico.Saida },
     { id: 'entrada',   label: 'Entrada',   Icone: Ico.Entrada },
     { id: 'historico', label: 'Histórico' },
+    { id: 'descarte',  label: 'Descarte' },
     { id: 'cadastro',  label: 'Cadastro' },
   ]
 
@@ -1310,7 +1473,7 @@ export default function Enxoval() {
       </div>
 
       {/* leitor: um ponto só de conexão, nas abas que o usam */}
-      {['saida', 'entrada', 'cadastro'].includes(tab) && (
+      {['saida', 'entrada', 'descarte', 'cadastro'].includes(tab) && (
         <BarraLeitor rfidState={rfidState} />
       )}
 
@@ -1343,6 +1506,13 @@ export default function Enxoval() {
           onSelect={carregarDetalhe}
           detalhe={detalhe}
           loadingDetalhe={detalheLoading}
+        />
+      )}
+      {tab === 'descarte' && (
+        <TabDescarte
+          tipos={tipos}
+          rfidState={rfidState}
+          onSuccess={carregarDashboard}
         />
       )}
       {tab === 'cadastro' && (
