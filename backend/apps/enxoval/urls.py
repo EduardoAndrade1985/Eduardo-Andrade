@@ -7,6 +7,7 @@ urlpatterns = [
     path('tipos/<int:pk>/',                 views.api_tipo_detail,          name='enxoval-tipo-detail'),
     path('coletores/',                      views.api_coletores,            name='enxoval-coletores'),
     path('coletores/<int:pk>/',             views.api_coletor_detail,       name='enxoval-coletor-detail'),
+    path('sessoes/',                        views.api_sessoes,              name='enxoval-sessoes'),
     path('pecas/',                          views.api_pecas,                name='enxoval-pecas'),
     path('pecas/lote/',                     views.api_pecas_lote,           name='enxoval-pecas-lote'),
     path('pecas/baixa/',                    views.api_pecas_baixa,          name='enxoval-pecas-baixa'),

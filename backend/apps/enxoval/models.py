@@ -42,6 +42,34 @@ class ColetorEnxoval(EmpresaBaseModel):
         return self.nome
 
 
+class SessaoLeitura(EmpresaBaseModel):
+    """Leitura em andamento, para o notebook acompanhar enquanto acontece.
+
+    O celular reenvia a lista inteira de EPCs a cada poucos segundos, em vez de
+    mandar cada tag: o leitor dispara dezenas de eventos por segundo e a rede da
+    operação cai. Guardar a lista como JSON evita uma tabela de leituras que
+    seria apagada no fim de cada sessão.
+    """
+    tipo_mov      = models.CharField(max_length=10)
+    usuario       = models.ForeignKey('auth.User', on_delete=models.CASCADE, related_name='sessoes_enxoval')
+    responsavel   = models.CharField(max_length=120, blank=True)
+    epcs          = models.JSONField(default=list)
+    aberta        = models.BooleanField(default=True)
+    criado_em     = models.DateTimeField(auto_now_add=True)
+    atualizado_em = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering            = ['-atualizado_em']
+        verbose_name        = 'Sessão de Leitura'
+        verbose_name_plural = 'Sessões de Leitura'
+        indexes = [
+            models.Index(fields=['empresa', 'aberta'], name='enxoval_ses_emp_abe_idx'),
+        ]
+
+    def __str__(self):
+        return f'{self.tipo_mov} · {self.usuario} · {len(self.epcs)} peças'
+
+
 class PecaEnxoval(EmpresaBaseModel):
     EM_HOTEL       = 'EM_HOTEL'
     NA_LAVANDERIA  = 'NA_LAVANDERIA'

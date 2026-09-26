@@ -377,6 +377,18 @@ function TabMovimentacao({ tipoMov, tipos, coletores, rfidState, onSuccess }) {
       .sort((a, b) => b.qtd - a.qtd || a.nome.localeCompare(b.nome))
   }, [tagsValidas, tipos])
 
+  // Publica o andamento para o notebook acompanhar. Reenvia a lista inteira a
+  // cada 3s em vez de cada tag: o leitor dispara dezenas de eventos por segundo.
+  useEffect(() => {
+    if (!noApp) return
+    const epcs = tagsValidas.map(t => t.epc)
+    if (!lendo && !epcs.length) return
+    const t = setTimeout(() => {
+      api.post('/enxoval/sessoes/', { tipo_mov: tipoMov, responsavel, epcs }).catch(() => {})
+    }, 3000)
+    return () => clearTimeout(t)
+  }, [tagsValidas, lendo, tipoMov, responsavel])
+
   const podeLer       = conectado && !lendo
   const podeParar     = lendo
   const podeConfirmar = conectado && !lendo && totalUnico > 0 && !resultado
@@ -397,6 +409,9 @@ function TabMovimentacao({ tipoMov, tipos, coletores, rfidState, onSuccess }) {
         observacoes,
       })
       setResultado(data.movimentacao)
+      if (noApp) {
+        api.post('/enxoval/sessoes/', { tipo_mov: tipoMov, epcs: [], encerrar: true }).catch(() => {})
+      }
       onSuccess()
       limpar()
     } catch (e) {
@@ -770,6 +785,101 @@ function TabPecas({ tipos }) {
           </div>
         )}
       </Card>
+    </div>
+  )
+}
+
+// ── Acompanhamento ao vivo ────────────────────────────────────────────────────
+function TabAoVivo() {
+  const [sessoes, setSessoes] = useState(null)
+  const [aberta, setAberta]   = useState(null)   // id com detalhe expandido
+
+  useEffect(() => {
+    let vivo = true
+    const buscar = () => {
+      api.get('/enxoval/sessoes/')
+        .then(({ data }) => { if (vivo) setSessoes(data.sessoes || []) })
+        .catch(() => { if (vivo) setSessoes([]) })
+    }
+    buscar()
+    const t = setInterval(buscar, 3000)
+    return () => { vivo = false; clearInterval(t) }
+  }, [])
+
+  if (sessoes === null) {
+    return <Card><Skeleton className="h-4 w-48" /></Card>
+  }
+
+  if (!sessoes.length) {
+    return (
+      <Card>
+        <div className="text-center py-16">
+          <span className="inline-grid place-items-center w-14 h-14 rounded-2xl bg-white/[0.04] border border-white/[0.06] mb-4">
+            <Ico.Antena className="w-6 h-6 text-muted" />
+          </span>
+          <p className="font-medium text-dim">Nenhuma leitura em andamento</p>
+          <p className="text-sm text-muted mt-1">
+            Quando alguém começar uma saída ou entrada pelo aplicativo, a contagem aparece aqui
+          </p>
+        </div>
+      </Card>
+    )
+  }
+
+  return (
+    <div className="space-y-4">
+      {sessoes.map(s => {
+        const saida = s.tipo_mov === 'SAIDA'
+        return (
+          <Card key={s.id}>
+            <div className="flex items-center gap-3 mb-4">
+              <span className={`w-10 h-10 rounded-xl grid place-items-center flex-shrink-0 ${
+                saida ? 'bg-amber-500/15 text-amber-400' : 'bg-emerald-500/15 text-emerald-400'
+              }`}>
+                {saida ? <Ico.Saida className="w-5 h-5" /> : <Ico.Entrada className="w-5 h-5" />}
+              </span>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-medium text-dim">
+                  {saida ? 'Saída' : 'Entrada'} em andamento
+                </p>
+                <p className="text-xs text-muted">
+                  {s.responsavel || s.usuario} · atualizado às {s.atualizado_em}
+                </p>
+              </div>
+              <div className="text-right flex-shrink-0">
+                <p className="text-3xl font-bold text-primary leading-none tabular-nums">{s.total}</p>
+                <p className="text-[10px] text-muted mt-1">peças</p>
+              </div>
+            </div>
+
+            <div className="space-y-1">
+              {s.por_tipo.map(t => (
+                <div key={t.nome} className="flex items-center gap-3 py-2 px-3 rounded-lg bg-white/[0.03] border border-white/[0.04]">
+                  <span className="flex-1 min-w-0 text-sm text-dim truncate">{t.nome}</span>
+                  <span className="text-xl font-semibold text-primary tabular-nums">{t.qtd}</span>
+                </div>
+              ))}
+            </div>
+
+            {s.epcs.length > 0 && (
+              <button
+                onClick={() => setAberta(a => a === s.id ? null : s.id)}
+                className="mt-3 text-xs text-primary hover:underline"
+              >
+                {aberta === s.id ? 'Ocultar etiquetas' : `Ver as ${s.epcs.length} etiquetas`}
+              </button>
+            )}
+
+            {aberta === s.id && (
+              <div className="mt-3 pt-3 border-t border-white/[0.06] space-y-0.5">
+                {s.epcs.map(epc => (
+                  <p key={epc} className="font-mono text-xs text-muted">{fmtEpc(epc)}</p>
+                ))}
+              </div>
+            )}
+          </Card>
+        )
+      })}
     </div>
   )
 }
@@ -1780,11 +1890,16 @@ export default function Enxoval() {
     { id: 'dashboard', label: 'Dashboard' },
     { id: 'saida',     label: 'Saída',     Icone: Ico.Saida, soApp: true },
     { id: 'entrada',   label: 'Entrada',   Icone: Ico.Entrada, soApp: true },
+    { id: 'aovivo',    label: 'Ao vivo', soNavegador: true },
     { id: 'pecas',     label: 'Peças' },
     { id: 'historico', label: 'Histórico' },
     { id: 'descarte',  label: 'Descarte',  soGestor: true },
     { id: 'cadastro',  label: 'Cadastro' },
-  ].filter(t => (noApp || !t.soApp) && (podeGerir || !t.soGestor))
+  ].filter(t =>
+    (noApp || !t.soApp) &&
+    (podeGerir || !t.soGestor) &&
+    (!noApp || !t.soNavegador)   // quem está com o leitor na mão não precisa se assistir
+  )
 
   // no app, quem não tem alçada fica só na operação
   if (modoOperacao || (noApp && !podeGerir)) {
@@ -1865,6 +1980,9 @@ export default function Enxoval() {
           detalhe={detalhe}
           loadingDetalhe={detalheLoading}
         />
+      )}
+      {tab === 'aovivo' && (
+        <TabAoVivo />
       )}
       {tab === 'pecas' && (
         <TabPecas tipos={tipos} />

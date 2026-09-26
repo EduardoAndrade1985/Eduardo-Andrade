@@ -4,8 +4,12 @@ from django.http import JsonResponse
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_http_methods
 
+from datetime import timedelta
+from django.utils import timezone
+
 from .models import (
-    TipoEnxoval, ColetorEnxoval, PecaEnxoval, MovimentacaoEnxoval, ItemMovimentacao
+    TipoEnxoval, ColetorEnxoval, PecaEnxoval, MovimentacaoEnxoval, ItemMovimentacao,
+    SessaoLeitura,
 )
 
 
@@ -258,6 +262,69 @@ def api_coletor_detail(request, pk):
     return JsonResponse(
         {'ok': True, 'coletor': {'id': coletor.id, 'nome': coletor.nome, 'ativo': coletor.ativo}}
     )
+
+
+# ── Sessões de leitura ─────────────────────────────────────────────────────────
+
+# Depois disso a sessão é entulho: alguém saiu no meio e não vale mais mostrar
+SESSAO_VIVA = timedelta(minutes=30)
+
+
+def _sessao_dict(s, tipos_por_codigo):
+    """Agrupa por tipo aqui, não no cliente: o notebook só precisa do placar."""
+    contagem = {}
+    for epc in s.epcs:
+        tipo = tipos_por_codigo.get(epc[4:8].upper())
+        nome = tipo.nome if tipo else 'Tipo desconhecido'
+        contagem[nome] = contagem.get(nome, 0) + 1
+    return {
+        'id':          s.id,
+        'tipo_mov':    s.tipo_mov,
+        'responsavel': s.responsavel,
+        'usuario':     s.usuario.username,
+        'total':       len(s.epcs),
+        'epcs':        s.epcs,
+        'por_tipo':    sorted(
+            [{'nome': n, 'qtd': q} for n, q in contagem.items()],
+            key=lambda x: (-x['qtd'], x['nome']),
+        ),
+        'atualizado_em': s.atualizado_em.strftime('%H:%M:%S'),
+    }
+
+
+@csrf_exempt
+@require_http_methods(['GET', 'POST'])
+def api_sessoes(request):
+    empresa = _empresa(request)
+    if not empresa:
+        return _err('empresa required', 400)
+
+    if request.method == 'GET':
+        corte = timezone.now() - SESSAO_VIVA
+        qs = SessaoLeitura.objects.select_related('usuario').filter(
+            empresa=empresa, aberta=True, atualizado_em__gte=corte,
+        )
+        tipos_por_codigo = {
+            t.codigo.upper(): t for t in TipoEnxoval.objects.filter(empresa=empresa)
+        }
+        return JsonResponse({
+            'sessoes': [_sessao_dict(s, tipos_por_codigo) for s in qs]
+        })
+
+    data = json.loads(request.body or '{}')
+    epcs = list(dict.fromkeys(_norm_epc(e) for e in data.get('epcs', []) if e))
+
+    sessao, _ = SessaoLeitura.objects.get_or_create(
+        empresa=empresa, usuario=request.user, aberta=True,
+        defaults={'tipo_mov': data.get('tipo_mov') or ''},
+    )
+    sessao.tipo_mov    = data.get('tipo_mov') or sessao.tipo_mov
+    sessao.responsavel = data.get('responsavel') or sessao.responsavel
+    sessao.epcs        = epcs
+    if data.get('encerrar'):
+        sessao.aberta = False
+    sessao.save()
+    return JsonResponse({'ok': True, 'id': sessao.id, 'total': len(epcs)})
 
 
 # ── Peças ──────────────────────────────────────────────────────────────────────
