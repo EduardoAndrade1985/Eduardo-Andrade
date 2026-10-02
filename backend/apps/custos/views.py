@@ -54,7 +54,7 @@ def upload_excel(request):
     nome = f.name
 
     try:
-        df = _parse_excel(f.read(), nome)
+        df, col_map = _parse_excel(f.read(), nome)
     except Exception as e:
         return JsonResponse({'ok': False, 'erro': f'Erro ao ler arquivo: {e}'}, status=400)
 
@@ -102,6 +102,7 @@ def upload_excel(request):
         'total_registros': len(df),
         'meses': sorted(df['mes'].unique().tolist()),
         'ccs':   sorted(df['cc'].unique().tolist()),
+        'mapeamento_colunas': col_map,
     })
 
 
@@ -127,16 +128,40 @@ def _parse_excel(conteudo: bytes, nome: str) -> pd.DataFrame:
     df_raw.columns = [str(c).strip() for c in df_raw.columns]
     cols = {c.lower().replace(' ', '').replace('_', ''): c for c in df_raw.columns}
 
-    desc_cols = [c for lc, c in cols.items() if 'descricao' in lc or 'descrição' in lc]
-    col_item  = desc_cols[0] if len(desc_cols) >= 1 else _find(cols, ['item', 'produto'])
-    col_grupo = desc_cols[1] if len(desc_cols) >= 2 else _find(cols, ['grupo', 'categoria', 'classe'])
-    col_cc    = desc_cols[2] if len(desc_cols) >= 3 else _find(cols, ['centro', 'cc', 'centrodecusto'])
+    desc_pairs = [(lc, c) for lc, c in cols.items() if 'descricao' in lc or 'descrição' in lc]
+    desc_cols  = [c for _, c in desc_pairs]
+
+    col_item  = None
+    col_grupo = None
+    col_cc    = None
+
+    for lc, c in desc_pairs:
+        if any(k in lc for k in ['centro', 'result', 'custo', '/cr', 'doccr', 'cresult']):
+            col_cc    = col_cc    or c
+        elif any(k in lc for k in ['grupo', 'categ', 'classe']):
+            col_grupo = col_grupo or c
+        elif any(k in lc for k in ['item', 'produto', 'material']):
+            col_item  = col_item  or c
+        else:
+            col_item  = col_item  or c  # primeira coluna não identificada = item
+
+    # Fallback posicional (mantém compatibilidade com formatos sem palavras-chave)
+    if not col_item:
+        col_item  = desc_cols[0] if desc_cols else _find(cols, ['item', 'produto'])
+    if not col_grupo:
+        col_grupo = desc_cols[1] if len(desc_cols) >= 2 else _find(cols, ['grupo', 'categoria', 'classe'])
+    if not col_cc:
+        col_cc    = desc_cols[2] if len(desc_cols) >= 3 else _find(cols, ['centro', 'cc', 'centrodecusto'])
     col_data  = _find(cols, ['data', 'datamovimentacao', 'datamov', 'periodo', 'mes'])
     col_valor = _find(cols, ['valortotal', 'valor', 'total', 'custo', 'precopago', 'preco'])
     col_qtde  = _find(cols, ['qtde', 'qtd', 'quantidade', 'qtdemovimentadabase'])
 
     if not col_item or not col_cc or not col_valor:
-        raise ValueError(f'Colunas não identificadas. Encontradas: {list(df_raw.columns)}')
+        raise ValueError(
+            f'Colunas não identificadas. Encontradas: {list(df_raw.columns)}\n'
+            f'Mapeamento detectado — item: {col_item}, grupo: {col_grupo}, cc: {col_cc}, '
+            f'data: {col_data}, valor: {col_valor}'
+        )
 
     is_preco_unit = 'preco' in (col_valor or '').lower() and 'total' not in (col_valor or '').lower()
 
@@ -149,7 +174,7 @@ def _parse_excel(conteudo: bytes, nome: str) -> pd.DataFrame:
         valor = _to_float(row.get(col_valor, 0))
         qtde  = _to_float(row.get(col_qtde, 0)) if col_qtde else 0
         preco = valor
-        if is_preco_unit and qtde:
+        if is_preco_unit:
             valor = preco * qtde
 
         if not item and not valor:
@@ -167,7 +192,15 @@ def _parse_excel(conteudo: bytes, nome: str) -> pd.DataFrame:
             'precoUnit': round(preco, 4),
         })
 
-    return pd.DataFrame(records)
+    col_map = {
+        'col_item':  col_item,
+        'col_grupo': col_grupo,
+        'col_cc':    col_cc,
+        'col_data':  col_data,
+        'col_valor': col_valor,
+        'col_qtde':  col_qtde,
+    }
+    return pd.DataFrame(records), col_map
 
 
 def _find(cols, candidatos):
