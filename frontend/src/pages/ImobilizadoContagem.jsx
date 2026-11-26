@@ -20,78 +20,51 @@ const inpStyle = (border = '#374151') => ({
 })
 
 // ════════════════════════════════════════════════════════════════════════════════
-// SCANNER DE CÂMERA (BarcodeDetector API nativa)
+// SCANNER DE CÂMERA (html5-qrcode — compatível com iPhone/Safari e Android)
 // ════════════════════════════════════════════════════════════════════════════════
 function QRScanner({ onDetected, onClose }) {
-  const videoRef  = useRef(null)
-  const streamRef = useRef(null)
-  const rafRef    = useRef(null)
   const [erro, setErro] = useState(null)
+  const scannerRef = useRef(null)
+  const SCANNER_ID = 'html5qr-scanner-region'
 
   useEffect(() => {
-    let detector
+    let scanner = null
     let stopped = false
 
     const start = async () => {
       try {
-        detector = new window.BarcodeDetector({
-          formats: ['qr_code', 'code_128', 'code_39', 'ean_13', 'ean_8'],
-        })
-      } catch {
-        setErro('Scanner não disponível neste navegador.')
-        return
+        const { Html5Qrcode } = await import('html5-qrcode')
+        if (stopped) return
+        scanner = new Html5Qrcode(SCANNER_ID)
+        scannerRef.current = scanner
+        await scanner.start(
+          { facingMode: 'environment' },
+          { fps: 10, qrbox: { width: 260, height: 110 }, aspectRatio: 1.5 },
+          (text) => {
+            const val = text.trim().toUpperCase()
+            scanner.stop().catch(() => {})
+            onDetected(val)
+          },
+          () => { /* frame sem código — ignora */ }
+        )
+      } catch (e) {
+        if (!stopped) setErro('Sem permissão para acessar a câmera ou navegador não suportado.')
       }
-      try {
-        const stream = await navigator.mediaDevices.getUserMedia({
-          video: { facingMode: 'environment', width: { ideal: 1280 }, height: { ideal: 720 } },
-        })
-        streamRef.current = stream
-        if (videoRef.current) {
-          videoRef.current.srcObject = stream
-          await videoRef.current.play()
-        }
-      } catch {
-        setErro('Sem permissão para acessar a câmera.')
-        return
-      }
-
-      const scan = async () => {
-        if (stopped || !videoRef.current) return
-        if (videoRef.current.readyState >= 2) {
-          try {
-            const barcodes = await detector.detect(videoRef.current)
-            if (barcodes.length > 0) {
-              onDetected(barcodes[0].rawValue.trim().toUpperCase())
-              return
-            }
-          } catch { /* frame com erro, continua */ }
-        }
-        rafRef.current = requestAnimationFrame(scan)
-      }
-      rafRef.current = requestAnimationFrame(scan)
     }
 
     start()
     return () => {
       stopped = true
-      cancelAnimationFrame(rafRef.current)
-      streamRef.current?.getTracks().forEach(t => t.stop())
+      scannerRef.current?.stop().catch(() => {})
     }
   }, [onDetected])
-
-  const [scanLine, setScanLine] = useState(0)
-  useEffect(() => {
-    if (erro) return
-    const id = setInterval(() => setScanLine(p => (p + 2) % 100), 16)
-    return () => clearInterval(id)
-  }, [erro])
 
   return (
     <div style={{ position: 'fixed', inset: 0, zIndex: 9999, background: '#000', display: 'flex', flexDirection: 'column' }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 16px', background: '#111' }}>
         <div>
           <p style={{ color: '#fff', fontWeight: 700, fontSize: 15 }}>📷 Aponte para a plaqueta</p>
-          <p style={{ color: '#6b7280', fontSize: 12, marginTop: 2 }}>Centralize o código de barras na faixa verde</p>
+          <p style={{ color: '#6b7280', fontSize: 12, marginTop: 2 }}>Centralize o código de barras na área verde</p>
         </div>
         <button onClick={onClose} style={{ color: '#9ca3af', background: 'none', border: 'none', fontSize: 22, cursor: 'pointer', lineHeight: 1 }}>✕</button>
       </div>
@@ -100,49 +73,8 @@ function QRScanner({ onDetected, onClose }) {
           <p style={{ color: '#f87171', textAlign: 'center', fontSize: 14 }}>{erro}</p>
         </div>
       ) : (
-        <div style={{ flex: 1, position: 'relative' }}>
-          <video ref={videoRef} muted playsInline style={{ width: '100%', height: '100%', objectFit: 'cover' }}/>
-
-          {/* Overlay: 4 faixas escuras deixando janela central livre */}
-          {/* Topo */}
-          <div style={{ position: 'absolute', inset: '0 0 auto 0', height: 'calc(50% - 55px)', background: 'rgba(0,0,0,0.6)', pointerEvents: 'none' }}/>
-          {/* Base */}
-          <div style={{ position: 'absolute', inset: 'auto 0 0 0', height: 'calc(50% - 55px)', background: 'rgba(0,0,0,0.6)', pointerEvents: 'none' }}/>
-          {/* Esquerda */}
-          <div style={{ position: 'absolute', top: 'calc(50% - 55px)', bottom: 'calc(50% - 55px)', left: 0, width: '10%', background: 'rgba(0,0,0,0.6)', pointerEvents: 'none' }}/>
-          {/* Direita */}
-          <div style={{ position: 'absolute', top: 'calc(50% - 55px)', bottom: 'calc(50% - 55px)', right: 0, width: '10%', background: 'rgba(0,0,0,0.6)', pointerEvents: 'none' }}/>
-
-          {/* Borda da janela + linha de scan animada */}
-          <div style={{
-            position: 'absolute', left: '10%', right: '10%',
-            top: '50%', transform: 'translateY(-55px)',
-            height: 110, pointerEvents: 'none',
-            border: '2px solid #2dd4a044', borderRadius: 10,
-            overflow: 'hidden',
-          }}>
-            {/* cantos verdes */}
-            {[
-              { top: 0, left: 0, borderTop: '3px solid #2dd4a0', borderLeft: '3px solid #2dd4a0', borderRadius: '10px 0 0 0' },
-              { top: 0, right: 0, borderTop: '3px solid #2dd4a0', borderRight: '3px solid #2dd4a0', borderRadius: '0 10px 0 0' },
-              { bottom: 0, left: 0, borderBottom: '3px solid #2dd4a0', borderLeft: '3px solid #2dd4a0', borderRadius: '0 0 0 10px' },
-              { bottom: 0, right: 0, borderBottom: '3px solid #2dd4a0', borderRight: '3px solid #2dd4a0', borderRadius: '0 0 10px 0' },
-            ].map((s, i) => (
-              <div key={i} style={{ position: 'absolute', width: 22, height: 22, ...s }}/>
-            ))}
-            {/* linha animada de scan */}
-            <div style={{
-              position: 'absolute', left: 0, right: 0,
-              top: `${scanLine}%`,
-              height: 2,
-              background: 'linear-gradient(90deg, transparent, #2dd4a0cc, transparent)',
-              boxShadow: '0 0 6px #2dd4a0',
-            }}/>
-          </div>
-
-          <p style={{ position: 'absolute', bottom: 28, left: 0, right: 0, textAlign: 'center', color: '#fff', fontSize: 13, opacity: 0.7 }}>
-            Escaneando automaticamente…
-          </p>
+        <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#000' }}>
+          <div id={SCANNER_ID} style={{ width: '100%', maxWidth: 480 }}/>
         </div>
       )}
     </div>

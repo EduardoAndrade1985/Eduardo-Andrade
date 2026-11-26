@@ -30,5 +30,6 @@ urlpatterns = [
     path('comparativo/',                             views.api_comparativo),
     path('dashboard/',                               views.api_dashboard),
     path('relatorios/',                              views.api_relatorios),
+    path('relatorios/exportar/',                     views.api_relatorios_exportar),
     path('auditoria/',                               views.api_auditoria),
 ]
