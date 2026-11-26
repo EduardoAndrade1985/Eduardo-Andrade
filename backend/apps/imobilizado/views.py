@@ -784,9 +784,10 @@ def api_inventario_conciliar(request, pk):
                         b.foto = item.foto_provisoria
                     b.save()
                     ultimo_bem = b
-                item.bem      = ultimo_bem
-                item.situacao = ItemInventario.LOCALIZADO
-                item.save(update_fields=['bem', 'situacao'])
+                item.bem             = ultimo_bem
+                item.situacao        = ItemInventario.LOCALIZADO
+                item.foi_incorporado = True
+                item.save(update_fields=['bem', 'situacao', 'foi_incorporado'])
             else:
                 # Item unitário (quantidade=1): usa plaqueta_lida como plaqueta
                 if Bem.objects.filter(plaqueta=item.plaqueta_lida).exists():
@@ -804,9 +805,10 @@ def api_inventario_conciliar(request, pk):
                 if item.foto_provisoria:
                     bem.foto = item.foto_provisoria
                 bem.save()
-                item.bem      = bem
-                item.situacao = ItemInventario.LOCALIZADO
-                item.save(update_fields=['bem', 'situacao'])
+                item.bem              = bem
+                item.situacao         = ItemInventario.LOCALIZADO
+                item.foi_incorporado  = True
+                item.save(update_fields=['bem', 'situacao', 'foi_incorporado'])
 
         for dec in data.get('divergentes', []):
             if not dec.get('atualizar_local'):
@@ -817,6 +819,8 @@ def api_inventario_conciliar(request, pk):
                 continue
             if item.bem_id and item.localizacao_encontrada:
                 Bem.objects.filter(pk=item.bem_id).update(localizacao=item.localizacao_encontrada)
+                item.local_foi_atualizado = True
+                item.save(update_fields=['local_foi_atualizado'])
 
         inv.status = Inventario.FINALIZADO
         inv.save(update_fields=['status'])
@@ -897,10 +901,22 @@ def api_bens_importar(request):
 
     import pandas as pd
 
+    # Mapeamento de aliases: nome alternativo → nome canônico
+    _ALIASES = {
+        'Placa':              'Plaqueta',
+        'Descrição do bem':   'Descrição',
+        'Descrição do local': 'Localização',
+        'NF':                 'Nota Fiscal',
+        'Data da Aquisição':  'Data Aquisição',
+        'Valor':              'Valor Aquisição',
+    }
+
     try:
-        df = pd.read_excel(arquivo)
+        df = pd.read_excel(arquivo, sheet_name=0)
     except Exception as exc:
         return _err(f'Erro ao ler arquivo: {exc}')
+
+    df.rename(columns=_ALIASES, inplace=True)
 
     erros   = []
     criados = 0
@@ -909,11 +925,28 @@ def api_bens_importar(request):
     with transaction.atomic():
         for idx, row in df.iterrows():
             linha = idx + 2
-            plaqueta  = str(row.get('Plaqueta') or '').strip().upper()
+
+            raw_val_plq  = row.get('Plaqueta')
+            # pandas pode ler números inteiros como float (87 → 87.0); normaliza para string limpa
+            if raw_val_plq is not None:
+                try:
+                    raw_plaqueta = str(int(float(raw_val_plq))).strip().upper()
+                except (ValueError, TypeError):
+                    raw_plaqueta = str(raw_val_plq).strip().upper()
+            else:
+                raw_plaqueta = ''
+
             descricao = str(row.get('Descrição') or '').strip()
-            if not plaqueta or not descricao:
+
+            if not raw_plaqueta or raw_plaqueta in ('NAN', '') or not descricao or descricao == 'NAN':
                 erros.append(f'Linha {linha}: Plaqueta e Descrição são obrigatórias')
                 continue
+
+            # Zero-pad para 6 dígitos quando a plaqueta for numérica pura
+            if raw_plaqueta.isdigit():
+                plaqueta = raw_plaqueta.zfill(6)
+            else:
+                plaqueta = raw_plaqueta
 
             if Bem.objects.filter(plaqueta=plaqueta).exists():
                 ignorados += 1
@@ -1014,6 +1047,424 @@ def api_inventario_relatorio_exportar(request, pk):
 
     resp = HttpResponse(buf.read(), content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
     resp['Content-Disposition'] = f'attachment; filename="relatorio_{inv.data}.xlsx"'
+    return resp
+
+
+# ─── RELATÓRIO FINAL (Excel ou PDF) para assinatura do gestor ─────────────────
+
+def _build_relatorio_final_data(inv, empresa):
+    """Monta os dados das 3 seções para o relatório final."""
+    import pandas as pd
+
+    r = reconciliar(inv)
+
+    # ── Aba 1: Diferenças ──
+    diferencas = []
+    for i in r['divergentes']:
+        b = i.bem
+        diferencas.append({
+            'Tipo':             'Local Divergente',
+            'Plaqueta':         i.plaqueta_lida,
+            'Descrição':        b.descricao if b else '—',
+            'Categoria':        (b.categoria.nome if b and b.categoria_id else None) or '—',
+            'Departamento':     (b.departamento.nome if b and b.departamento_id else None) or '—',
+            'Local no Sistema': (b.localizacao if b else None) or '—',
+            'Local Encontrado': i.localizacao_encontrada or '—',
+            'Valor (R$)':       float(b.valor_aquisicao) if b and b.valor_aquisicao else None,
+        })
+    for i in r['nao_cadastrados']:
+        diferencas.append({
+            'Tipo':             'Não Cadastrado',
+            'Plaqueta':         i.plaqueta_lida,
+            'Descrição':        i.descricao_provisoria or '—',
+            'Categoria':        '—',
+            'Departamento':     '—',
+            'Local no Sistema': '—',
+            'Local Encontrado': i.localizacao_encontrada or '—',
+            'Valor (R$)':       None,
+        })
+    for b in r['fantasmas']:
+        diferencas.append({
+            'Tipo':             'Não Localizado',
+            'Plaqueta':         b.plaqueta,
+            'Descrição':        b.descricao,
+            'Categoria':        b.categoria.nome if b.categoria_id else '—',
+            'Departamento':     b.departamento.nome if b.departamento_id else '—',
+            'Local no Sistema': b.localizacao or '—',
+            'Local Encontrado': '—',
+            'Valor (R$)':       float(b.valor_aquisicao) if b.valor_aquisicao else None,
+        })
+
+    # ── Aba 2: Ajustes Realizados ──
+    ajustes = []
+    itens_ajuste = ItemInventario.objects.filter(
+        inventario=inv
+    ).filter(
+        models.Q(foi_incorporado=True) | models.Q(local_foi_atualizado=True)
+    ).select_related('bem', 'bem__categoria', 'bem__departamento')
+
+    for i in itens_ajuste:
+        b = i.bem
+        if i.foi_incorporado:
+            tipo = 'Bem Incorporado ao Sistema'
+        else:
+            tipo = 'Localização Atualizada'
+        ajustes.append({
+            'Tipo de Ajuste':   tipo,
+            'Plaqueta':         i.plaqueta_lida,
+            'Descrição':        b.descricao if b else i.descricao_provisoria or '—',
+            'Categoria':        (b.categoria.nome if b and b.categoria_id else None) or '—',
+            'Departamento':     (b.departamento.nome if b and b.departamento_id else None) or '—',
+            'Local Anterior':   '—' if i.foi_incorporado else (b.localizacao if b else '—'),
+            'Local Atual':      i.localizacao_encontrada or '—',
+            'Valor (R$)':       float(b.valor_aquisicao) if b and b.valor_aquisicao else None,
+        })
+
+    # ── Aba 3: Posição Atual ──
+    bens_qs = Bem.objects.filter(
+        empresa=empresa, situacao__in=[Bem.EM_USO, Bem.MANUTENCAO]
+    ).select_related('categoria', 'departamento').order_by('plaqueta')
+
+    posicao = []
+    for b in bens_qs:
+        posicao.append({
+            'Plaqueta':      b.plaqueta,
+            'Descrição':     b.descricao,
+            'Situação':      b.get_situacao_display(),
+            'Categoria':     b.categoria.nome if b.categoria_id else '—',
+            'Departamento':  b.departamento.nome if b.departamento_id else '—',
+            'Localização':   b.localizacao or '—',
+            'Responsável':   b.responsavel or '—',
+            'Nota Fiscal':   b.nota_fiscal or '—',
+            'Valor (R$)':    float(b.valor_aquisicao) if b.valor_aquisicao else None,
+        })
+
+    total_valor = sum(b['Valor (R$)'] or 0 for b in posicao)
+
+    return {
+        'diferencas': diferencas,
+        'ajustes':    ajustes,
+        'posicao':    posicao,
+        'total_valor': total_valor,
+        'inv':         inv,
+        'totais': {
+            'divergentes':     len(r['divergentes']),
+            'nao_cadastrados': len(r['nao_cadastrados']),
+            'fantasmas':       len(r['fantasmas']),
+            'total_bens':      len(posicao),
+            'ajustes':         len(ajustes),
+        },
+    }
+
+
+def _exportar_excel_final(dados, empresa):
+    import io as _io
+    import openpyxl
+    from openpyxl.styles import Font, PatternFill, Alignment, Border, Side, numbers
+    from openpyxl.utils import get_column_letter
+
+    inv  = dados['inv']
+    tot  = dados['totais']
+
+    AZUL_ESCURO = '1F4E79'
+    AZUL_CLARO  = 'BDD7EE'
+    AMARELO     = 'FFF2CC'
+    VERDE       = 'E2EFDA'
+    VERMELHO    = 'FCE4D6'
+    CINZA       = 'F2F2F2'
+
+    hf  = Font(name='Arial', bold=True, color='FFFFFF', size=10)
+    sf  = Font(name='Arial', size=10)
+    bf  = Font(name='Arial', bold=True, size=10)
+    tit = Font(name='Arial', bold=True, size=14, color=AZUL_ESCURO)
+    sub = Font(name='Arial', size=10, color='595959')
+
+    def header_fill(cor): return PatternFill('solid', fgColor=cor)
+    def thin_border():
+        s = Side(style='thin', color='BFBFBF')
+        return Border(left=s, right=s, top=s, bottom=s)
+
+    def _write_header(ws, titulo, subtitulo, row_start=1):
+        ws.merge_cells(f'A{row_start}:I{row_start}')
+        c = ws[f'A{row_start}']
+        c.value = titulo
+        c.font  = tit
+        c.alignment = Alignment(horizontal='left', vertical='center')
+        ws.row_dimensions[row_start].height = 24
+
+        ws.merge_cells(f'A{row_start+1}:I{row_start+1}')
+        c2 = ws[f'A{row_start+1}']
+        c2.value = subtitulo
+        c2.font  = sub
+        ws.row_dimensions[row_start+1].height = 16
+        return row_start + 3
+
+    def _write_table(ws, cols, rows, row_start, fill_cor=AZUL_ESCURO, widths=None):
+        for ci, col in enumerate(cols, 1):
+            c = ws.cell(row=row_start, column=ci, value=col)
+            c.font   = hf
+            c.fill   = header_fill(fill_cor)
+            c.border = thin_border()
+            c.alignment = Alignment(horizontal='center', vertical='center', wrap_text=True)
+            if widths:
+                ws.column_dimensions[get_column_letter(ci)].width = widths[ci-1]
+        ws.row_dimensions[row_start].height = 20
+
+        fills_alt = [PatternFill('solid', fgColor='FFFFFF'), PatternFill('solid', fgColor=CINZA)]
+        for ri, row in enumerate(rows, 1):
+            for ci, col in enumerate(cols, 1):
+                val = row.get(col)
+                c   = ws.cell(row=row_start + ri, column=ci, value=val)
+                c.font   = sf
+                c.fill   = fills_alt[ri % 2]
+                c.border = thin_border()
+                c.alignment = Alignment(vertical='center', wrap_text=False)
+                if col == 'Valor (R$)' and val is not None:
+                    c.number_format = 'R$ #,##0.00'
+            ws.row_dimensions[row_start + ri].height = 16
+
+        return row_start + len(rows) + 1
+
+    def _write_assinatura(ws, row_start):
+        ws.row_dimensions[row_start].height = 30
+        ws.row_dimensions[row_start+1].height = 14
+        ws.row_dimensions[row_start+2].height = 30
+        ws.row_dimensions[row_start+3].height = 14
+
+        campos = [
+            ('Responsável pelo Inventário', 'Data'),
+            ('Gestor / Aprovação',          'Data'),
+        ]
+        for li, (nome, data_label) in enumerate(campos):
+            r = row_start + li * 2
+            ws.cell(row=r, column=1, value='_' * 50).font = sf
+            ws.cell(row=r, column=5, value='_' * 20).font = sf
+            ws.cell(row=r+1, column=1, value=nome).font = Font(name='Arial', bold=True, size=9)
+            ws.cell(row=r+1, column=5, value=data_label).font = Font(name='Arial', bold=True, size=9)
+
+    wb   = openpyxl.Workbook()
+    sub_titulo = (
+        f'Inventário: {inv.data.strftime("%d/%m/%Y")}'
+        + (f'  |  Área: {inv.local_area}' if inv.local_area else '')
+        + (f'  |  Responsável: {inv.responsavel}' if inv.responsavel else '')
+        + f'  |  Empresa: {empresa.nome}'
+    )
+
+    # ── ABA 1: Diferenças ──
+    ws1 = wb.active
+    ws1.title = 'Diferenças'
+    r = _write_header(ws1, 'Relatório de Diferenças — Inventário Físico', sub_titulo)
+    ws1.cell(row=r-1, column=1,
+             value=f'Divergentes: {tot["divergentes"]}  |  Não Cadastrados: {tot["nao_cadastrados"]}  |  Não Localizados: {tot["fantasmas"]}').font = bf
+    cols1  = ['Tipo','Plaqueta','Descrição','Categoria','Departamento','Local no Sistema','Local Encontrado','Valor (R$)']
+    widths1= [18, 12, 30, 20, 20, 24, 24, 14]
+    r = _write_table(ws1, cols1, dados['diferencas'], r, AZUL_ESCURO, widths1)
+    ws1.freeze_panes = 'A5'
+    _write_assinatura(ws1, r + 2)
+
+    # ── ABA 2: Ajustes ──
+    ws2 = wb.create_sheet('Ajustes Realizados')
+    r = _write_header(ws2, 'Relatório de Ajustes Realizados', sub_titulo)
+    ws2.cell(row=r-1, column=1,
+             value=f'Total de ajustes: {tot["ajustes"]}').font = bf
+    cols2  = ['Tipo de Ajuste','Plaqueta','Descrição','Categoria','Departamento','Local Anterior','Local Atual','Valor (R$)']
+    widths2= [22, 12, 30, 20, 20, 24, 24, 14]
+    r = _write_table(ws2, cols2, dados['ajustes'], r, '375623', widths2)
+    ws2.freeze_panes = 'A5'
+    _write_assinatura(ws2, r + 2)
+
+    # ── ABA 3: Posição Atual ──
+    ws3 = wb.create_sheet('Posição Atual')
+    r = _write_header(ws3, 'Posição Atual do Acervo', sub_titulo)
+    ws3.cell(row=r-1, column=1,
+             value=f'Total de bens ativos: {tot["total_bens"]}  |  Valor total: R$ {dados["total_valor"]:,.2f}').font = bf
+    cols3  = ['Plaqueta','Descrição','Situação','Categoria','Departamento','Localização','Responsável','Nota Fiscal','Valor (R$)']
+    widths3= [12, 30, 14, 20, 20, 24, 20, 14, 14]
+    r = _write_table(ws3, cols3, dados['posicao'], r, '1F4E79', widths3)
+    ws3.freeze_panes = 'A5'
+    _write_assinatura(ws3, r + 2)
+
+    buf = _io.BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+    return buf.read()
+
+
+def _exportar_pdf_final(dados, empresa):
+    import io as _io
+    from reportlab.lib.pagesizes import A4, landscape
+    from reportlab.lib import colors
+    from reportlab.lib.units import cm
+    from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+    from reportlab.platypus import (SimpleDocTemplate, Table, TableStyle,
+                                    Paragraph, Spacer, HRFlowable, PageBreak)
+    from reportlab.lib.enums import TA_LEFT, TA_CENTER, TA_RIGHT
+
+    inv = dados['inv']
+    tot = dados['totais']
+
+    AZUL   = colors.HexColor('#1F4E79')
+    CINZA  = colors.HexColor('#F2F2F2')
+    CINZA2 = colors.HexColor('#D9D9D9')
+    BRANCO = colors.white
+    VERDE  = colors.HexColor('#375623')
+
+    buf  = _io.BytesIO()
+    doc  = SimpleDocTemplate(buf, pagesize=landscape(A4),
+                              leftMargin=1.5*cm, rightMargin=1.5*cm,
+                              topMargin=2*cm, bottomMargin=2*cm)
+    styles = getSampleStyleSheet()
+    s_tit  = ParagraphStyle('tit', fontName='Helvetica-Bold', fontSize=14, textColor=AZUL, spaceAfter=4)
+    s_sub  = ParagraphStyle('sub', fontName='Helvetica', fontSize=9, textColor=colors.HexColor('#595959'), spaceAfter=8)
+    s_inf  = ParagraphStyle('inf', fontName='Helvetica-Bold', fontSize=9, spaceAfter=6)
+    s_body = ParagraphStyle('body', fontName='Helvetica', fontSize=8)
+    s_ass  = ParagraphStyle('ass', fontName='Helvetica', fontSize=9, spaceAfter=2)
+    s_ass_label = ParagraphStyle('assl', fontName='Helvetica-Bold', fontSize=9)
+
+    sub_titulo = (
+        f'Inventário: {inv.data.strftime("%d/%m/%Y")}'
+        + (f'  |  Área: {inv.local_area}' if inv.local_area else '')
+        + (f'  |  Responsável: {inv.responsavel}' if inv.responsavel else '')
+        + f'  |  Empresa: {empresa.nome}'
+    )
+
+    def fmtR(v):
+        if v is None: return '—'
+        return f'R$ {v:,.2f}'
+
+    def _table_style(header_color):
+        return TableStyle([
+            ('BACKGROUND',  (0,0), (-1,0), header_color),
+            ('TEXTCOLOR',   (0,0), (-1,0), BRANCO),
+            ('FONTNAME',    (0,0), (-1,0), 'Helvetica-Bold'),
+            ('FONTSIZE',    (0,0), (-1,0), 8),
+            ('ALIGN',       (0,0), (-1,0), 'CENTER'),
+            ('ROWBACKGROUNDS', (0,1), (-1,-1), [BRANCO, CINZA]),
+            ('FONTNAME',    (0,1), (-1,-1), 'Helvetica'),
+            ('FONTSIZE',    (0,1), (-1,-1), 7.5),
+            ('GRID',        (0,0), (-1,-1), 0.4, CINZA2),
+            ('VALIGN',      (0,0), (-1,-1), 'MIDDLE'),
+            ('LEFTPADDING', (0,0), (-1,-1), 4),
+            ('RIGHTPADDING',(0,0), (-1,-1), 4),
+            ('TOPPADDING',  (0,0), (-1,-1), 3),
+            ('BOTTOMPADDING',(0,0), (-1,-1), 3),
+        ])
+
+    def _assinatura_block():
+        campos = [
+            'Responsável pelo Inventário',
+            'Gestor / Aprovação',
+        ]
+        story = [Spacer(1, 1*cm)]
+        for campo in campos:
+            story.append(HRFlowable(width='45%', thickness=0.8, color=colors.black, spaceAfter=2))
+            story.append(Paragraph(campo, s_ass_label))
+            story.append(Paragraph(f'Data: _____ / _____ / _______', s_ass))
+            story.append(Spacer(1, 0.6*cm))
+        return story
+
+    story = []
+
+    # ── SEÇÃO 1: Diferenças ──
+    story.append(Paragraph('Relatório de Diferenças — Inventário Físico', s_tit))
+    story.append(Paragraph(sub_titulo, s_sub))
+    story.append(Paragraph(
+        f'Divergentes: {tot["divergentes"]}  |  Não Cadastrados: {tot["nao_cadastrados"]}  |  Não Localizados: {tot["fantasmas"]}',
+        s_inf))
+
+    if dados['diferencas']:
+        cols  = ['Tipo','Plaqueta','Descrição','Categoria','Departamento','Local Sistema','Local Encontrado','Valor (R$)']
+        rows  = [[Paragraph(str(d.get(k) or '—'), s_body) for k in
+                  ['Tipo','Plaqueta','Descrição','Categoria','Departamento','Local no Sistema','Local Encontrado','Valor (R$)']]
+                 for d in dados['diferencas']]
+        for r in rows:
+            if isinstance(r[7], Paragraph):
+                r[7] = Paragraph(fmtR(dados['diferencas'][rows.index(r)].get('Valor (R$)')), s_body)
+        tbl = Table([cols] + [[str(d.get(c) or '—') for c in
+                               ['Tipo','Plaqueta','Descrição','Categoria','Departamento',
+                                'Local no Sistema','Local Encontrado','Valor (R$)']]
+                              for d in dados['diferencas']],
+                    colWidths=[3.5*cm,2.2*cm,5.5*cm,3.5*cm,3.5*cm,4*cm,4*cm,2.5*cm],
+                    repeatRows=1)
+        tbl.setStyle(_table_style(AZUL))
+        story.append(tbl)
+    else:
+        story.append(Paragraph('Nenhuma diferença encontrada.', s_body))
+
+    story += _assinatura_block()
+    story.append(PageBreak())
+
+    # ── SEÇÃO 2: Ajustes ──
+    story.append(Paragraph('Relatório de Ajustes Realizados', s_tit))
+    story.append(Paragraph(sub_titulo, s_sub))
+    story.append(Paragraph(f'Total de ajustes: {tot["ajustes"]}', s_inf))
+
+    if dados['ajustes']:
+        cols2 = ['Tipo de Ajuste','Plaqueta','Descrição','Categoria','Departamento','Local Anterior','Local Atual','Valor (R$)']
+        tbl2  = Table([cols2] + [[str(d.get(c) or '—') for c in cols2] for d in dados['ajustes']],
+                      colWidths=[3.8*cm,2.2*cm,5.5*cm,3.2*cm,3.2*cm,3.8*cm,3.8*cm,2.5*cm],
+                      repeatRows=1)
+        tbl2.setStyle(_table_style(VERDE))
+        story.append(tbl2)
+    else:
+        story.append(Paragraph('Nenhum ajuste realizado.', s_body))
+
+    story += _assinatura_block()
+    story.append(PageBreak())
+
+    # ── SEÇÃO 3: Posição Atual ──
+    story.append(Paragraph('Posição Atual do Acervo', s_tit))
+    story.append(Paragraph(sub_titulo, s_sub))
+    story.append(Paragraph(
+        f'Total de bens ativos: {tot["total_bens"]}  |  Valor total: R$ {dados["total_valor"]:,.2f}',
+        s_inf))
+
+    if dados['posicao']:
+        cols3 = ['Plaqueta','Descrição','Situação','Categoria','Departamento','Localização','Responsável','NF','Valor (R$)']
+        tbl3  = Table([cols3] + [[str(d.get(c) or '—') for c in
+                                  ['Plaqueta','Descrição','Situação','Categoria','Departamento',
+                                   'Localização','Responsável','Nota Fiscal','Valor (R$)']]
+                                 for d in dados['posicao']],
+                      colWidths=[2*cm,5.5*cm,2.5*cm,3.2*cm,3.2*cm,4*cm,3.5*cm,2.5*cm,2.5*cm],
+                      repeatRows=1)
+        tbl3.setStyle(_table_style(AZUL))
+        story.append(tbl3)
+
+    story += _assinatura_block()
+
+    doc.build(story)
+    buf.seek(0)
+    return buf.read()
+
+
+@csrf_exempt
+def api_inventario_relatorio_final(request, pk):
+    empresa = _empresa(request)
+    if not empresa:
+        return _err('Sem empresa ativa', 401)
+
+    try:
+        inv = Inventario.objects.get(pk=pk, empresa=empresa)
+    except Inventario.DoesNotExist:
+        return _err('Inventário não encontrado', 404)
+
+    if inv.status != Inventario.FINALIZADO:
+        return _err('Apenas inventários finalizados podem gerar o relatório final')
+
+    formato = request.GET.get('formato', 'excel').lower()
+    dados   = _build_relatorio_final_data(inv, empresa)
+
+    data_str = inv.data.strftime('%Y-%m-%d')
+
+    if formato == 'pdf':
+        conteudo = _exportar_pdf_final(dados, empresa)
+        resp = HttpResponse(conteudo, content_type='application/pdf')
+        resp['Content-Disposition'] = f'attachment; filename="relatorio_final_{data_str}.pdf"'
+    else:
+        conteudo = _exportar_excel_final(dados, empresa)
+        resp = HttpResponse(conteudo, content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+        resp['Content-Disposition'] = f'attachment; filename="relatorio_final_{data_str}.xlsx"'
+
     return resp
 
 

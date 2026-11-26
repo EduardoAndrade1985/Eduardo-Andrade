@@ -941,6 +941,22 @@ function TabelaRelatorio({ relatorio: r, invId, invStatus, onRefresh, categorias
     finally { setExportando(false) }
   }
 
+  const exportarFinal = async (formato) => {
+    if (!invId) return
+    setExportando(true)
+    try {
+      const res = await api.get(`/imobilizado/inventarios/${invId}/relatorio/final/`, {
+        params: { formato },
+        responseType: 'blob',
+      })
+      const ext = formato === 'pdf' ? 'pdf' : 'xlsx'
+      const url = URL.createObjectURL(res.data)
+      const a = document.createElement('a'); a.href = url; a.download = `relatorio_final_inventario.${ext}`; a.click()
+      URL.revokeObjectURL(url)
+    } catch { alert('Erro ao gerar relatório final') }
+    finally { setExportando(false) }
+  }
+
   const allRows = [
     ...r.localizados.map(i     => ({ _sit: 'LOCALIZADO',      plq: i.plaqueta_lida, desc: i.bem?.descricao || '—', locSist: i.bem?.localizacao || '—', locEnc: i.localizacao_encontrada || '—', valor: i.bem?.valor_aquisicao, op: i.contado_por, _itemId: i.id, _bemId: i.bem?.id, _locEnc: i.localizacao_encontrada, _op: i.contado_por, _obs: i.observacao, _qtd: i.quantidade })),
     ...r.divergentes.map(i     => ({ _sit: 'LOCAL_DIVERGENTE', plq: i.plaqueta_lida, desc: i.bem?.descricao || '—', locSist: i.bem?.localizacao || '—', locEnc: i.localizacao_encontrada || '—', valor: i.bem?.valor_aquisicao, op: i.contado_por, _itemId: i.id, _bemId: i.bem?.id, _locEnc: i.localizacao_encontrada, _op: i.contado_por, _obs: i.observacao, _qtd: i.quantidade })),
@@ -1024,10 +1040,22 @@ function TabelaRelatorio({ relatorio: r, invId, invStatus, onRefresh, categorias
           ))}
         </div>
         {invId && (
-          <button onClick={exportarRelatorio} disabled={exportando}
-            className="text-xs bg-bg3 border border-border text-dim px-3 py-1.5 rounded-lg hover:border-primary/40 hover:text-primary transition disabled:opacity-50 whitespace-nowrap">
-            {exportando ? '⏳ Exportando…' : '⬇️ Exportar Excel'}
-          </button>
+          <div className="flex gap-2 flex-wrap">
+            <button onClick={exportarRelatorio} disabled={exportando}
+              className="text-xs bg-bg3 border border-border text-dim px-3 py-1.5 rounded-lg hover:border-primary/40 hover:text-primary transition disabled:opacity-50 whitespace-nowrap">
+              {exportando ? '⏳…' : '⬇️ Exportar Excel'}
+            </button>
+            {invStatus === 'FINALIZADO' && (<>
+              <button onClick={() => exportarFinal('excel')} disabled={exportando}
+                className="text-xs bg-bg3 border border-border text-dim px-3 py-1.5 rounded-lg hover:border-teal-500/40 hover:text-teal-400 transition disabled:opacity-50 whitespace-nowrap">
+                {exportando ? '⏳…' : '📊 Relatório Final Excel'}
+              </button>
+              <button onClick={() => exportarFinal('pdf')} disabled={exportando}
+                className="text-xs bg-bg3 border border-border text-dim px-3 py-1.5 rounded-lg hover:border-rose-500/40 hover:text-rose-400 transition disabled:opacity-50 whitespace-nowrap">
+                {exportando ? '⏳…' : '🖨️ Relatório Final PDF'}
+              </button>
+            </>)}
+          </div>
         )}
       </div>
 

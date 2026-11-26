@@ -158,6 +158,10 @@ class ItemInventario(models.Model):
     categoria_provisoria_id    = models.IntegerField(null=True, blank=True)
     departamento_provisorio_id = models.IntegerField(null=True, blank=True)
 
+    # flags setados durante a conciliação para rastrear ajustes feitos
+    foi_incorporado      = models.BooleanField(default=False)
+    local_foi_atualizado = models.BooleanField(default=False)
+
     class Meta:
         unique_together     = [('inventario', 'plaqueta_lida')]
         verbose_name        = 'Item de Inventário'
