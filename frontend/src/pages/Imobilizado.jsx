@@ -1211,6 +1211,11 @@ function RelatorioPanel({ relatorio: r, invId, invStatus, onClose, onRefresh, ca
           <p className="text-sm font-bold text-dim truncate">Relatório de Reconciliação</p>
           <p className="text-xs text-muted truncate">{titulo}</p>
         </div>
+        {invStatus === 'ABERTO' && (
+          <span className="text-[10px] text-teal-400 border border-teal-500/30 bg-teal-500/10 px-2 py-0.5 rounded-full whitespace-nowrap flex-shrink-0 animate-pulse">
+            ● ao vivo
+          </span>
+        )}
       </div>
       {/* Conteúdo scrollável */}
       <div className="flex-1 overflow-y-auto p-5 md:p-8">
@@ -1787,6 +1792,14 @@ function InventariosTab({ categorias, departamentos }) {
       setRelatorioModal(data)
     } catch { /* silencioso */ }
   }
+
+  // Auto-refresh a cada 5s enquanto o painel estiver aberto e inventário não finalizado
+  useEffect(() => {
+    const statusAberto = relatorioInv?.status === 'ABERTO' || relatorioInv?.status === 'AGUARDANDO'
+    if (!relatorioModal || !statusAberto) return
+    const id = setInterval(recarregarRelatorio, 5000)
+    return () => clearInterval(id)
+  }, [relatorioModal, relatorioInv?.status, invRelId])
 
   const excluirInventario = async inv => {
     if (!window.confirm(`Excluir inventário de ${fmtDt(inv.data)}? Todas as leituras serão removidas.`)) return
