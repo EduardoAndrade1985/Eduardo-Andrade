@@ -918,77 +918,97 @@ def api_bens_importar(request):
 
     df.rename(columns=_ALIASES, inplace=True)
 
-    erros   = []
-    criados = 0
-    ignorados = 0
+    erros = []
+
+    # --- Pré-normaliza todas as linhas (sem queries) ---
+    registros = []
+    for idx, row in df.iterrows():
+        linha = idx + 2
+        raw_val_plq = row.get('Plaqueta')
+        if raw_val_plq is not None:
+            try:
+                raw_plaqueta = str(int(float(raw_val_plq))).strip().upper()
+            except (ValueError, TypeError):
+                raw_plaqueta = str(raw_val_plq).strip().upper()
+        else:
+            raw_plaqueta = ''
+
+        descricao = str(row.get('Descrição') or '').strip()
+        if not raw_plaqueta or raw_plaqueta in ('NAN', '') or not descricao or descricao == 'NAN':
+            erros.append(f'Linha {linha}: Plaqueta e Descrição são obrigatórias')
+            continue
+
+        plaqueta = raw_plaqueta.zfill(6) if raw_plaqueta.isdigit() else raw_plaqueta
+
+        raw_val = row.get('Valor Aquisição')
+        valor = None
+        if raw_val is not None and str(raw_val).strip() not in ('', 'nan'):
+            valor = _parse_valor(str(raw_val).replace(',', '.'))
+
+        data_aq = None
+        raw_dt = row.get('Data Aquisição')
+        if raw_dt is not None and str(raw_dt).strip() not in ('', 'nan'):
+            try:
+                data_aq = pd.to_datetime(raw_dt).date()
+            except Exception:
+                pass
+
+        registros.append({
+            'plaqueta':       plaqueta,
+            'descricao':      descricao,
+            'cat_nome':       str(row.get('Categoria') or '').strip() or 'Outros',
+            'dep_nome':       str(row.get('Departamento') or '').strip() or 'Geral',
+            'localizacao':    str(row.get('Localização') or '').strip(),
+            'responsavel':    str(row.get('Responsável') or '').strip(),
+            'nota_fiscal':    str(row.get('Nota Fiscal') or '').strip(),
+            'fornecedor':     str(row.get('Fornecedor') or '').strip(),
+            'data_aquisicao': data_aq,
+            'valor_aquisicao': valor,
+        })
 
     with transaction.atomic():
-        for idx, row in df.iterrows():
-            linha = idx + 2
+        # Carrega categorias e departamentos já existentes em memória (1 query cada)
+        cats = {c.nome: c for c in CategoriaBem.objects.filter(empresa=empresa)}
+        deps = {d.nome: d for d in Departamento.objects.filter(empresa=empresa)}
 
-            raw_val_plq  = row.get('Plaqueta')
-            # pandas pode ler números inteiros como float (87 → 87.0); normaliza para string limpa
-            if raw_val_plq is not None:
-                try:
-                    raw_plaqueta = str(int(float(raw_val_plq))).strip().upper()
-                except (ValueError, TypeError):
-                    raw_plaqueta = str(raw_val_plq).strip().upper()
-            else:
-                raw_plaqueta = ''
+        # Cria categorias/departamentos novos em lote
+        novos_cats = {r['cat_nome'] for r in registros} - cats.keys()
+        novos_deps = {r['dep_nome'] for r in registros} - deps.keys()
+        for nome in novos_cats:
+            cat = CategoriaBem.objects.create(empresa=empresa, nome=nome, ativo=True)
+            cats[nome] = cat
+        for nome in novos_deps:
+            dep = Departamento.objects.create(empresa=empresa, nome=nome, ativo=True)
+            deps[nome] = dep
 
-            descricao = str(row.get('Descrição') or '').strip()
+        # Verifica plaquetas já existentes (1 query só)
+        plaquetas_planilha = {r['plaqueta'] for r in registros}
+        plaquetas_existentes = set(
+            Bem.objects.filter(empresa=empresa, plaqueta__in=plaquetas_planilha)
+                       .values_list('plaqueta', flat=True)
+        )
+        ignorados = len(plaquetas_existentes)
 
-            if not raw_plaqueta or raw_plaqueta in ('NAN', '') or not descricao or descricao == 'NAN':
-                erros.append(f'Linha {linha}: Plaqueta e Descrição são obrigatórias')
-                continue
-
-            # Zero-pad para 6 dígitos quando a plaqueta for numérica pura
-            if raw_plaqueta.isdigit():
-                plaqueta = raw_plaqueta.zfill(6)
-            else:
-                plaqueta = raw_plaqueta
-
-            if Bem.objects.filter(plaqueta=plaqueta).exists():
-                ignorados += 1
-                continue
-
-            cat_nome = str(row.get('Categoria') or '').strip()
-            dep_nome = str(row.get('Departamento') or '').strip()
-
-            cat, _ = CategoriaBem.objects.get_or_create(
-                empresa=empresa, nome=cat_nome or 'Outros', defaults={'ativo': True}
-            )
-            dep, _ = Departamento.objects.get_or_create(
-                empresa=empresa, nome=dep_nome or 'Geral', defaults={'ativo': True}
-            )
-
-            valor = None
-            raw_val = row.get('Valor Aquisição')
-            if raw_val is not None and str(raw_val).strip() not in ('', 'nan'):
-                valor = _parse_valor(str(raw_val).replace(',', '.'))
-
-            data_aq = None
-            raw_dt = row.get('Data Aquisição')
-            if raw_dt is not None and str(raw_dt).strip() not in ('', 'nan'):
-                try:
-                    data_aq = pd.to_datetime(raw_dt).date()
-                except Exception:
-                    pass
-
-            Bem.objects.create(
+        # Cria bens novos em lote
+        novos_bens = [
+            Bem(
                 empresa         = empresa,
-                plaqueta        = plaqueta,
-                descricao       = descricao,
-                categoria       = cat,
-                departamento    = dep,
-                localizacao     = str(row.get('Localização') or '').strip(),
-                responsavel     = str(row.get('Responsável') or '').strip(),
-                nota_fiscal     = str(row.get('Nota Fiscal') or '').strip(),
-                fornecedor      = str(row.get('Fornecedor') or '').strip(),
-                data_aquisicao  = data_aq,
-                valor_aquisicao = valor,
+                plaqueta        = r['plaqueta'],
+                descricao       = r['descricao'],
+                categoria       = cats[r['cat_nome']],
+                departamento    = deps[r['dep_nome']],
+                localizacao     = r['localizacao'],
+                responsavel     = r['responsavel'],
+                nota_fiscal     = r['nota_fiscal'],
+                fornecedor      = r['fornecedor'],
+                data_aquisicao  = r['data_aquisicao'],
+                valor_aquisicao = r['valor_aquisicao'],
             )
-            criados += 1
+            for r in registros
+            if r['plaqueta'] not in plaquetas_existentes
+        ]
+        Bem.objects.bulk_create(novos_bens, ignore_conflicts=True)
+        criados = len(novos_bens)
 
     return JsonResponse({'ok': True, 'criados': criados, 'ignorados': ignorados, 'erros': erros})
 
@@ -1100,7 +1120,7 @@ def _build_relatorio_final_data(inv, empresa):
     itens_ajuste = ItemInventario.objects.filter(
         inventario=inv
     ).filter(
-        models.Q(foi_incorporado=True) | models.Q(local_foi_atualizado=True)
+        Q(foi_incorporado=True) | Q(local_foi_atualizado=True)
     ).select_related('bem', 'bem__categoria', 'bem__departamento')
 
     for i in itens_ajuste:
