@@ -384,7 +384,7 @@ export default function ImobilizadoContagem() {
   const [showScanner, setShowScanner] = useState(false)
 
   const inputRef = useRef(null)
-  const temCamera = typeof window !== 'undefined' && 'BarcodeDetector' in window
+  const temCamera = typeof window !== 'undefined' && !!navigator.mediaDevices
 
   // ── carrega inventário + listas ──────────────────────────────────────────────
   const carregarInventario = useCallback(async () => {

@@ -157,6 +157,7 @@ class ItemInventario(models.Model):
     foto_leitura               = models.ImageField(upload_to='imobilizado/fotos/', null=True, blank=True)
     categoria_provisoria_id    = models.IntegerField(null=True, blank=True)
     departamento_provisorio_id = models.IntegerField(null=True, blank=True)
+    valor_provisorio           = models.DecimalField(max_digits=14, decimal_places=2, null=True, blank=True)
 
     # flags setados durante a conciliação para rastrear ajustes feitos
     foi_incorporado      = models.BooleanField(default=False)

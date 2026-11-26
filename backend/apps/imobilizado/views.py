@@ -129,6 +129,7 @@ def _item_dict(item, request=None):
         'foto_leitura_url':           foto_leitura_url,
         'categoria_provisoria_id':    item.categoria_provisoria_id,
         'departamento_provisorio_id': item.departamento_provisorio_id,
+        'valor_provisorio':           float(item.valor_provisorio) if item.valor_provisorio is not None else None,
     }
 
 
@@ -760,7 +761,7 @@ def api_inventario_conciliar(request, pk):
             except (CategoriaBem.DoesNotExist, Departamento.DoesNotExist):
                 continue
 
-            valor_aq  = _parse_valor(str(dec.get('valor_aquisicao') or ''))
+            valor_aq  = _parse_valor(str(dec.get('valor_aquisicao') or '')) or item.valor_provisorio
             nota_fisc = (dec.get('nota_fiscal') or '').strip()
             plaquetas_list = [p.strip().upper() for p in (dec.get('plaquetas') or []) if str(p).strip()]
 
@@ -870,19 +871,61 @@ def api_bens_exportar(request):
             'Situação':       dict(Bem.SITUACAO_CHOICES).get(b.situacao, b.situacao),
         })
 
-    df  = pd.DataFrame(rows) if rows else pd.DataFrame(columns=[
-        'Plaqueta', 'Descrição', 'Categoria', 'Departamento', 'Localização',
-        'Responsável', 'Nota Fiscal', 'Fornecedor', 'Data Aquisição', 'Valor Aquisição', 'Situação',
-    ])
+    colunas = ['Plaqueta', 'Descrição', 'Categoria', 'Departamento', 'Localização',
+               'Responsável', 'Nota Fiscal', 'Fornecedor', 'Data Aquisição', 'Valor Aquisição', 'Situação']
+    df = pd.DataFrame(rows) if rows else pd.DataFrame(columns=colunas)
+
+    formato = request.GET.get('formato', 'excel')
+
+    if formato == 'pdf':
+        from reportlab.lib.pagesizes import A4, landscape
+        from reportlab.lib import colors
+        from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
+        from reportlab.lib.styles import getSampleStyleSheet
+        from reportlab.lib.units import cm
+
+        buf = io.BytesIO()
+        doc = SimpleDocTemplate(buf, pagesize=landscape(A4),
+                                leftMargin=1*cm, rightMargin=1*cm, topMargin=1.5*cm, bottomMargin=1.5*cm)
+        styles = getSampleStyleSheet()
+        story = [Paragraph(f'{empresa.nome} — Lista de Bens Imobilizados', styles['Title']), Spacer(1, 0.3*cm)]
+
+        # Colunas reduzidas para caber no PDF
+        pdf_cols = ['Plaqueta', 'Descrição', 'Categoria', 'Departamento', 'Localização', 'Situação']
+        col_widths = [2.5*cm, 6*cm, 3.5*cm, 3.5*cm, 4*cm, 2.5*cm]
+
+        data_pdf = [pdf_cols]
+        for r in rows:
+            data_pdf.append([str(r.get(c) or '') for c in pdf_cols])
+
+        t = Table(data_pdf, colWidths=col_widths, repeatRows=1)
+        t.setStyle(TableStyle([
+            ('BACKGROUND', (0,0), (-1,0), colors.HexColor('#1e3a5f')),
+            ('TEXTCOLOR',  (0,0), (-1,0), colors.white),
+            ('FONTNAME',   (0,0), (-1,0), 'Helvetica-Bold'),
+            ('FONTSIZE',   (0,0), (-1,0), 8),
+            ('FONTNAME',   (0,1), (-1,-1), 'Helvetica'),
+            ('FONTSIZE',   (0,1), (-1,-1), 7),
+            ('ROWBACKGROUNDS', (0,1), (-1,-1), [colors.white, colors.HexColor('#f5f7fa')]),
+            ('GRID',       (0,0), (-1,-1), 0.4, colors.HexColor('#cccccc')),
+            ('VALIGN',     (0,0), (-1,-1), 'MIDDLE'),
+            ('WORDWRAP',   (0,0), (-1,-1), True),
+            ('TOPPADDING', (0,0), (-1,-1), 3),
+            ('BOTTOMPADDING', (0,0), (-1,-1), 3),
+        ]))
+        story.append(t)
+        doc.build(story)
+        buf.seek(0)
+        resp = HttpResponse(buf.read(), content_type='application/pdf')
+        resp['Content-Disposition'] = 'attachment; filename="bens_imobilizado.pdf"'
+        return resp
+
+    # Excel
     buf = io.BytesIO()
     with pd.ExcelWriter(buf, engine='openpyxl') as writer:
         df.to_excel(writer, index=False, sheet_name='Bens')
     buf.seek(0)
-
-    resp = HttpResponse(
-        buf.read(),
-        content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-    )
+    resp = HttpResponse(buf.read(), content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
     resp['Content-Disposition'] = 'attachment; filename="bens_imobilizado.xlsx"'
     return resp
 
@@ -1566,6 +1609,14 @@ def api_inventario_item(request, pk, item_pk):
             if c in data:
                 setattr(item, c, int(data[c]) if data[c] else None)
                 update_fields.append(c)
+        if 'valor_provisorio' in data:
+            raw = str(data['valor_provisorio'] or '').replace(',', '.').strip()
+            from decimal import Decimal, InvalidOperation
+            try:
+                item.valor_provisorio = Decimal(raw) if raw else None
+            except InvalidOperation:
+                item.valor_provisorio = None
+            update_fields.append('valor_provisorio')
         if update_fields:
             item.save(update_fields=update_fields)
         return JsonResponse({'ok': True, 'item': _item_dict(item, request)})
@@ -2072,25 +2123,30 @@ def api_relatorios_exportar(request):
     ws.row_dimensions[2].height = 18
 
     # Dados
-    fill_par  = PatternFill('solid', fgColor='F5F7FA')
+    fill_par   = PatternFill('solid', fgColor='F5F7FA')
     fill_impar = PatternFill('solid', fgColor='FFFFFF')
     for ri, row in enumerate(rows, 3):
         fill = fill_par if ri % 2 == 0 else fill_impar
         for ci, val in enumerate(row, 1):
             c = ws.cell(row=ri, column=ci, value=val)
-            c.font = Font(name='Arial', size=8)
+            c.font = Font(name='Arial', size=9)
             c.fill = fill
             c.border = brd
-            c.alignment = Alignment(vertical='center')
+            c.alignment = Alignment(vertical='center', wrap_text=True)
+        ws.row_dimensions[ri].height = 30
     ws.freeze_panes = 'A3'
 
-    # Auto-largura
-    for col in range(1, len(colunas) + 1):
+    # Larguras mínimas por coluna (baseado no cabeçalho + conteúdo)
+    MIN_WIDTHS = {'Plaqueta': 12, 'Descrição': 30, 'Categoria': 20, 'Departamento': 20,
+                  'Localização': 22, 'Situação': 14, 'Responsável': 18, 'Nota Fiscal': 14,
+                  'Fornecedor': 18, 'Data Aquisição': 14, 'Valor Aquisição': 14}
+    for col_idx, col_name in enumerate(colunas, 1):
+        min_w = MIN_WIDTHS.get(col_name, 12)
         max_len = max(
-            (len(str(ws.cell(row=r, column=col).value or '')) for r in range(1, len(rows) + 3)),
-            default=10
+            (len(str(ws.cell(row=r, column=col_idx).value or '')) for r in range(1, len(rows) + 3)),
+            default=min_w
         )
-        ws.column_dimensions[get_column_letter(col)].width = min(max_len + 2, 40)
+        ws.column_dimensions[get_column_letter(col_idx)].width = max(min_w, min(max_len + 2, 45))
 
     buf = io.BytesIO()
     wb.save(buf)

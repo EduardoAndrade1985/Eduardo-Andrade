@@ -284,19 +284,20 @@ function BensTab({ categorias, departamentos, localizacoes, onRefreshConfig }) {
     }
   }
 
-  const exportar = async () => {
+  const exportar = async (formato = 'excel') => {
     try {
-      const params = {}
+      const params = { formato }
       if (filtros.q)               params.q               = filtros.q
       if (filtros.situacao)        params.situacao        = filtros.situacao
       if (filtros.categoria_id)    params.categoria_id    = filtros.categoria_id
       if (filtros.departamento_id) params.departamento_id = filtros.departamento_id
       if (filtros.pendente)        params.pendente        = '1'
       const res = await api.get('/imobilizado/bens/exportar/', { params, responseType: 'blob' })
+      const ext = formato === 'pdf' ? 'pdf' : 'xlsx'
       const url = URL.createObjectURL(res.data)
       const a   = document.createElement('a')
       a.href     = url
-      a.download = 'bens_imobilizado.xlsx'
+      a.download = `bens_imobilizado.${ext}`
       a.click()
       URL.revokeObjectURL(url)
     } catch {
@@ -367,9 +368,13 @@ function BensTab({ categorias, departamentos, localizacoes, onRefreshConfig }) {
       <div className="flex items-center justify-between gap-3 flex-wrap">
         <p className="text-sm text-muted">{total} bem{total !== 1 ? 's' : ''} encontrado{total !== 1 ? 's' : ''}</p>
         <div className="flex gap-2 items-center">
-          <button onClick={exportar}
-            className="text-xs bg-bg3 border border-border text-dim px-3 py-1.5 rounded-lg hover:border-primary/40 hover:text-primary transition whitespace-nowrap">
-            ⬇️ Exportar Excel
+          <button onClick={() => exportar('excel')}
+            className="text-xs bg-bg3 border border-border text-dim px-3 py-1.5 rounded-lg hover:border-teal-500/40 hover:text-teal-400 transition whitespace-nowrap">
+            📊 Exportar Excel
+          </button>
+          <button onClick={() => exportar('pdf')}
+            className="text-xs bg-bg3 border border-border text-dim px-3 py-1.5 rounded-lg hover:border-rose-500/40 hover:text-rose-400 transition whitespace-nowrap">
+            📄 Exportar PDF
           </button>
           <input ref={importRef} type="file" accept=".xlsx,.xls,.csv" className="hidden" onChange={handleImportar}/>
           <button onClick={() => importRef.current?.click()} disabled={importando}
@@ -961,7 +966,7 @@ function TabelaRelatorio({ relatorio: r, invId, invStatus, onRefresh, categorias
   const allRows = [
     ...r.localizados.map(i     => ({ _sit: 'LOCALIZADO',      plq: i.plaqueta_lida, desc: i.bem?.descricao || '—', locSist: i.bem?.localizacao || '—', locEnc: i.localizacao_encontrada || '—', valor: i.bem?.valor_aquisicao, op: i.contado_por, _itemId: i.id, _bemId: i.bem?.id, _locEnc: i.localizacao_encontrada, _op: i.contado_por, _obs: i.observacao, _qtd: i.quantidade })),
     ...r.divergentes.map(i     => ({ _sit: 'LOCAL_DIVERGENTE', plq: i.plaqueta_lida, desc: i.bem?.descricao || '—', locSist: i.bem?.localizacao || '—', locEnc: i.localizacao_encontrada || '—', valor: i.bem?.valor_aquisicao, op: i.contado_por, _itemId: i.id, _bemId: i.bem?.id, _locEnc: i.localizacao_encontrada, _op: i.contado_por, _obs: i.observacao, _qtd: i.quantidade })),
-    ...r.nao_cadastrados.map(i => ({ _sit: 'NAO_CADASTRADO',   plq: i.plaqueta_lida, desc: i.descricao_provisoria || '—', locSist: '—', locEnc: i.localizacao_encontrada || '—', valor: null, op: i.contado_por, _itemId: i.id, _bemId: null, _locEnc: i.localizacao_encontrada, _op: i.contado_por, _obs: i.observacao, _qtd: i.quantidade, _descProv: i.descricao_provisoria, _catProvId: i.categoria_provisoria_id, _depProvId: i.departamento_provisorio_id })),
+    ...r.nao_cadastrados.map(i => ({ _sit: 'NAO_CADASTRADO',   plq: i.plaqueta_lida, desc: i.descricao_provisoria || '—', locSist: '—', locEnc: i.localizacao_encontrada || '—', valor: i.valor_provisorio ?? null, op: i.contado_por, _itemId: i.id, _bemId: null, _locEnc: i.localizacao_encontrada, _op: i.contado_por, _obs: i.observacao, _qtd: i.quantidade, _descProv: i.descricao_provisoria, _catProvId: i.categoria_provisoria_id, _depProvId: i.departamento_provisorio_id, _valorProv: i.valor_provisorio ?? '' })),
     ...r.fantasmas.map(b       => ({ _sit: 'NAO_LOCALIZADO',   plq: b.plaqueta,      desc: b.descricao,              locSist: b.localizacao || '—', locEnc: '—', valor: b.valor_aquisicao, op: '—', _itemId: null, _bemId: b.id, _locEnc: '', _op: '', _obs: '', _qtd: 1 })),
   ]
 
@@ -975,9 +980,10 @@ function TabelaRelatorio({ relatorio: r, invId, invStatus, onRefresh, categorias
       observacao: row._obs || '',
       quantidade: row._qtd || 1,
       ...(row._sit === 'NAO_CADASTRADO' ? {
-        descricao_provisoria:      row._descProv || '',
-        categoria_provisoria_id:   row._catProvId ? String(row._catProvId) : '',
+        descricao_provisoria:       row._descProv || '',
+        categoria_provisoria_id:    row._catProvId ? String(row._catProvId) : '',
         departamento_provisorio_id: row._depProvId ? String(row._depProvId) : '',
+        valor_provisorio:           row._valorProv != null && row._valorProv !== '' ? String(row._valorProv).replace('.', ',') : '',
       } : {}),
     })
   }
@@ -1138,6 +1144,12 @@ function TabelaRelatorio({ relatorio: r, invId, invStatus, onRefresh, categorias
                                     <option value="">— selecione —</option>
                                     {departamentos.map(d => <option key={d.id} value={d.id}>{d.nome}</option>)}
                                   </select>
+                                </div>
+                                <div>
+                                  <label className="text-[10px] font-bold text-muted uppercase tracking-wider block mb-1">Valor de Aquisição</label>
+                                  <input className={inp} value={editForm.valor_provisorio || ''}
+                                    onChange={e => setEditForm(f => ({ ...f, valor_provisorio: e.target.value }))}
+                                    placeholder="Ex: 1.500,00"/>
                                 </div>
                               </div>
                             )}
