@@ -192,7 +192,7 @@ function DashboardTab() {
 // ════════════════════════════════════════════════════════════════════════════════
 // ABA BENS
 // ════════════════════════════════════════════════════════════════════════════════
-function BensTab({ categorias, departamentos, localizacoes }) {
+function BensTab({ categorias, departamentos, localizacoes, onRefreshConfig }) {
   const [bens, setBens]         = useState([])
   const [loading, setLoading]   = useState(true)
   const [filtros, setFiltros]   = useState({ q: '', situacao: '', categoria_id: '', departamento_id: '', pendente: '' })
@@ -317,6 +317,7 @@ function BensTab({ categorias, departamentos, localizacoes }) {
       })
       setImportResult(data)
       carregar()
+      if (onRefreshConfig) onRefreshConfig()
     } catch (err) {
       setImportResult({ ok: false, erros: [err.response?.data?.erro || 'Erro ao importar'] })
     } finally {
@@ -482,7 +483,7 @@ function BensTab({ categorias, departamentos, localizacoes }) {
                     </td>
                     <td className="px-4 py-1.5 text-muted whitespace-nowrap">{b.categoria?.nome}</td>
                     <td className="px-4 py-1.5 text-muted whitespace-nowrap">{b.departamento?.nome}</td>
-                    <td className="px-4 py-1.5 text-muted whitespace-nowrap">{b.localizacao || '—'}</td>
+                    <td className="px-4 py-1.5 text-muted whitespace-nowrap">{(!b.localizacao || b.localizacao === 'nan') ? '—' : b.localizacao}</td>
                     <td className="px-4 py-1.5 text-dim font-medium whitespace-nowrap text-right">
                       {b.valor_aquisicao != null ? fmtR(b.valor_aquisicao) : '—'}
                     </td>
@@ -2115,10 +2116,11 @@ function AuditoriaTab() {
 // ABA RELATÓRIOS
 // ════════════════════════════════════════════════════════════════════════════════
 function RelatoriosTab() {
-  const [tipo, setTipo]         = useState('bens')
-  const [dados, setDados]       = useState(null)
-  const [loading, setLoading]   = useState(false)
-  const [situacao, setSituacao] = useState('')
+  const [tipo, setTipo]           = useState('bens')
+  const [dados, setDados]         = useState(null)
+  const [loading, setLoading]     = useState(false)
+  const [situacao, setSituacao]   = useState('')
+  const [exportando, setExportando] = useState(false)
 
   const carregar = async () => {
     setLoading(true)
@@ -2129,6 +2131,53 @@ function RelatoriosTab() {
       const { data } = await api.get('/imobilizado/relatorios/', { params })
       setDados(data)
     } finally { setLoading(false) }
+  }
+
+  const exportar = async (formato) => {
+    setExportando(true)
+    try {
+      const params = { tipo, formato }
+      if (tipo === 'bens' && situacao) params.situacao = situacao
+      const res = await api.get('/imobilizado/relatorios/exportar/', { params, responseType: 'blob' })
+      const ext = formato === 'pdf' ? 'pdf' : 'xlsx'
+      const url = URL.createObjectURL(res.data)
+      const a = document.createElement('a')
+      a.href = url; a.download = `relatorio_${tipo}.${ext}`; a.click()
+      URL.revokeObjectURL(url)
+    } catch { alert('Erro ao exportar relatório') }
+    finally { setExportando(false) }
+  }
+
+  const imprimir = () => {
+    const registros = dados?.registros || []
+    if (!registros.length) return
+    const colMap = {
+      bens:           ['Plaqueta','Descrição','Categoria','Departamento','Localização','Situação','Valor'],
+      baixas:         ['Plaqueta','Descrição','Categoria','Departamento','Data Baixa','Motivo','Valor'],
+      transferencias: ['Plaqueta','Descrição','De Dep.','Para Dep.','De Local','Para Local','Motivo','Por','Data'],
+      inventarios:    ['Data','Área','Responsável','Status','Esperados','Contados','Localizados','Divergentes','Não Cad.','Fantasmas','Índice'],
+    }
+    const cols = colMap[tipo] || []
+    const valMap = {
+      bens:           r => [r.plaqueta,r.descricao,r.categoria,r.departamento,r.localizacao||'—',r.situacao,r.valor_aquisicao!=null?Number(r.valor_aquisicao).toLocaleString('pt-BR',{style:'currency',currency:'BRL'}):'—'],
+      baixas:         r => [r.plaqueta,r.descricao,r.categoria,r.departamento,r.data_baixa||'',r.motivo_baixa||'',r.valor_aquisicao!=null?Number(r.valor_aquisicao).toLocaleString('pt-BR',{style:'currency',currency:'BRL'}):'—'],
+      transferencias: r => [r.plaqueta,r.descricao,r.de_departamento||'',r.para_departamento||'',r.de_localizacao||'',r.para_localizacao||'',r.motivo||'',r.transferido_por||'',r.criado_em?.slice(0,10)||''],
+      inventarios:    r => [r.data,r.local_area||'',r.responsavel||'',r.status,r.total_esperados,r.total_contados,r.localizados,r.divergentes,r.nao_cadastrados,r.fantasmas,(r.indice_localizacao||0).toFixed(1)+'%'],
+    }
+    const linhas = (valMap[tipo] || (() => []))(registros[0]) ? registros.map(valMap[tipo]) : []
+    const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Relatório</title>
+<style>body{font-family:Arial,sans-serif;font-size:10px;margin:16px}h2{font-size:13px;margin-bottom:4px}p{color:#666;font-size:9px;margin-bottom:12px}table{border-collapse:collapse;width:100%}th{background:#1e3a5f;color:#fff;padding:4px 6px;text-align:left;font-size:9px}td{padding:3px 6px;border-bottom:1px solid #ddd;font-size:9px}tr:nth-child(even)td{background:#f5f7fa}@media print{button{display:none}}</style>
+</head><body>
+<h2>Relatório de ${tipo.charAt(0).toUpperCase()+tipo.slice(1)}</h2>
+<p>Gerado em ${new Date().toLocaleDateString('pt-BR')} · ${registros.length} registros</p>
+<table><thead><tr>${cols.map(c=>`<th>${c}</th>`).join('')}</tr></thead>
+<tbody>${linhas.map(row=>`<tr>${row.map(v=>`<td>${v??''}</td>`).join('')}</tr>`).join('')}</tbody>
+</table></body></html>`
+    const w = window.open('', '_blank')
+    w.document.write(html)
+    w.document.close()
+    w.focus()
+    setTimeout(() => w.print(), 400)
   }
 
   useEffect(() => { carregar() }, [tipo])
@@ -2173,9 +2222,23 @@ function RelatoriosTab() {
           className="bg-primary/10 text-primary border border-primary/20 px-4 py-1.5 rounded-lg text-sm hover:bg-primary/20 transition">
           Atualizar
         </button>
-        {dados && registros.length > 0 && (
-          <span className="text-xs text-muted ml-auto">{registros.length} registros</span>
-        )}
+        {dados && registros.length > 0 && (<>
+          <span className="text-xs text-muted">{registros.length} registros</span>
+          <div className="flex gap-2 ml-auto">
+            <button onClick={() => exportar('excel')} disabled={exportando}
+              className="text-xs bg-bg3 border border-border text-dim px-3 py-1.5 rounded-lg hover:border-teal-500/40 hover:text-teal-400 transition disabled:opacity-50 whitespace-nowrap">
+              {exportando ? '⏳…' : '📊 Excel'}
+            </button>
+            <button onClick={() => exportar('pdf')} disabled={exportando}
+              className="text-xs bg-bg3 border border-border text-dim px-3 py-1.5 rounded-lg hover:border-rose-500/40 hover:text-rose-400 transition disabled:opacity-50 whitespace-nowrap">
+              {exportando ? '⏳…' : '📄 PDF'}
+            </button>
+            <button onClick={imprimir}
+              className="text-xs bg-bg3 border border-border text-dim px-3 py-1.5 rounded-lg hover:border-primary/40 hover:text-primary transition whitespace-nowrap">
+              🖨️ Imprimir
+            </button>
+          </div>
+        </>)}
       </div>
 
       {loading && <div className="text-center py-12 text-muted">Carregando…</div>}
@@ -2203,7 +2266,7 @@ function RelatoriosTab() {
                       <td className="px-3 py-2 text-muted max-w-[180px] truncate">{r.descricao}</td>
                       <td className="px-3 py-2 text-muted">{r.categoria}</td>
                       <td className="px-3 py-2 text-muted">{r.departamento}</td>
-                      <td className="px-3 py-2 text-muted">{r.localizacao || '—'}</td>
+                      <td className="px-3 py-2 text-muted">{(!r.localizacao || r.localizacao === 'nan') ? '—' : r.localizacao}</td>
                       <td className="px-3 py-2 text-muted">{r.situacao}</td>
                       <td className="px-3 py-2 text-muted whitespace-nowrap">{fmtV(r.valor_aquisicao)}</td>
                     </>}
@@ -2341,7 +2404,7 @@ export default function Imobilizado() {
       {/* Conteúdo */}
       {aba === 'dashboard'   && <DashboardTab/>}
       {aba === 'bens' && (
-        <BensTab categorias={categorias} departamentos={departamentos} localizacoes={localizacoes}/>
+        <BensTab categorias={categorias} departamentos={departamentos} localizacoes={localizacoes} onRefreshConfig={carregarConfig}/>
       )}
       {aba === 'lancamento' && (
         <LancamentoTab

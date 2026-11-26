@@ -920,6 +920,10 @@ def api_bens_importar(request):
 
     erros = []
 
+    def _s(v):
+        s = str(v).strip() if v is not None else ''
+        return '' if s.lower() in ('nan', 'none', 'nat') else s
+
     # --- Pré-normaliza todas as linhas (sem queries) ---
     registros = []
     for idx, row in df.iterrows():
@@ -956,12 +960,12 @@ def api_bens_importar(request):
         registros.append({
             'plaqueta':       plaqueta,
             'descricao':      descricao,
-            'cat_nome':       str(row.get('Categoria') or '').strip() or 'Outros',
-            'dep_nome':       str(row.get('Departamento') or '').strip() or 'Geral',
-            'localizacao':    str(row.get('Localização') or '').strip(),
-            'responsavel':    str(row.get('Responsável') or '').strip(),
-            'nota_fiscal':    str(row.get('Nota Fiscal') or '').strip(),
-            'fornecedor':     str(row.get('Fornecedor') or '').strip(),
+            'cat_nome':       _s(row.get('Categoria')) or 'Outros',
+            'dep_nome':       _s(row.get('Departamento')) or 'Geral',
+            'localizacao':    _s(row.get('Localização')),
+            'responsavel':    _s(row.get('Responsável')),
+            'nota_fiscal':    _s(row.get('Nota Fiscal')),
+            'fornecedor':     _s(row.get('Fornecedor')),
             'data_aquisicao': data_aq,
             'valor_aquisicao': valor,
         })
@@ -1914,3 +1918,184 @@ def api_relatorios(request):
         for b in qs
     ]
     return JsonResponse({'tipo': 'bens', 'registros': data})
+
+
+def api_relatorios_exportar(request):
+    empresa = _empresa(request)
+    if not empresa:
+        return _err('Sem empresa ativa', 401)
+
+    tipo     = request.GET.get('tipo', 'bens')
+    formato  = request.GET.get('formato', 'excel')
+    situacao = request.GET.get('situacao', '')
+
+    # Reutiliza a mesma lógica de dados do api_relatorios
+    if tipo == 'baixas':
+        qs = Bem.objects.filter(empresa=empresa, situacao=Bem.BAIXADO).select_related('categoria', 'departamento').order_by('-data_baixa')
+        colunas = ['Plaqueta', 'Descrição', 'Categoria', 'Departamento', 'Data Baixa', 'Motivo', 'Valor Aquisição']
+        rows = [[
+            b.plaqueta, b.descricao,
+            b.categoria.nome if b.categoria_id else '',
+            b.departamento.nome if b.departamento_id else '',
+            b.data_baixa.strftime('%d/%m/%Y') if b.data_baixa else '',
+            dict(Bem.MOTIVO_BAIXA_CHOICES).get(b.motivo_baixa, b.motivo_baixa),
+            float(b.valor_aquisicao) if b.valor_aquisicao else '',
+        ] for b in qs]
+        titulo = 'Relatório de Baixas'
+
+    elif tipo == 'transferencias':
+        qs = TransferenciaAtivo.objects.filter(bem__empresa=empresa).select_related('bem').order_by('-criado_em')
+        colunas = ['Plaqueta', 'Descrição', 'De Departamento', 'Para Departamento', 'De Localização', 'Para Localização', 'Motivo', 'Responsável', 'Data']
+        rows = [[
+            t.bem.plaqueta, t.bem.descricao,
+            t.de_departamento, t.para_departamento,
+            t.de_localizacao, t.para_localizacao,
+            t.motivo, t.transferido_por,
+            t.criado_em.strftime('%d/%m/%Y'),
+        ] for t in qs]
+        titulo = 'Relatório de Transferências'
+
+    elif tipo == 'inventarios':
+        qs = Inventario.objects.filter(empresa=empresa).order_by('-data', '-criado_em')
+        colunas = ['Data', 'Área', 'Responsável', 'Status', 'Esperados', 'Contados', 'Localizados', 'Divergentes', 'Não Cad.', 'Fantasmas', 'Índice %']
+        rows = []
+        for inv in qs:
+            r = reconciliar(inv)
+            rows.append([
+                inv.data.strftime('%d/%m/%Y'), inv.local_area, inv.responsavel,
+                inv.get_status_display(),
+                r['total_esperados'], r['total_contados'],
+                len(r['localizados']), len(r['divergentes']),
+                len(r['nao_cadastrados']), len(r['fantasmas']),
+                round(r['indice_localizacao'], 1),
+            ])
+        titulo = 'Relatório de Inventários'
+
+    else:  # bens
+        qs = Bem.objects.filter(empresa=empresa).select_related('categoria', 'departamento').order_by('plaqueta')
+        if situacao:
+            qs = qs.filter(situacao=situacao)
+        colunas = ['Plaqueta', 'Descrição', 'Categoria', 'Departamento', 'Localização', 'Responsável', 'Situação', 'Nota Fiscal', 'Data Aquisição', 'Valor Aquisição']
+        rows = [[
+            b.plaqueta, b.descricao,
+            b.categoria.nome if b.categoria_id else '',
+            b.departamento.nome if b.departamento_id else '',
+            b.localizacao, b.responsavel,
+            dict(Bem.SITUACAO_CHOICES).get(b.situacao, b.situacao),
+            b.nota_fiscal,
+            b.data_aquisicao.strftime('%d/%m/%Y') if b.data_aquisicao else '',
+            float(b.valor_aquisicao) if b.valor_aquisicao else '',
+        ] for b in qs]
+        titulo = 'Relatório de Bens'
+
+    if formato == 'pdf':
+        from reportlab.lib.pagesizes import A4, landscape
+        from reportlab.lib import colors
+        from reportlab.lib.units import cm
+        from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
+        from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+        from reportlab.lib.enums import TA_CENTER
+
+        buf = io.BytesIO()
+        doc = SimpleDocTemplate(buf, pagesize=landscape(A4),
+                                leftMargin=1.5*cm, rightMargin=1.5*cm,
+                                topMargin=1.5*cm, bottomMargin=1.5*cm)
+        styles = getSampleStyleSheet()
+        h1 = ParagraphStyle('h1', fontSize=14, fontName='Helvetica-Bold', alignment=TA_CENTER, spaceAfter=4)
+        sub = ParagraphStyle('sub', fontSize=9, fontName='Helvetica', alignment=TA_CENTER, textColor=colors.grey, spaceAfter=12)
+
+        from django.utils import timezone as tz
+        hoje = tz.localdate().strftime('%d/%m/%Y')
+        story = [
+            Paragraph(empresa.nome, h1),
+            Paragraph(f'{titulo}  ·  Gerado em {hoje}', sub),
+        ]
+
+        # Cabeçalho da tabela
+        table_data = [colunas] + rows
+        col_count = len(colunas)
+        available = landscape(A4)[0] - 3*cm
+        col_w = [available / col_count] * col_count
+
+        t = Table(table_data, colWidths=col_w, repeatRows=1)
+        t.setStyle(TableStyle([
+            ('BACKGROUND',   (0,0), (-1,0), colors.HexColor('#1e3a5f')),
+            ('TEXTCOLOR',    (0,0), (-1,0), colors.white),
+            ('FONTNAME',     (0,0), (-1,0), 'Helvetica-Bold'),
+            ('FONTSIZE',     (0,0), (-1,0), 8),
+            ('FONTSIZE',     (0,1), (-1,-1), 7),
+            ('FONTNAME',     (0,1), (-1,-1), 'Helvetica'),
+            ('ALIGN',        (0,0), (-1,-1), 'LEFT'),
+            ('VALIGN',       (0,0), (-1,-1), 'MIDDLE'),
+            ('ROWBACKGROUNDS', (0,1), (-1,-1), [colors.white, colors.HexColor('#f5f7fa')]),
+            ('GRID',         (0,0), (-1,-1), 0.3, colors.HexColor('#cccccc')),
+            ('TOPPADDING',   (0,0), (-1,-1), 3),
+            ('BOTTOMPADDING',(0,0), (-1,-1), 3),
+            ('LEFTPADDING',  (0,0), (-1,-1), 4),
+            ('RIGHTPADDING', (0,0), (-1,-1), 4),
+        ]))
+        story.append(t)
+        doc.build(story)
+        buf.seek(0)
+        resp = HttpResponse(buf.read(), content_type='application/pdf')
+        resp['Content-Disposition'] = f'attachment; filename="{titulo.lower().replace(" ", "_")}.pdf"'
+        return resp
+
+    # Excel (openpyxl)
+    import openpyxl
+    from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+    from openpyxl.utils import get_column_letter
+
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = titulo[:31]
+
+    # Título
+    ws.merge_cells(f'A1:{get_column_letter(len(colunas))}1')
+    tc = ws['A1']
+    tc.value = f'{empresa.nome} — {titulo}'
+    tc.font = Font(name='Arial', size=13, bold=True, color='FFFFFF')
+    tc.fill = PatternFill('solid', fgColor='1e3a5f')
+    tc.alignment = Alignment(horizontal='center', vertical='center')
+    ws.row_dimensions[1].height = 22
+
+    # Cabeçalhos
+    hdr_fill = PatternFill('solid', fgColor='2d5986')
+    thin = Side(style='thin', color='CCCCCC')
+    brd  = Border(left=thin, right=thin, top=thin, bottom=thin)
+    for col, h in enumerate(colunas, 1):
+        c = ws.cell(row=2, column=col, value=h)
+        c.font = Font(name='Arial', size=9, bold=True, color='FFFFFF')
+        c.fill = hdr_fill
+        c.alignment = Alignment(horizontal='center', vertical='center', wrap_text=True)
+        c.border = brd
+    ws.row_dimensions[2].height = 18
+
+    # Dados
+    fill_par  = PatternFill('solid', fgColor='F5F7FA')
+    fill_impar = PatternFill('solid', fgColor='FFFFFF')
+    for ri, row in enumerate(rows, 3):
+        fill = fill_par if ri % 2 == 0 else fill_impar
+        for ci, val in enumerate(row, 1):
+            c = ws.cell(row=ri, column=ci, value=val)
+            c.font = Font(name='Arial', size=8)
+            c.fill = fill
+            c.border = brd
+            c.alignment = Alignment(vertical='center')
+    ws.freeze_panes = 'A3'
+
+    # Auto-largura
+    for col in range(1, len(colunas) + 1):
+        max_len = max(
+            (len(str(ws.cell(row=r, column=col).value or '')) for r in range(1, len(rows) + 3)),
+            default=10
+        )
+        ws.column_dimensions[get_column_letter(col)].width = min(max_len + 2, 40)
+
+    buf = io.BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+    resp = HttpResponse(buf.read(), content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+    resp['Content-Disposition'] = f'attachment; filename="{titulo.lower().replace(" ", "_")}.xlsx"'
+    return resp
+
